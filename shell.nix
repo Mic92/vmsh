@@ -10,5 +10,10 @@ let
   };
 in
 pkgs.mkShell {
-  nativeBuildInputs = [ niv.niv pkgs.rls ] ++ vmsh.nativeBuildInputs;
+  nativeBuildInputs = [
+    niv.niv
+    pkgs.rls
+    pkgs.just
+    pkgs.qemu_kvm
+  ] ++ vmsh.nativeBuildInputs;
 }
