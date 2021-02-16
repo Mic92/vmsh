@@ -1,23 +1,31 @@
-use bcc::perf_event::PerfMapBuilder;
-use bcc::BccError;
-use bcc::{Kprobe, Kretprobe, BPF};
-
 use argparse::{ArgumentParser, List, Store};
 use libc::pid_t;
 use nix::unistd::Pid;
-use simple_error::bail;
 use std::io::{stderr, stdout};
 use std::str::FromStr;
 
-use crate::result::Result;
+use crate::inspect::InspectOptions;
 
+mod inspect;
 mod result;
 
-pub struct InspectOptions {
-    pub pid: Pid,
+#[allow(non_camel_case_types)]
+#[derive(Debug)]
+enum Command {
+    inspect,
 }
 
-fn parse_inspect_args(args: Vec<String>) -> Result<InspectOptions> {
+impl FromStr for Command {
+    type Err = ();
+    fn from_str(src: &str) -> std::result::Result<Command, ()> {
+        match src {
+            "inspect" => Ok(Command::inspect),
+            _ => Err(()),
+        }
+    }
+}
+
+fn parse_inspect_args(args: Vec<String>) -> InspectOptions {
     let mut options = InspectOptions {
         pid: Pid::from_raw(0),
     };
@@ -39,26 +47,15 @@ fn parse_inspect_args(args: Vec<String>) -> Result<InspectOptions> {
     }
     options.pid = Pid::from_raw(hypervisor_pid);
 
-    Ok(options)
+    options
 }
+
 fn inspect_command(args: Vec<String>) {
     let opts = parse_inspect_args(args);
-}
-
-#[allow(non_camel_case_types)]
-#[derive(Debug)]
-enum Command {
-    inspect,
-}
-
-impl FromStr for Command {
-    type Err = ();
-    fn from_str(src: &str) -> std::result::Result<Command, ()> {
-        match src {
-            "inspect" => Ok(Command::inspect),
-            _ => Err(()),
-        }
-    }
+    if let Err(err) = inspect::inspect(&opts) {
+        eprintln!("{}", err);
+        std::process::exit(1);
+    };
 }
 
 fn main() {
