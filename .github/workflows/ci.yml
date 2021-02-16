@@ -1,10 +1,10 @@
 name: CI
 on:
   push:
-    branches: [staging, trying]
+    branches: [ main ]
   pull_request:
-    branches: [master]
-    types: [opened, reopened, synchronize]
+    branches: [ main ]
+    types: [ opened, reopened, synchronize ]
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -13,7 +13,7 @@ jobs:
         target:
           - x86_64-unknown-linux-gnu
           - x86_64-unknown-linux-musl
-        rust: [1.46.0]
+        rust: [ 1.50.0 ]
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -52,7 +52,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        rust: [1.46.0]
+        rust: [ 1.50.0 ]
     steps:
       - name: Install rust
         uses: actions-rs/toolchain@v1
