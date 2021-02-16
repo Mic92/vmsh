@@ -12,7 +12,8 @@ in
 pkgs.mkShell {
   nativeBuildInputs = [
     niv.niv
-    pkgs.rls
+    pkgs.rust-analyzer
+    pkgs.rustfmt
     pkgs.just
     pkgs.qemu_kvm
   ] ++ vmsh.nativeBuildInputs;
