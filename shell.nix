@@ -16,5 +16,6 @@ pkgs.mkShell {
     pkgs.rustfmt
     pkgs.just
     pkgs.qemu_kvm
+    pkgs.cargo-watch
   ] ++ vmsh.nativeBuildInputs;
 }
