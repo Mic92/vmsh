@@ -30,12 +30,12 @@ build-linux-shell:
   nix-shell {{invocation_directory()}}/nix/fhs-shell.nix
 
 build-linux: configure-linux
-  [[ -d {{linux_dir}}/linux/arch/x86/boot/bzImage ]] || \
-    {{kernel_fhs}} "yes \n | make -C {{linux_dir}} -j$(nproc)"
+  {{kernel_fhs}} "yes \n | make -C {{linux_dir}} -j$(nproc)"
 
 nixos-image:
-  [[ -d {{linux_dir}}/nixos.qcow2 ]] || \
-    install -m600 {{nixos_image}} {{linux_dir}}/nixos.qcow2
+  [[ {{linux_dir}}/nixos.qcow2 -nt minimal-vm.nix ]] || \
+  [[ {{linux_dir}}/nixos.qcow2 -nt sources.json ]] || \
+  install -m600 {{nixos_image}} {{linux_dir}}/nixos.qcow2
 
 qemu: build-linux nixos-image
   qemu-system-x86_64 \
