@@ -6,7 +6,13 @@ use std::str::FromStr;
 
 use crate::inspect::InspectOptions;
 
+mod cpu;
+mod inject_syscall;
 mod inspect;
+mod kvm;
+mod kvm_ioctls;
+mod proc;
+mod ptrace;
 mod result;
 
 #[allow(non_camel_case_types)]
