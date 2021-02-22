@@ -8,9 +8,9 @@ use simple_error::try_with;
 use std::fs;
 use std::mem;
 use std::os::unix::prelude::RawFd;
-use std::path::PathBuf;
 
 use crate::cpu::{self, Regs};
+use crate::proc;
 use crate::ptrace;
 use crate::result::Result;
 
@@ -22,9 +22,7 @@ pub struct Process {
 }
 
 pub fn attach(pid: Pid) -> Result<Process> {
-    let dir = PathBuf::from("/proc")
-        .join(pid.as_raw().to_string())
-        .join("tasks");
+    let dir = proc::pid_path(pid).join("tasks");
     let threads_dir = try_with!(fs::read_dir(&dir), "failed to open directory /proc/self/ns");
     let mut process_idx = 0;
 
@@ -129,7 +127,7 @@ impl Process {
             arg
         );
 
-        return self.syscall(&args).map(|v| v as c_int);
+        self.syscall(&args).map(|v| v as c_int)
     }
 
     fn syscall(&self, regs: &Regs) -> Result<isize> {
@@ -137,8 +135,8 @@ impl Process {
             self.main_thread().setregs(regs),
             "cannot set system call args"
         );
-        // FIXME: on arm we would need PTRACE_SET_SYSCALL
         loop {
+            // FIXME: on arm we would need PTRACE_SET_SYSCALL
             try_with!(self.main_thread().syscall(), "cannot run syscall in thread");
 
             let mut status = try_with!(waitpid(self.main_thread().tid, None), "waitpid failed");
@@ -164,19 +162,19 @@ impl Process {
                     return Ok(result_regs.syscall_ret() as isize);
                 }
                 WaitStatus::PtraceSyscall(_) => {
-                    return bail!("got unexpected ptrace syscall event")
+                    bail!("got unexpected ptrace syscall event")
                 }
                 WaitStatus::StillAlive => {
-                    return bail!("got unexpected still-alive waitpid() event")
+                    bail!("got unexpected still-alive waitpid() event")
                 }
                 WaitStatus::Continued(_) => {} // noop
                 WaitStatus::Stopped(_, signal) => {
                     // should not happen usually, so log it
-                    return bail!("process was stopped by by signal: {}", signal);
+                    bail!("process was stopped by by signal: {}", signal);
                 }
-                WaitStatus::Exited(_, status) => return bail!("process exited with: {}", status),
-                WaitStatus::Signaled(_, signal, coredumped) => {
-                    return bail!("process was stopped by signal: {}", signal)
+                WaitStatus::Exited(_, status) => bail!("process exited with: {}", status),
+                WaitStatus::Signaled(_, signal, _) => {
+                    bail!("process was stopped by signal: {}", signal)
                 }
             }
         }

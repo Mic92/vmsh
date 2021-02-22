@@ -11,6 +11,7 @@ mod inject_syscall;
 mod inspect;
 mod kvm;
 mod kvm_ioctls;
+mod kvm_memslots;
 mod proc;
 mod ptrace;
 mod result;
