@@ -1,10 +1,8 @@
 use libc::{c_int, c_ulong};
 use nix::unistd::Pid;
 use simple_error::{bail, try_with};
-use std::os::unix::ffi::OsStrExt;
+use std::ffi::OsStr;
 use std::os::unix::prelude::RawFd;
-use std::path::Path;
-use std::str;
 
 use crate::inject_syscall;
 use crate::kvm_ioctls::KVM_CHECK_EXTENSION;
@@ -68,22 +66,22 @@ fn find_vm_fd(handle: &PidHandle) -> Result<(Vec<RawFd>, Vec<VCPU>)> {
     );
 
     for fd in fds {
-        if fd.path == Path::new("anon_inode:kvm-vm") {
+        let name = fd
+            .path
+            .file_name()
+            .unwrap_or_else(|| OsStr::new(""))
+            .to_str()
+            .unwrap_or("");
+        if name == "anon_inode:kvm-vm" {
             vm_fds.push(fd.fd_num)
         // i.e. anon_inode:kvm-vcpu:0
-        } else if fd.path.starts_with("anon_inode:kvm-vcpu:") {
-            let parts = fd
-                .path
-                .as_os_str()
-                .as_bytes()
-                .rsplitn(1, |e| *e == b':')
-                .collect::<Vec<_>>();
+        } else if name.starts_with("anon_inode:kvm-vcpu:") {
+            let parts = name.rsplitn(2, ':').collect::<Vec<_>>();
             assert!(parts.len() == 2);
-            let num = try_with!(str::from_utf8(parts[1]), "invalid encoding");
             let idx = try_with!(
-                num.parse::<usize>(),
-                "cannot parse number of {}",
-                fd.path.display()
+                parts[0].parse::<usize>(),
+                "cannot parse number {}",
+                parts[0]
             );
             vcpu_fds.push(VCPU {
                 idx,
@@ -94,28 +92,25 @@ fn find_vm_fd(handle: &PidHandle) -> Result<(Vec<RawFd>, Vec<VCPU>)> {
     let old_len = vcpu_fds.len();
     vcpu_fds.dedup_by_key(|vcpu| vcpu.idx);
     if old_len != vcpu_fds.len() {
-        bail!("found multiple vcpus with same id. Assume multiple VMs in same hypervisor. This is not supported yet")
+        bail!("found multiple vcpus with same id, assume multiple VMs in same hypervisor. This is not supported yet")
     };
 
     Ok((vm_fds, vcpu_fds))
 }
 
 pub fn get_hypervisor(pid: Pid) -> Result<Hypervisor> {
-    let handle = try_with!(openpid(pid), "cannot handle to process {}", pid);
+    let handle = try_with!(openpid(pid), "cannot open handle in proc");
 
     let (vm_fds, vcpus) = try_with!(find_vm_fd(&handle), "failed to access kvm fds");
     let mappings = try_with!(handle.maps(), "cannot read process maps");
     if vm_fds.is_empty() {
-        bail!("No VMs found in process {}", pid);
+        bail!("no VMs found");
     }
     if vm_fds.len() > 1 {
-        bail!(
-            "Multiple VMs found in process {}. This is not supported yet.",
-            pid
-        );
+        bail!("multiple VMs found, this is not supported yet.");
     }
     if vcpus.is_empty() {
-        bail!("Found KVM instance but no VCPUs in process {}", pid);
+        bail!("found KVM instance but no VCPUs");
     }
 
     Ok(Hypervisor {
