@@ -3,6 +3,8 @@ use nix::unistd::Pid;
 use simple_error::try_with;
 
 use crate::kvm;
+use crate::kvm::Hypervisor;
+use virtio::attach_blk_dev;
 
 pub struct InspectOptions {
     pub pid: Pid,
@@ -20,5 +22,12 @@ pub fn inspect(opts: &InspectOptions) -> Result<()> {
             map.start, map.end, map.phys_addr, map.prot_flags, map.map_flags,
         )
     }
+    //let hypervisor = Hypervisor{
+        //pid: opts.pid,
+        //vm_df: None,
+        //vcpu_fds: None,
+        //mappings: None,
+    //}
+    attach_blk_dev();
     Ok(())
 }
