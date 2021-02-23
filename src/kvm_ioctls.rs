@@ -1,5 +1,3 @@
-use kvm_bindings::*;
-
 // borrowed from vmm-sys-util
 /// Expression that calculates an ioctl number.
 ///
@@ -63,27 +61,27 @@ macro_rules! ioctl_io_nr {
 /// const TUNTAP: ::std::os::raw::c_uint = 0x54;
 /// ioctl_ior_nr!(TUNGETFEATURES, TUNTAP, 0xcf, ::std::os::raw::c_uint);
 /// ```
-macro_rules! ioctl_ior_nr {
-    ($name:ident, $ty:expr, $nr:expr, $size:ty) => {
-        ioctl_ioc_nr!(
-            $name,
-            _IOC_READ,
-            $ty,
-            $nr,
-            ::std::mem::size_of::<$size>() as u32
-        );
-    };
-    ($name:ident, $ty:expr, $nr:expr, $size:ty, $($v:ident),+) => {
-        ioctl_ioc_nr!(
-            $name,
-            _IOC_READ,
-            $ty,
-            $nr,
-            ::std::mem::size_of::<$size>() as u32,
-            $($v),+
-        );
-    };
-}
+//macro_rules! ioctl_ior_nr {
+//    ($name:ident, $ty:expr, $nr:expr, $size:ty) => {
+//        ioctl_ioc_nr!(
+//            $name,
+//            _IOC_READ,
+//            $ty,
+//            $nr,
+//            ::std::mem::size_of::<$size>() as u32
+//        );
+//    };
+//    ($name:ident, $ty:expr, $nr:expr, $size:ty, $($v:ident),+) => {
+//        ioctl_ioc_nr!(
+//            $name,
+//            _IOC_READ,
+//            $ty,
+//            $nr,
+//            ::std::mem::size_of::<$size>() as u32,
+//            $($v),+
+//        );
+//    };
+//}
 
 /// Declare an ioctl that writes data.
 ///
@@ -92,27 +90,27 @@ macro_rules! ioctl_ior_nr {
 /// const TUNTAP: ::std::os::raw::c_uint = 0x54;
 /// ioctl_iow_nr!(TUNSETQUEUE, TUNTAP, 0xd9, ::std::os::raw::c_int);
 /// ```
-macro_rules! ioctl_iow_nr {
-    ($name:ident, $ty:expr, $nr:expr, $size:ty) => {
-        ioctl_ioc_nr!(
-            $name,
-            _IOC_WRITE,
-            $ty,
-            $nr,
-            ::std::mem::size_of::<$size>() as u32
-        );
-    };
-    ($name:ident, $ty:expr, $nr:expr, $size:ty, $($v:ident),+) => {
-        ioctl_ioc_nr!(
-            $name,
-            _IOC_WRITE,
-            $ty,
-            $nr,
-            ::std::mem::size_of::<$size>() as u32,
-            $($v),+
-        );
-    };
-}
+//macro_rules! ioctl_iow_nr {
+//    ($name:ident, $ty:expr, $nr:expr, $size:ty) => {
+//        ioctl_ioc_nr!(
+//            $name,
+//            _IOC_WRITE,
+//            $ty,
+//            $nr,
+//            ::std::mem::size_of::<$size>() as u32
+//        );
+//    };
+//    ($name:ident, $ty:expr, $nr:expr, $size:ty, $($v:ident),+) => {
+//        ioctl_ioc_nr!(
+//            $name,
+//            _IOC_WRITE,
+//            $ty,
+//            $nr,
+//            ::std::mem::size_of::<$size>() as u32,
+//            $($v),+
+//        );
+//    };
+//}
 
 // Define IOC_* constants in a module so that we can allow missing docs on it.
 // There is not much value in documenting these as it is code generated from
@@ -134,11 +132,11 @@ const _IOC_DIRSHIFT: c_uint = 30;
 const _IOC_NONE: c_uint = 0;
 const _IOC_WRITE: c_uint = 1;
 const _IOC_READ: c_uint = 2;
-const IOC_IN: c_uint = 1_073_741_824;
-const IOC_OUT: c_uint = 2_147_483_648;
-const IOC_INOUT: c_uint = 3_221_225_472;
-const IOCSIZE_MASK: c_uint = 1_073_676_288;
-const IOCSIZE_SHIFT: c_uint = 16;
+//const IOC_IN: c_uint = 1_073_741_824;
+//const IOC_OUT: c_uint = 2_147_483_648;
+//const IOC_INOUT: c_uint = 3_221_225_472;
+//const IOCSIZE_MASK: c_uint = 1_073_676_288;
+//const IOCSIZE_SHIFT: c_uint = 16;
 
 const KVMIO: c_uint = 0xAE;
 
@@ -147,20 +145,20 @@ ioctl_io_nr!(KVM_CHECK_EXTENSION, KVMIO, 0x03);
 
 // Ioctls for VM fds.
 /* Available with KVM_CAP_USER_MEMORY */
-ioctl_iow_nr!(
-    KVM_SET_USER_MEMORY_REGION,
-    KVMIO,
-    0x46,
-    kvm_userspace_memory_region
-);
+//ioctl_iow_nr!(
+//    KVM_SET_USER_MEMORY_REGION,
+//    KVMIO,
+//    0x46,
+//    kvm_userspace_memory_region
+//);
 
 // Ioctls for VCPU fds.
-#[cfg(not(any(target_arch = "arm", target_arch = "aarch64")))]
-ioctl_ior_nr!(KVM_GET_REGS, KVMIO, 0x81, kvm_regs);
-#[cfg(any(
-    target_arch = "x86",
-    target_arch = "x86_64",
-    target_arch = "powerpc",
-    target_arch = "powerpc64"
-))]
-ioctl_ior_nr!(KVM_GET_SREGS, KVMIO, 0x83, kvm_sregs);
+//#[cfg(not(any(target_arch = "arm", target_arch = "aarch64")))]
+//ioctl_ior_nr!(KVM_GET_REGS, KVMIO, 0x81, kvm_regs);
+//#[cfg(any(
+//    target_arch = "x86",
+//    target_arch = "x86_64",
+//    target_arch = "powerpc",
+//    target_arch = "powerpc64"
+//))]
+//ioctl_ior_nr!(KVM_GET_SREGS, KVMIO, 0x83, kvm_sregs);

@@ -50,10 +50,8 @@ fn ptrace_get_data<T>(request: Request, pid: Pid) -> nix::Result<T> {
 
 impl Thread {
     pub fn setregs(&self, regs: &Regs) -> Result<()> {
-        Ok(try_with!(
-            setregs(self.tid, regs),
-            "cannot set registers with ptrace"
-        ))
+        try_with!(setregs(self.tid, regs), "cannot set registers with ptrace");
+        Ok(())
     }
 
     pub fn getregs(&self) -> Result<Regs> {
@@ -64,10 +62,11 @@ impl Thread {
     }
 
     pub fn syscall(&self) -> Result<()> {
-        Ok(try_with!(
+        try_with!(
             ptrace::syscall(self.tid, None),
             "cannot set break on syscall with ptrace"
-        ))
+        );
+        Ok(())
     }
 
     pub fn read(&self, addr: AddressType) -> Result<c_long> {
@@ -79,10 +78,11 @@ impl Thread {
 
     pub fn write(&self, addr: AddressType, data: *mut c_void) -> Result<()> {
         unsafe {
-            Ok(try_with!(
+            try_with!(
                 ptrace::write(self.tid, addr, data),
                 "cannot write with ptrace"
-            ))
+            );
+            Ok(())
         }
     }
 }

@@ -84,7 +84,7 @@ mod arch {
             copy.r10 = args[4];
             copy.r8 = args[5];
             copy.r9 = args[6];
-            return copy;
+            copy
         }
 
         pub fn syscall_ret(&self) -> u64 {
