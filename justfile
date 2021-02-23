@@ -46,12 +46,18 @@ qemu: build-linux nixos-image
     -nographic -enable-kvm
 
 capsh:
+  @ if [ -n "${IN_CAPSH:-}" ]; then \
+    echo "you are already in a capsh session"; exit 1; \
+  else \
+    true; \
+  fi
   sudo chown -R $(id -u) /sys/kernel/debug/
   trap "sudo chown -R 0 /sys/kernel/debug" EXIT && \
   sudo -E IN_CAPSH=1 \
       capsh \
       --caps="cap_sys_ptrace,cap_sys_admin,cap_sys_resource+epi cap_setpcap,cap_setuid,cap_setgid+ep" \
       --keep=1 \
+      --groups=$(id -G | sed -e 's/ /,/g') \
       --gid=$(id -g) \
       --uid=$(id -u) \
       --addamb=cap_sys_resource \
