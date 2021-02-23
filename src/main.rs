@@ -16,6 +16,7 @@ mod kvm_memslots;
 mod proc;
 mod ptrace;
 mod result;
+mod device;
 
 #[allow(non_camel_case_types)]
 #[derive(Debug)]

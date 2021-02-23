@@ -113,6 +113,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b7282d924be3275cec7f6756ff4121987bc6481325397dde6ba3e7802b1a8b1c"
 
 [[package]]
+name = "log"
+version = "0.4.14"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "51b9bbe6c47d51fc3e1a9b945965946b4c44142ab8792c50835a980d362c2710"
+dependencies = [
+ "cfg-if 1.0.0",
+]
+
+[[package]]
 name = "memchr"
 version = "2.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -322,6 +331,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "vm-device"
+version = "0.1.0"
+source = "git+https://github.com/rust-vmm/vm-device#5847f1286492b7191f1400e6647fb220f8941f89"
+
+[[package]]
+name = "vm-memory"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "625f401b1b8b3ac3d43f53903cd138cfe840bd985f8581e553027b31d2bb8ae8"
+dependencies = [
+ "libc",
+ "winapi",
+]
+
+[[package]]
+name = "vm-virtio"
+version = "0.1.0"
+source = "git+https://github.com/rust-vmm/vm-virtio.git#7b5fd44d802408212d746eaa3e41ad2f22477a7a"
+dependencies = [
+ "byteorder",
+ "libc",
+ "log",
+ "vm-memory",
+ "vmm-sys-util",
+]
+
+[[package]]
 name = "vmm-sys-util"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -344,6 +380,8 @@ dependencies = [
  "simple-error",
  "tempfile",
  "virtio",
+ "vm-device",
+ "vm-virtio",
 ]
 
 [[package]]

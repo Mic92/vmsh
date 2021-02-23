@@ -1,3 +1,5 @@
+//mod device;
+
 use crate::result::Result;
 use nix::unistd::Pid;
 use simple_error::try_with;
@@ -5,6 +7,8 @@ use simple_error::try_with;
 use crate::kvm;
 use crate::kvm::Hypervisor;
 use virtio::attach_blk_dev;
+use crate::device::Device;
+use crate::kvm::get_hypervisor;
 
 pub struct InspectOptions {
     pub pid: Pid,
@@ -29,5 +33,8 @@ pub fn inspect(opts: &InspectOptions) -> Result<()> {
         //mappings: None,
     //}
     attach_blk_dev();
+    let hypervisor = get_hypervisor(opts.pid).expect("Could not get hypervisor from pid.");
+    let device = Device::new(hypervisor);
+    device.create();
     Ok(())
 }
