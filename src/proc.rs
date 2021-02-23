@@ -85,8 +85,8 @@ fn parse_flags(fields: &[u8]) -> (ProtFlags, MapFlags) {
 }
 
 fn parse_line(line: &str) -> Result<Mapping> {
-    let fields = line.splitn(5, ' ').collect::<Vec<_>>();
-    let range = fields[0].splitn(1, '-').collect::<Vec<_>>();
+    let fields = line.splitn(6, ' ').collect::<Vec<_>>();
+    let range = fields[0].splitn(2, '-').collect::<Vec<_>>();
 
     let start = try_with!(
         u64::from_str_radix(range[0], 16),
