@@ -22,8 +22,8 @@ pub struct Process {
 }
 
 pub fn attach(pid: Pid) -> Result<Process> {
-    let dir = proc::pid_path(pid).join("tasks");
-    let threads_dir = try_with!(fs::read_dir(&dir), "failed to open directory /proc/self/ns");
+    let dir = proc::pid_path(pid).join("task");
+    let threads_dir = try_with!(fs::read_dir(&dir), "failed to open directory {}", dir.display());
     let mut process_idx = 0;
 
     let threads = threads_dir
