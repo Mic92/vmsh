@@ -1,4 +1,6 @@
 
+pub mod virtio;
+
 use crate::kvm::Hypervisor;
 use vm_virtio::device::status::RESET;
 use vm_device::resources::ResourceConstraint;

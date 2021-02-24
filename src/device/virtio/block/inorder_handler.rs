@@ -10,7 +10,7 @@ use vm_virtio::block::request::Request;
 use vm_virtio::block::stdio_executor::{self, StdIoBackend};
 use vm_virtio::{DescriptorChain, Queue};
 
-use crate::virtio::SignalUsedQueue;
+use crate::device::virtio::SignalUsedQueue;
 
 #[derive(Debug)]
 pub enum Error {

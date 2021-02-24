@@ -9,8 +9,10 @@ use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
 
 use event_manager::{EventManager, MutEventSubscriber};
-use kvm_ioctls::VmFd;
-use linux_loader::cmdline::Cmdline;
+//use kvm_ioctls::VmFd; FIXME remove
+use crate::kvm::Hypervisor;
+
+//use linux_loader::cmdline::Cmdline; FIXME remove
 use vm_device::bus::MmioRange;
 use vmm_sys_util::eventfd::EventFd;
 
@@ -51,7 +53,8 @@ pub struct CommonArgs<'a, M, B> {
     // The objects used for guest memory accesses and other operations.
     pub mem: M,
     // Used by the devices to register ioevents and irqfds.
-    pub vm_fd: Arc<VmFd>,
+    //pub vm_fd: Arc<VmFd>, FIXME remove
+    pub vmm: Arc<Hypervisor>,
     // Mutable handle to the event manager the device is supposed to register with. There could be
     // more if we decide to use more than just one thread for device model emulation.
     pub event_mgr: &'a mut EventManager<Arc<Mutex<dyn MutEventSubscriber + Send>>>,
@@ -64,7 +67,7 @@ pub struct CommonArgs<'a, M, B> {
     // required arguments (i.e. for virtio over MMIO discovery). This means we need to create
     // the devices before loading he kernel cmdline into memory, but that's not a significant
     // limitation.
-    pub kernel_cmdline: &'a mut Cmdline,
+    //pub kernel_cmdline: &'a mut Cmdline, FIXME remove
 }
 
 /// Simple trait to model the operation of signalling the driver about used events
@@ -108,11 +111,12 @@ pub(crate) mod tests {
     // below.
     pub struct CommonArgsMock {
         pub mem: MockMem,
-        pub vm_fd: Arc<VmFd>,
+        //pub vm_fd: Arc<VmFd>, FIXME remove
+        pub vmm: Arc<Hypervisor>,
         pub event_mgr: EventManager<Arc<Mutex<dyn MutEventSubscriber + Send>>>,
         pub mmio_mgr: IoManager,
         pub mmio_cfg: MmioConfig,
-        pub kernel_cmdline: Cmdline,
+        //pub kernel_cmdline: Cmdline, FIXME remove
     }
 
     impl CommonArgsMock {
@@ -136,7 +140,7 @@ pub(crate) mod tests {
                 mmio_mgr: IoManager::new(),
                 mmio_cfg,
                 // `4096` seems large enough for testing.
-                kernel_cmdline: Cmdline::new(4096),
+                //kernel_cmdline: Cmdline::new(4096), FIXME remove
             }
         }
 

@@ -14,7 +14,7 @@ use vm_device::bus;
 use vm_virtio::block::stdio_executor;
 use vmm_sys_util::errno;
 
-use crate::virtio::CommonArgs;
+use crate::device::virtio::CommonArgs;
 
 pub use device::Block;
 
