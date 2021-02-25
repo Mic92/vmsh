@@ -54,6 +54,7 @@ capsh:
   else \
     true; \
   fi
+  sudo modprobe kheaders || true
   sudo chown -R $(id -u) /sys/kernel/debug/
   trap "sudo chown -R 0 /sys/kernel/debug" EXIT && \
   sudo -E IN_CAPSH=1 \
