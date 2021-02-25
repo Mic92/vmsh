@@ -11,6 +11,14 @@ pub fn attach_blk_dev() {
     let foo = IoEventAddress::Pio(2);
 }
 
+pub struct Device { 
+}
+
+impl Device {
+    fn create() {
+    }
+}
+
 #[cfg(test)]
 mod test {
     #[test]
