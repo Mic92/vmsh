@@ -51,7 +51,7 @@ impl Hypervisor {
             proc,
         })
     }
-    pub fn get_maps(self) -> Result<Vec<Mapping>> {
+    pub fn get_maps(&self) -> Result<Vec<Mapping>> {
         get_maps(self)
     }
 }

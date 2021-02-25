@@ -110,7 +110,7 @@ fn bpf_prog(pid: Pid) -> Result<BPF> {
     Ok(try_with!(builder_with_cflags.build(), "build failed"))
 }
 
-pub fn get_maps(hv: Hypervisor) -> Result<Vec<Mapping>> {
+pub fn get_maps(hv: &Hypervisor) -> Result<Vec<Mapping>> {
     let mut module = bpf_prog(hv.pid)?;
     try_with!(
         Kprobe::new()
@@ -144,7 +144,12 @@ pub fn get_maps(hv: Hypervisor) -> Result<Vec<Mapping>> {
         .iter()
         .map(
             |slot| match proc::find_mapping(&hv.mappings, slot.start()) {
-                Some(v) => Ok(v),
+                Some(mut m) => {
+                    m.start = slot.start();
+                    m.end = slot.end();
+                    m.phys_addr = slot.physical_start();
+                    Ok(m)
+                }
                 None => bail!(
                     "No mapping of memslot {} found in hypervisor (/proc/{}/maps)",
                     slot,
