@@ -110,7 +110,7 @@ fn bpf_prog(pid: Pid) -> Result<BPF> {
     Ok(try_with!(builder_with_cflags.build(), "build failed"))
 }
 
-pub fn get_maps(hv: Hypervisor) -> Result<Vec<Mapping>> {
+pub fn get_maps(hv: &Hypervisor) -> Result<Vec<Mapping>> {
     let mut module = bpf_prog(hv.pid)?;
     try_with!(
         Kprobe::new()
