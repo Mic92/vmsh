@@ -10,6 +10,7 @@ let
   };
 in
 pkgs.mkShell {
+  RUST_SRC_PATH = pkgs.rustPlatform.rustLibSrc;
   nativeBuildInputs = [
     niv.niv
     pkgs.rust-analyzer
