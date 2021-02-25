@@ -48,6 +48,9 @@ qemu: build-linux nixos-image
 inspect-qemu:
   cargo run -- inspect "$(pidof qemu-system-x86_64)"
 
+trace-qemu:
+  perf trace "$(pidof qemu-system-x86_64)"
+
 capsh:
   @ if [ -n "${IN_CAPSH:-}" ]; then \
     echo "you are already in a capsh session"; exit 1; \
