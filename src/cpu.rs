@@ -34,6 +34,7 @@ mod arch {
     }
     // $ rasm2  -a arm -b 64 'svc 0'
     pub const SYSCALL_TEXT: u64 = 0x010000D4;
+    pub const SYSCALL_SIZE: u64 = 8;
 }
 
 #[cfg(target_arch = "x86_64")]
@@ -94,6 +95,7 @@ mod arch {
 
     // $ rasm2  -a x86 -b 64 'syscall'
     pub const SYSCALL_TEXT: u64 = 0x050F;
+    pub const SYSCALL_SIZE: u64 = 2;
 }
 
 pub use arch::*;
