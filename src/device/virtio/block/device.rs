@@ -7,7 +7,6 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use event_manager::{MutEventSubscriber, RemoteEndpoint, Result as EvmgrResult, SubscriberId};
-use kvm_ioctls::{IoEventAddress, VmFd};
 use vm_device::bus::MmioAddress;
 use vm_device::device_manager::MmioManager;
 use vm_device::{DeviceMmio, MutDeviceMmio};
@@ -17,6 +16,9 @@ use vm_virtio::device::{VirtioConfig, VirtioMmioDevice, WithDeviceOps, WithVirti
 use vm_virtio::Queue;
 use vmm_sys_util::eventfd::{EventFd, EFD_NONBLOCK};
 
+#[macro_use]
+use crate::kvm_ioctls;
+use crate::kvm::Hypervisor;
 use crate::device::virtio::block::{BLOCK_DEVICE_ID, VIRTIO_BLK_F_FLUSH, VIRTIO_BLK_F_RO};
 use crate::device::virtio::features::{VIRTIO_F_IN_ORDER, VIRTIO_F_RING_EVENT_IDX, VIRTIO_F_VERSION_1};
 use crate::device::virtio::{
@@ -34,7 +36,7 @@ pub struct Block<M: GuestAddressSpace> {
     virtio_cfg: VirtioConfig<M>,
     mmio_cfg: MmioConfig,
     endpoint: RemoteEndpoint<Arc<Mutex<dyn MutEventSubscriber + Send>>>,
-    vm_fd: Arc<VmFd>,
+    vmm: Arc<Hypervisor>,
     irqfd: Arc<EventFd>,
     file_path: PathBuf,
     read_only: bool,
@@ -75,10 +77,11 @@ where
         // Used to send notifications to the driver.
         let irqfd = EventFd::new(EFD_NONBLOCK).map_err(Error::EventFd)?;
 
-        args.common
-            .vm_fd
-            .register_irqfd(&irqfd, args.common.mmio_cfg.gsi)
-            .map_err(Error::RegisterIrqfd)?;
+        // FIXME register irqfd on hypervisor
+        // args.common
+        //     .vm_fd
+        //     .register_irqfd(&irqfd, args.common.mmio_cfg.gsi)
+        //     .map_err(Error::RegisterIrqfd)?;
 
         let mmio_cfg = args.common.mmio_cfg;
 
@@ -86,7 +89,7 @@ where
             virtio_cfg,
             mmio_cfg,
             endpoint: args.common.event_mgr.remote_endpoint(),
-            vm_fd: args.common.vm_fd,
+            vmm: args.common.vmm.clone(),
             irqfd: Arc::new(irqfd),
             file_path: args.file_path,
             read_only: args.read_only,
@@ -99,33 +102,34 @@ where
             .register_mmio(mmio_cfg.range, block.clone())
             .map_err(Error::Bus)?;
 
-        // Extra parameters have to be appended to the cmdline passed to the kernel because
-        // there's no active enumeration/discovery mechanism for virtio over MMIO. In the future,
-        // we might rely on a device tree representation instead.
+        // FIXME we have to replace this call by doing something in the guest:
+        // // Extra parameters have to be appended to the cmdline passed to the kernel because
+        // // there's no active enumeration/discovery mechanism for virtio over MMIO. In the future,
+        // // we might rely on a device tree representation instead.
+        // args.common
+        //     .kernel_cmdline
+        //     .add_virtio_mmio_device(
+        //         mmio_cfg.range.size(),
+        //         GuestAddress(mmio_cfg.range.base().0),
+        //         mmio_cfg.gsi,
+        //         None,
+        //     )
+        //     .map_err(Error::Cmdline)?;
 
-        args.common
-            .kernel_cmdline
-            .add_virtio_mmio_device(
-                mmio_cfg.range.size(),
-                GuestAddress(mmio_cfg.range.base().0),
-                mmio_cfg.gsi,
-                None,
-            )
-            .map_err(Error::Cmdline)?;
+        // FIXME This we have to do in the guest as well
+        // if args.root_device {
+        //     args.common
+        //         .kernel_cmdline
+        //         .insert_str("root=/dev/vda")
+        //         .map_err(Error::Cmdline)?;
 
-        if args.root_device {
-            args.common
-                .kernel_cmdline
-                .insert_str("root=/dev/sda")
-                .map_err(Error::Cmdline)?;
-
-            if args.read_only {
-                args.common
-                    .kernel_cmdline
-                    .insert_str("ro")
-                    .map_err(Error::Cmdline)?;
-            }
-        }
+        //     if args.read_only {
+        //         args.common
+        //             .kernel_cmdline
+        //             .insert_str("ro")
+        //             .map_err(Error::Cmdline)?;
+        //     }
+        // }
 
         Ok(block)
     }
@@ -172,16 +176,17 @@ impl<M: GuestAddressSpace + Clone + Send + 'static> WithDeviceOps for Block<M> {
 
         let ioeventfd = EventFd::new(EFD_NONBLOCK).map_err(Error::EventFd)?;
 
+        // FIXME:
         // Register the queue event fd.
-        self.vm_fd
-            .register_ioevent(
-                &ioeventfd,
-                &IoEventAddress::Mmio(
-                    self.mmio_cfg.range.base().0 + VIRTIO_MMIO_QUEUE_NOTIFY_OFFSET,
-                ),
-                0u32,
-            )
-            .map_err(Error::RegisterIoevent)?;
+        // self.vm_fd
+        //     .register_ioevent(
+        //         &ioeventfd,
+        //         &IoEventAddress::Mmio(
+        //             self.mmio_cfg.range.base().0 + VIRTIO_MMIO_QUEUE_NOTIFY_OFFSET,
+        //         ),
+        //         0u32,
+        //     )
+        //     .map_err(Error::RegisterIoevent)?;
 
         let file = OpenOptions::new()
             .read(true)

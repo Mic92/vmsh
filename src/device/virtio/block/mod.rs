@@ -37,7 +37,6 @@ pub enum Error {
     Backend(stdio_executor::Error),
     BadFeatures(u64),
     Bus(bus::Error),
-    Cmdline(linux_loader::cmdline::Error),
     Endpoint(EvmgrError),
     EventFd(io::Error),
     OpenFile(io::Error),
