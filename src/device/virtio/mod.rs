@@ -1,4 +1,5 @@
 // Copyright 2020 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// Author of further modifications: Peter Okelmann
 // SPDX-License-Identifier: Apache-2.0 OR BSD-3-Clause
 
 // We're only providing virtio over MMIO devices for now, but we aim to add PCI support as well.

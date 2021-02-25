@@ -1,5 +1,6 @@
-This virtio/ folder has been taken from rust-vmm/vmm-reference using its
-BSD-3-CLAUSE license option:
+This virtio/ folder has been taken from the following project using its
+BSD-3-CLAUSE license option. 
+rust-vmm/vmm-reference: https://github.com/rust-vmm/vmm-reference/commit/cbb54339f486326dd86f4b43e2f0116d4e8e2ead
 
 Copyright 2020 Amazon.com, Inc. or its affiliates. All Rights Reserved.
 

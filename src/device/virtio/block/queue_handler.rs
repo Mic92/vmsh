@@ -1,4 +1,5 @@
 // Copyright 2020 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// Author of further modifications: Peter Okelmann
 // SPDX-License-Identifier: Apache-2.0 OR BSD-3-Clause
 
 use event_manager::{EventOps, Events, MutEventSubscriber};
