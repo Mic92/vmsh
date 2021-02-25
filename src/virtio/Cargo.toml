@@ -1,6 +1,7 @@
 [package]
 name = "virtio"
 version = "0.1.0"
+license = "MIT"
 authors = ["Peter Okelmann <okelmann@in.tum.de>"]
 edition = "2018"
 
