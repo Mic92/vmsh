@@ -12,26 +12,26 @@ use std::path::PathBuf;
 
 use crate::result::Result;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Mapping {
-    start: u64,
-    stop: u64,
-    prot_flags: ProtFlags,
-    map_flags: MapFlags,
-    offset: u64,
-    major_dev: u64,
-    minor_dev: u64,
-    inode: u64,
-    pathname: String,
+    pub start: u64,
+    pub end: u64,
+    pub prot_flags: ProtFlags,
+    pub map_flags: MapFlags,
+    pub offset: u64,
+    pub major_dev: u64,
+    pub minor_dev: u64,
+    pub inode: u64,
+    pub pathname: String,
 
     // only for VM mappings, 0 otherwise
-    phys_addr: u64,
+    pub phys_addr: u64,
 }
 
 pub fn find_mapping(mappings: &[Mapping], ip: u64) -> Option<Mapping> {
     mappings
         .iter()
-        .find(|m| m.start <= ip && ip < m.stop)
+        .find(|m| m.start <= ip && ip < m.end)
         .cloned()
 }
 
@@ -93,7 +93,7 @@ fn parse_line(line: &str) -> Result<Mapping> {
         "start address is not a number: {}",
         range[0]
     );
-    let stop = try_with!(
+    let end = try_with!(
         u64::from_str_radix(range[1], 16),
         "end address is not a number: {}",
         range[1]
@@ -125,7 +125,7 @@ fn parse_line(line: &str) -> Result<Mapping> {
 
     Ok(Mapping {
         start,
-        stop,
+        end,
         prot_flags,
         map_flags,
         offset,
