@@ -24,7 +24,7 @@ fn setregs(pid: Pid, regs: &Regs) -> nix::Result<()> {
             Request::PTRACE_SETREGS as RequestType,
             libc::pid_t::from(pid),
             ptr::null_mut::<c_void>(),
-            &regs as *const _ as *const c_void,
+            regs as *const _ as *const c_void,
         )
     };
     Errno::result(res).map(drop)
