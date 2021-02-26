@@ -28,7 +28,7 @@ pub fn inspect(opts: &InspectOptions) -> Result<()> {
         )
     }
 
-    let device = Device::new(Arc::new(vm));
+    let device = try_with!(Device::new(Arc::new(vm)), "cannot create vm");
     device.create();
     device.create();
     Ok(())

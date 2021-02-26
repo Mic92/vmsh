@@ -10,13 +10,14 @@ use vm_memory::guest_memory::GuestAddress;
 use vm_memory::mmap::MmapRegion;
 use event_manager::{EventManager, MutEventSubscriber};
 use std::sync::{Arc, Mutex};
-use simple_error::try_with;
+use simple_error::{try_with, simple_error, SimpleError};
 use std::path::PathBuf;
 
 use crate::kvm::Hypervisor;
 use crate::device::virtio::block::{self, BlockArgs};
 use crate::device::virtio::{CommonArgs, MmioConfig};
 use crate::proc::Mapping;
+use crate::result::Result;
 
 // Where BIOS/VGA magic would live on a real PC.
 const EBDA_START: u64 = 0x9fc00;
@@ -71,7 +72,7 @@ pub struct Device {
 }
 
 impl Device {
-    pub fn new(vmm: Arc<Hypervisor>) -> Device {
+    pub fn new(vmm: Arc<Hypervisor>) -> Result<Device> {
 
         let mem: Arc<GuestMemoryMmap> = Arc::new(convert(&vmm.mappings));
 
@@ -82,7 +83,9 @@ impl Device {
         let device_manager = Arc::new(Mutex::new(IoManager::new())); 
         let mut guard = device_manager.lock().unwrap();
 
-        let mut event_manager = EventManager::<Arc<Mutex<dyn MutEventSubscriber + Send>>>::new().expect("cannot create event manager");
+        let mut event_manager = try_with!(
+            EventManager::<Arc<Mutex<dyn MutEventSubscriber + Send>>>::new(),
+            "cannot create event manager");
         // TODO add subscriber (wrapped_exit_handler) and stuff?
 
         let common = CommonArgs {
@@ -102,10 +105,11 @@ impl Device {
         };
 
         let blkdev: Arc<Mutex<Block>> = Block::new(args).expect("cannot create block device");
-        Device {
+
+        Ok(Device {
             vmm,
             blkdev,
-        }
+        })
 
     }
 
