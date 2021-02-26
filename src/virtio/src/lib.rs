@@ -1,4 +1,4 @@
-use kvm_ioctls::{IoEventAddress, VmFd};
+//use kvm_ioctls::{IoEventAddress, VmFd};
 
 fn ioctl(s: &str) {
     println!("{}", s);
@@ -8,7 +8,7 @@ pub fn attach_blk_dev() {
     ioctl("KVM_CREATE_DEVICE");
     ioctl("KVM_IRQFD");
     ioctl("KVM_IOEVENTFD");
-    let foo = IoEventAddress::Pio(2);
+    //let foo = IoEventAddress::Pio(2);
 }
 
 pub struct Device { 
