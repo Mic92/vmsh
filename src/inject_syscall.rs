@@ -133,6 +133,7 @@ impl Process {
         self.syscall(&args).map(|v| v as c_int)
     }
 
+    #[allow(dead_code)]
     pub fn getpid(&self) -> Result<pid_t> {
         let args = syscall_args!(self.saved_regs, SYS_getpid as c_ulong);
 
