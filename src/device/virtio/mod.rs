@@ -97,63 +97,63 @@ impl SignalUsedQueue for SingleFdSignalQueue {
     }
 }
 
-#[cfg(test)]
-pub(crate) mod tests {
-    use vm_device::bus::MmioAddress;
-    use vm_device::device_manager::IoManager;
-    use vm_memory::{GuestAddress, GuestMemoryMmap};
-
-    use super::*;
-
-    pub type MockMem = Arc<GuestMemoryMmap>;
-
-    // Can be used in other modules to test functionality that requires a `CommonArgs` struct as
-    // input. The `args` method below generates an instance of `CommonArgs` based on the members
-    // below.
-    pub struct CommonArgsMock {
-        pub mem: MockMem,
-        //pub vm_fd: Arc<VmFd>, FIXME remove
-        pub vmm: Arc<Hypervisor>,
-        pub event_mgr: EventManager<Arc<Mutex<dyn MutEventSubscriber + Send>>>,
-        pub mmio_mgr: IoManager,
-        pub mmio_cfg: MmioConfig,
-        //pub kernel_cmdline: Cmdline, FIXME remove
-    }
-
-    impl CommonArgsMock {
-        pub fn new() -> Self {
-            let mem =
-                Arc::new(GuestMemoryMmap::from_ranges(&[(GuestAddress(0), 0x1000_0000)]).unwrap());
-
-            let kvm = kvm_ioctls::Kvm::new().unwrap();
-            let vm_fd = Arc::new(kvm.create_vm().unwrap());
-
-            let range = MmioRange::new(MmioAddress(0x1_0000_0000), 0x1000).unwrap();
-            let mmio_cfg = MmioConfig { range, gsi: 5 };
-
-            // Required so the vm_fd can be used to register irqfds.
-            vm_fd.create_irq_chip().unwrap();
-
-            CommonArgsMock {
-                mem,
-                vm_fd,
-                event_mgr: EventManager::new().unwrap(),
-                mmio_mgr: IoManager::new(),
-                mmio_cfg,
-                // `4096` seems large enough for testing.
-                //kernel_cmdline: Cmdline::new(4096), FIXME remove
-            }
-        }
-
-        pub fn args(&mut self) -> CommonArgs<MockMem, &mut IoManager> {
-            CommonArgs {
-                mem: self.mem.clone(),
-                vm_fd: self.vm_fd.clone(),
-                event_mgr: &mut self.event_mgr,
-                mmio_mgr: &mut self.mmio_mgr,
-                mmio_cfg: self.mmio_cfg,
-                kernel_cmdline: &mut self.kernel_cmdline,
-            }
-        }
-    }
-}
+//#[cfg(test)]
+//pub(crate) mod tests {
+//    use vm_device::bus::MmioAddress;
+//    use vm_device::device_manager::IoManager;
+//    use vm_memory::{GuestAddress, GuestMemoryMmap};
+//
+//    use super::*;
+//
+//    pub type MockMem = Arc<GuestMemoryMmap>;
+//
+//    // Can be used in other modules to test functionality that requires a `CommonArgs` struct as
+//    // input. The `args` method below generates an instance of `CommonArgs` based on the members
+//    // below.
+//    pub struct CommonArgsMock {
+//        pub mem: MockMem,
+//        //pub vm_fd: Arc<VmFd>, FIXME remove
+//        pub vmm: Arc<Hypervisor>,
+//        pub event_mgr: EventManager<Arc<Mutex<dyn MutEventSubscriber + Send>>>,
+//        pub mmio_mgr: IoManager,
+//        pub mmio_cfg: MmioConfig,
+//        //pub kernel_cmdline: Cmdline, FIXME remove
+//    }
+//
+//    impl CommonArgsMock {
+//        pub fn new() -> Self {
+//            let mem =
+//                Arc::new(GuestMemoryMmap::from_ranges(&[(GuestAddress(0), 0x1000_0000)]).unwrap());
+//
+//            let kvm = kvm_ioctls::Kvm::new().unwrap();
+//            let vm_fd = Arc::new(kvm.create_vm().unwrap());
+//
+//            let range = MmioRange::new(MmioAddress(0x1_0000_0000), 0x1000).unwrap();
+//            let mmio_cfg = MmioConfig { range, gsi: 5 };
+//
+//            // Required so the vm_fd can be used to register irqfds.
+//            vm_fd.create_irq_chip().unwrap();
+//
+//            CommonArgsMock {
+//                mem,
+//                vm_fd,
+//                event_mgr: EventManager::new().unwrap(),
+//                mmio_mgr: IoManager::new(),
+//                mmio_cfg,
+//                // `4096` seems large enough for testing.
+//                //kernel_cmdline: Cmdline::new(4096), FIXME remove
+//            }
+//        }
+//
+//        pub fn args(&mut self) -> CommonArgs<MockMem, &mut IoManager> {
+//            CommonArgs {
+//                mem: self.mem.clone(),
+//                vm_fd: self.vm_fd.clone(),
+//                event_mgr: &mut self.event_mgr,
+//                mmio_mgr: &mut self.mmio_mgr,
+//                mmio_cfg: self.mmio_cfg,
+//                kernel_cmdline: &mut self.kernel_cmdline,
+//            }
+//        }
+//    }
+//}
