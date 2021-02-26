@@ -29,7 +29,7 @@ pub const MMIO_MEM_START: u64 = FIRST_ADDR_PAST_32BITS - MEM_32BIT_GAP_SIZE;
 type Block = block::Block<Arc<GuestMemoryMmap>>;
 
 fn convert(mappings: &Vec<Mapping>) -> GuestMemoryMmap {
-    let regions: Vec<Arc<GuestRegionMmap>> = vec!{};
+    let mut regions: Vec<Arc<GuestRegionMmap>> = vec!{};
 
     for mapping in mappings {
         let file = Arc::new(std::fs::File::open(&mapping.pathname).expect("could not open file")); // TODO formatted
@@ -72,7 +72,7 @@ pub struct Device {
 }
 
 impl Device {
-    pub fn new(vmm: Arc<Hypervisor>) -> Result<Device> {
+    pub fn new(vmm: &Arc<Hypervisor>) -> Result<Device> {
 
         let mem: Arc<GuestMemoryMmap> = Arc::new(convert(&vmm.mappings));
 
@@ -90,7 +90,7 @@ impl Device {
 
         let common = CommonArgs {
             mem,
-            vmm,
+            vmm: vmm.clone(),
             event_mgr: &mut event_manager,
             mmio_mgr: guard,
             mmio_cfg,
@@ -107,7 +107,7 @@ impl Device {
         let blkdev: Arc<Mutex<Block>> = Block::new(args).expect("cannot create block device");
 
         Ok(Device {
-            vmm,
+            vmm: vmm.clone(),
             blkdev,
         })
 
