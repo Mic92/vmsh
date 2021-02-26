@@ -34,7 +34,7 @@ jobs:
           path: ~/.cargo
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.toml') }}
       - name: Install bcc
-        run: sudo apt install libbpfcc
+        run: sudo apt install libbpfcc musl-tools
       - name: Test
         uses: actions-rs/cargo@v1
         with:
