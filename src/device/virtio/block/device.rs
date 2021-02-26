@@ -17,8 +17,6 @@ use vm_virtio::device::{VirtioConfig, VirtioMmioDevice, WithDeviceOps, WithVirti
 use vm_virtio::Queue;
 use vmm_sys_util::eventfd::{EventFd, EFD_NONBLOCK};
 
-#[macro_use]
-use crate::kvm_ioctls;
 use crate::kvm::Hypervisor;
 use crate::device::virtio::block::{BLOCK_DEVICE_ID, VIRTIO_BLK_F_FLUSH, VIRTIO_BLK_F_RO};
 use crate::device::virtio::features::{VIRTIO_F_IN_ORDER, VIRTIO_F_RING_EVENT_IDX, VIRTIO_F_VERSION_1};
