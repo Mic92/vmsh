@@ -32,38 +32,29 @@ fn convert(mappings: &Vec<Mapping>) -> GuestMemoryMmap {
     let mut regions: Vec<Arc<GuestRegionMmap>> = vec!{};
 
     for mapping in mappings {
-        let file = Arc::new(std::fs::File::open(&mapping.pathname).expect("could not open file")); // TODO formatted
+        let file = std::fs::File::open(&mapping.pathname).expect("could not open file"); // TODO formatted
 
-        let file_offset = FileOffset {
-            file,
-            start: mapping.offset,
-        };
+        let file_offset = FileOffset::new(file, mapping.offset);
+        // TODO i think we need Some(file_offset) in mmap_region
+        // TODO need reason for why this is safe. ("a smart human wrote it")
+        let mmap_region = unsafe { 
+            MmapRegion::build_raw(
+                mapping.start as *mut u8,
+                (mapping.end - mapping.start) as usize,
+                mapping.prot_flags.bits(),
+                mapping.map_flags.bits()
+            )
+        }.expect("cannot instanciate MmapRegion");
 
-        let mmap_region = MmapRegion {
-            /* TODO check correctness
-             * addr_a: *mut c_void = mmap(...);
-             * addr = addr_a as *mut u8;
-             * addr is a pointer to a void, so it doesn't matter what rust thinks it points to
-             * mapping.start: u64 
-             */
-            addr: mapping.start as *mut u8,
-            size: (mapping.end - mapping.start) as usize,
-            file_offset: Some(file_offset), // is not actually optional
-            prot: mapping.prot_flags.bits(),
-            flags: mapping.map_flags.bits(),
-            owned: false,
-            hugetlbfs: None,
-        };
-
-        let guest_region_mmap = GuestRegionMmap {
-            mapping: mmap_region,
-            guest_base: GuestAddress(mapping.phys_addr),
-        };
+        let guest_region_mmap = GuestRegionMmap::new(
+            mmap_region,
+            GuestAddress(mapping.phys_addr),
+        ).expect("GuestRegionMmap error");
 
         regions.push(Arc::new(guest_region_mmap));
     }
 
-    GuestMemoryMmap { regions }
+    GuestMemoryMmap::from_arc_regions(regions).expect("GuestMemoryMmap error")
 }
 
 pub struct Device { 
