@@ -28,11 +28,14 @@ pub const MMIO_MEM_START: u64 = FIRST_ADDR_PAST_32BITS - MEM_32BIT_GAP_SIZE;
 
 type Block = block::Block<Arc<GuestMemoryMmap>>;
 
-fn convert(mappings: &Vec<Mapping>) -> GuestMemoryMmap {
+fn convert(mappings: &Vec<Mapping>) -> Result<GuestMemoryMmap> {
     let mut regions: Vec<Arc<GuestRegionMmap>> = vec!{};
 
     for mapping in mappings {
-        let file = std::fs::File::open(&mapping.pathname).expect("could not open file"); // TODO formatted
+        let file = try_with!(std::fs::File::open(&mapping.pathname), 
+                             "cannot open file: {}",
+                             &mapping.pathname);
+
 
         let file_offset = FileOffset::new(file, mapping.offset);
         // TODO i think we need Some(file_offset) in mmap_region
@@ -54,7 +57,7 @@ fn convert(mappings: &Vec<Mapping>) -> GuestMemoryMmap {
         regions.push(Arc::new(guest_region_mmap));
     }
 
-    GuestMemoryMmap::from_arc_regions(regions).expect("GuestMemoryMmap error")
+    Ok(GuestMemoryMmap::from_arc_regions(regions).expect("GuestMemoryMmap error"))
 }
 
 pub struct Device { 
@@ -65,7 +68,7 @@ pub struct Device {
 impl Device {
     pub fn new(vmm: &Arc<Hypervisor>) -> Result<Device> {
 
-        let mem: Arc<GuestMemoryMmap> = Arc::new(convert(&vmm.mappings));
+        let mem: Arc<GuestMemoryMmap> = Arc::new(try_with!(convert(&vmm.mappings), "cannot convert Mapping to GuestMemoryMmap"));
 
         let range = MmioRange::new(MmioAddress(MMIO_MEM_START), 0x1000).unwrap();
         let mmio_cfg = MmioConfig { range, gsi: 5 };
