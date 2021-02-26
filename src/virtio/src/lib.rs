@@ -11,12 +11,10 @@ pub fn attach_blk_dev() {
     //let foo = IoEventAddress::Pio(2);
 }
 
-pub struct Device { 
-}
+pub struct Device {}
 
 impl Device {
-    fn create() {
-    }
+    fn create() {}
 }
 
 #[cfg(test)]
@@ -26,4 +24,3 @@ mod test {
         assert_eq!(2 + 2, 4);
     }
 }
-

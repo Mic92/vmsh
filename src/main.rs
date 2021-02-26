@@ -8,6 +8,7 @@ use crate::inspect::InspectOptions;
 
 mod cpu;
 mod gdb_break;
+mod device;
 mod inject_syscall;
 mod inspect;
 mod kvm;
@@ -16,7 +17,6 @@ mod kvm_memslots;
 mod proc;
 mod ptrace;
 mod result;
-mod device;
 
 #[allow(non_camel_case_types)]
 #[derive(Debug)]

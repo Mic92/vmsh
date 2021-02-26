@@ -17,12 +17,14 @@ use vm_virtio::device::{VirtioConfig, VirtioMmioDevice, WithDeviceOps, WithVirti
 use vm_virtio::Queue;
 use vmm_sys_util::eventfd::{EventFd, EFD_NONBLOCK};
 
-use crate::kvm::Hypervisor;
 use crate::device::virtio::block::{BLOCK_DEVICE_ID, VIRTIO_BLK_F_FLUSH, VIRTIO_BLK_F_RO};
-use crate::device::virtio::features::{VIRTIO_F_IN_ORDER, VIRTIO_F_RING_EVENT_IDX, VIRTIO_F_VERSION_1};
+use crate::device::virtio::features::{
+    VIRTIO_F_IN_ORDER, VIRTIO_F_RING_EVENT_IDX, VIRTIO_F_VERSION_1,
+};
 use crate::device::virtio::{
     MmioConfig, SingleFdSignalQueue, QUEUE_MAX_SIZE, VIRTIO_MMIO_QUEUE_NOTIFY_OFFSET,
 };
+use crate::kvm::Hypervisor;
 
 use super::inorder_handler::InOrderQueueHandler;
 use super::queue_handler::QueueHandler;
