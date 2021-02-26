@@ -3,6 +3,7 @@
 use crate::result::Result;
 use nix::unistd::Pid;
 use simple_error::try_with;
+use std::sync::{Arc, Mutex};
 
 use crate::kvm;
 use crate::kvm::Hypervisor;
@@ -26,15 +27,9 @@ pub fn inspect(opts: &InspectOptions) -> Result<()> {
             map.start, map.end, map.phys_addr, map.prot_flags, map.map_flags,
         )
     }
-    //let hypervisor = Hypervisor{
-        //pid: opts.pid,
-        //vm_df: None,
-        //vcpu_fds: None,
-        //mappings: None,
-    //}
-    attach_blk_dev();
-    let hypervisor = get_hypervisor(opts.pid).expect("Could not get hypervisor from pid.");
-    let device = Device::new(hypervisor);
+
+    let device = Device::new(Arc::new(vm));
+    device.create();
     device.create();
     Ok(())
 }
