@@ -15,6 +15,7 @@ mod inspect;
 mod kvm;
 mod kvm_ioctls;
 mod kvm_memslots;
+mod page_math;
 mod proc;
 mod ptrace;
 mod result;

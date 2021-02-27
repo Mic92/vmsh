@@ -3,16 +3,15 @@ use bcc::{BPFBuilder, Kprobe, BPF};
 use core::slice::from_raw_parts as make_slice;
 use libc::{c_ulong, size_t};
 use nix::unistd::Pid;
-use nix::unistd::{sysconf, SysconfVar};
 use simple_error::bail;
 use simple_error::try_with;
 use std::sync::mpsc::channel;
 use std::time::Duration;
 use std::{fmt, ptr};
 
-use crate::kvm::Hypervisor;
 use crate::proc::{self, Mapping};
 use crate::result::Result;
+use crate::{kvm::Hypervisor, page_math::page_size};
 
 #[derive(Clone, Debug)]
 #[repr(C)]
@@ -20,10 +19,6 @@ pub struct MemSlot {
     base_gfn: u64,
     npages: c_ulong,
     userspace_addr: c_ulong,
-}
-
-fn page_size() -> c_ulong {
-    sysconf(SysconfVar::PAGE_SIZE).unwrap().unwrap() as u64
 }
 
 impl MemSlot {
