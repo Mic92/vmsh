@@ -10,6 +10,7 @@ use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
 
 use event_manager::{EventManager, MutEventSubscriber};
+use log::error;
 //use kvm_ioctls::VmFd; FIXME remove
 use crate::kvm::Hypervisor;
 
@@ -91,9 +92,9 @@ impl SignalUsedQueue for SingleFdSignalQueue {
     fn signal_used_queue(&self, _index: u16) {
         self.interrupt_status
             .fetch_or(VIRTIO_MMIO_INT_VRING, Ordering::SeqCst);
-        self.irqfd
-            .write(1)
-            .expect("Failed write to eventfd when signalling queue");
+        if let Err(e) = self.irqfd.write(1) {
+            error!("Failed write to eventfd when signalling queue: {}", e);
+        }
     }
 }
 
