@@ -1,3 +1,5 @@
+//mod device;
+
 use crate::result::Result;
 use nix::unistd::Pid;
 use simple_error::try_with;
@@ -20,5 +22,6 @@ pub fn inspect(opts: &InspectOptions) -> Result<()> {
             map.start, map.end, map.phys_addr, map.prot_flags, map.map_flags,
         )
     }
+
     Ok(())
 }

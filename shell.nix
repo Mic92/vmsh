@@ -21,5 +21,6 @@ pkgs.mkShell {
     pkgs.rustfmt
     pkgs.rustc
     pkgs.cargo-watch
+    pkgs.cargo-deny
   ] ++ vmsh.nativeBuildInputs;
 }
