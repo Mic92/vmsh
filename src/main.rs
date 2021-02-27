@@ -76,7 +76,7 @@ fn inspect_command(args: Vec<String>) {
 }
 
 fn attach_command(args: Vec<String>) {
-    let opts = parse_inspect_args(args);
+    let opts = parse_pid_args(args, "attach to a vm");
     if let Err(err) = attach::attach(&opts) {
         eprintln!("{}", err);
         std::process::exit(1);
