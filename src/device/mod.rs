@@ -1,7 +1,7 @@
 mod virtio;
 
 use event_manager::{EventManager, MutEventSubscriber};
-use simple_error::{simple_error, try_with, SimpleError};
+use simple_error::{bail, try_with};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use vm_device::bus::{MmioAddress, MmioRange};
@@ -40,23 +40,22 @@ fn convert(mappings: &Vec<Mapping>) -> Result<GuestMemoryMmap> {
         let file_offset = FileOffset::new(file, mapping.offset);
         // TODO i think we need Some(file_offset) in mmap_region
         // TODO need reason for why this is safe. ("a smart human wrote it")
-        let mmap_region = unsafe {
+        let mmap_region = try_with!(unsafe {
             MmapRegion::build_raw(
                 mapping.start as *mut u8,
                 (mapping.end - mapping.start) as usize,
                 mapping.prot_flags.bits(),
                 mapping.map_flags.bits(),
             )
-        }
-        .expect("cannot instanciate MmapRegion");
+        }, "cannot instanciate MmapRegion");
 
-        let guest_region_mmap = GuestRegionMmap::new(mmap_region, GuestAddress(mapping.phys_addr))
-            .expect("GuestRegionMmap error");
+        let guest_region_mmap = try_with!(GuestRegionMmap::new(mmap_region, GuestAddress(mapping.phys_addr)),
+                                          "cannot allocate guest region");
 
         regions.push(Arc::new(guest_region_mmap));
     }
 
-    Ok(GuestMemoryMmap::from_arc_regions(regions).expect("GuestMemoryMmap error"))
+    Ok(try_with!(GuestMemoryMmap::from_arc_regions(regions), "GuestMemoryMmap error"))
 }
 
 pub struct Device {
@@ -100,7 +99,10 @@ impl Device {
             advertise_flush: true,
         };
 
-        let blkdev: Arc<Mutex<Block>> = Block::new(args).expect("cannot create block device");
+        let blkdev: Arc<Mutex<Block>> = match Block::new(args) {
+            Ok(v) => v,
+            Err(e) => return bail!("cannot create block device: {:?}", e)
+        };
 
         Ok(Device {
             vmm: vmm.clone(),
