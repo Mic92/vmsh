@@ -9,6 +9,7 @@ use crate::inspect::InspectOptions;
 mod attach;
 mod cpu;
 mod device;
+mod elf;
 mod gdb_break;
 mod inject_syscall;
 mod inspect;
