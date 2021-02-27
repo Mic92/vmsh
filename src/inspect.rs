@@ -3,13 +3,10 @@
 use crate::result::Result;
 use nix::unistd::Pid;
 use simple_error::try_with;
-use std::sync::{Arc};
+use std::sync::Arc;
 
-use crate::kvm;
-use crate::kvm::Hypervisor;
-use virtio::attach_blk_dev;
 use crate::device::Device;
-use crate::kvm::get_hypervisor;
+use crate::kvm;
 
 pub struct InspectOptions {
     pub pid: Pid,

@@ -1,5 +1,10 @@
 mod virtio;
 
+use crate::device::virtio::block::{self, BlockArgs};
+use crate::device::virtio::{CommonArgs, MmioConfig};
+use crate::kvm::Hypervisor;
+use crate::proc::Mapping;
+use crate::result::Result;
 use event_manager::{EventManager, MutEventSubscriber};
 use simple_error::{bail, try_with};
 use std::path::PathBuf;
@@ -11,11 +16,6 @@ use vm_memory::guest_memory::GuestAddress;
 use vm_memory::mmap::MmapRegion;
 use vm_memory::{FileOffset, GuestMemoryMmap, GuestRegionMmap};
 use vm_virtio::device::status::RESET;
-use crate::device::virtio::block::{self, BlockArgs};
-use crate::device::virtio::{CommonArgs, MmioConfig};
-use crate::kvm::Hypervisor;
-use crate::proc::Mapping;
-use crate::result::Result;
 
 // Where BIOS/VGA magic would live on a real PC.
 const EBDA_START: u64 = 0x9fc00;
@@ -108,7 +108,7 @@ impl Device {
 
         let blkdev: Arc<Mutex<Block>> = match Block::new(args) {
             Ok(v) => v,
-            Err(e) => bail!("cannot create block device: {:?}", e)
+            Err(e) => bail!("cannot create block device: {:?}", e),
         };
 
         Ok(Device {

@@ -7,8 +7,8 @@ use std::str::FromStr;
 use crate::inspect::InspectOptions;
 
 mod cpu;
-mod gdb_break;
 mod device;
+mod gdb_break;
 mod inject_syscall;
 mod inspect;
 mod kvm;
