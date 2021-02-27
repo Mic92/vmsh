@@ -22,20 +22,20 @@ pub struct MemSlot {
 }
 
 impl MemSlot {
-    pub fn start(&self) -> u64 {
-        self.userspace_addr
+    pub fn start(&self) -> usize {
+        self.userspace_addr as usize
     }
 
-    pub fn size(&self) -> u64 {
-        self.npages * page_size()
+    pub fn size(&self) -> usize {
+        (self.npages as usize) * page_size()
     }
 
-    pub fn end(&self) -> u64 {
+    pub fn end(&self) -> usize {
         self.start() + self.size()
     }
 
-    pub fn physical_start(&self) -> u64 {
-        self.base_gfn * page_size()
+    pub fn physical_start(&self) -> usize {
+        (self.base_gfn as usize) * page_size()
     }
 }
 
