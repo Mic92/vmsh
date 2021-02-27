@@ -52,7 +52,7 @@ fn convert(mappings: &[Mapping]) -> Result<GuestMemoryMmap> {
         );
 
         let guest_region_mmap = try_with!(
-            GuestRegionMmap::new(mmap_region, GuestAddress(mapping.phys_addr)),
+            GuestRegionMmap::new(mmap_region, GuestAddress(mapping.phys_addr as u64)),
             "cannot allocate guest region"
         );
 

@@ -7,14 +7,17 @@ use std::str::FromStr;
 use crate::inspect::InspectOptions;
 
 mod attach;
+mod coredump;
 mod cpu;
 mod device;
+mod elf;
 mod gdb_break;
 mod inject_syscall;
 mod inspect;
 mod kvm;
 mod kvm_ioctls;
 mod kvm_memslots;
+mod page_math;
 mod proc;
 mod ptrace;
 mod result;
@@ -24,6 +27,7 @@ mod result;
 enum Command {
     inspect,
     attach,
+    coredump,
 }
 
 impl FromStr for Command {
@@ -32,19 +36,20 @@ impl FromStr for Command {
         match src {
             "inspect" => Ok(Command::inspect),
             "attach" => Ok(Command::attach),
+            "coredump" => Ok(Command::coredump),
             _ => Err(()),
         }
     }
 }
 
-fn parse_inspect_args(args: Vec<String>) -> InspectOptions {
+fn parse_pid_args(args: Vec<String>, description: &str) -> InspectOptions {
     let mut options = InspectOptions {
         pid: Pid::from_raw(0),
     };
     let mut hypervisor_pid: pid_t = 0;
     {
         let mut ap = ArgumentParser::new();
-        ap.set_description("inspect vm");
+        ap.set_description(description);
         ap.refer(&mut hypervisor_pid).required().add_argument(
             "pid",
             Store,
@@ -63,7 +68,7 @@ fn parse_inspect_args(args: Vec<String>) -> InspectOptions {
 }
 
 fn inspect_command(args: Vec<String>) {
-    let opts = parse_inspect_args(args);
+    let opts = parse_pid_args(args, "inspect memory maps of the vm");
     if let Err(err) = inspect::inspect(&opts) {
         eprintln!("{}", err);
         std::process::exit(1);
@@ -71,8 +76,16 @@ fn inspect_command(args: Vec<String>) {
 }
 
 fn attach_command(args: Vec<String>) {
-    let opts = parse_inspect_args(args);
+    let opts = parse_pid_args(args, "attach to a vm");
     if let Err(err) = attach::attach(&opts) {
+        eprintln!("{}", err);
+        std::process::exit(1);
+    };
+}
+
+fn coredump_command(args: Vec<String>) {
+    let opts = parse_pid_args(args, "get coredump of a vm");
+    if let Err(err) = coredump::generate_coredump(&opts) {
         eprintln!("{}", err);
         std::process::exit(1);
     };
@@ -101,5 +114,6 @@ fn main() {
     match subcommand {
         Command::inspect => inspect_command(args),
         Command::attach => attach_command(args),
+        Command::coredump => coredump_command(args),
     }
 }

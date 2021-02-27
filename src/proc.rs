@@ -14,8 +14,8 @@ use crate::result::Result;
 
 #[derive(Clone, Debug)]
 pub struct Mapping {
-    pub start: u64,
-    pub end: u64,
+    pub start: usize,
+    pub end: usize,
     pub prot_flags: ProtFlags,
     pub map_flags: MapFlags,
     pub offset: u64,
@@ -25,10 +25,10 @@ pub struct Mapping {
     pub pathname: String,
 
     // only for VM mappings, 0 otherwise
-    pub phys_addr: u64,
+    pub phys_addr: usize,
 }
 
-pub fn find_mapping(mappings: &[Mapping], ip: u64) -> Option<Mapping> {
+pub fn find_mapping(mappings: &[Mapping], ip: usize) -> Option<Mapping> {
     mappings
         .iter()
         .find(|m| m.start <= ip && ip < m.end)
@@ -89,12 +89,12 @@ fn parse_line(line: &str) -> Result<Mapping> {
     let range = fields[0].splitn(2, '-').collect::<Vec<_>>();
 
     let start = try_with!(
-        u64::from_str_radix(range[0], 16),
+        usize::from_str_radix(range[0], 16),
         "start address is not a number: {}",
         range[0]
     );
     let end = try_with!(
-        u64::from_str_radix(range[1], 16),
+        usize::from_str_radix(range[1], 16),
         "end address is not a number: {}",
         range[1]
     );

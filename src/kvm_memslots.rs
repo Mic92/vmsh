@@ -3,16 +3,15 @@ use bcc::{BPFBuilder, Kprobe, BPF};
 use core::slice::from_raw_parts as make_slice;
 use libc::{c_ulong, size_t};
 use nix::unistd::Pid;
-use nix::unistd::{sysconf, SysconfVar};
 use simple_error::bail;
 use simple_error::try_with;
 use std::sync::mpsc::channel;
 use std::time::Duration;
 use std::{fmt, ptr};
 
-use crate::kvm::Hypervisor;
 use crate::proc::{self, Mapping};
 use crate::result::Result;
+use crate::{kvm::Hypervisor, page_math::page_size};
 
 #[derive(Clone, Debug)]
 #[repr(C)]
@@ -22,25 +21,21 @@ pub struct MemSlot {
     userspace_addr: c_ulong,
 }
 
-fn page_size() -> c_ulong {
-    sysconf(SysconfVar::PAGE_SIZE).unwrap().unwrap() as u64
-}
-
 impl MemSlot {
-    pub fn start(&self) -> u64 {
-        self.userspace_addr
+    pub fn start(&self) -> usize {
+        self.userspace_addr as usize
     }
 
-    pub fn size(&self) -> u64 {
-        self.npages * page_size()
+    pub fn size(&self) -> usize {
+        (self.npages as usize) * page_size()
     }
 
-    pub fn end(&self) -> u64 {
+    pub fn end(&self) -> usize {
         self.start() + self.size()
     }
 
-    pub fn physical_start(&self) -> u64 {
-        self.base_gfn * page_size()
+    pub fn physical_start(&self) -> usize {
+        (self.base_gfn as usize) * page_size()
     }
 }
 
