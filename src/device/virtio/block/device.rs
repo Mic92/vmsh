@@ -11,7 +11,7 @@ use event_manager::{MutEventSubscriber, RemoteEndpoint, Result as EvmgrResult, S
 use vm_device::bus::MmioAddress;
 use vm_device::device_manager::MmioManager;
 use vm_device::{DeviceMmio, MutDeviceMmio};
-use vm_memory::{GuestAddress, GuestAddressSpace};
+use vm_memory::{GuestAddressSpace};
 use vm_virtio::block::stdio_executor::StdIoBackend;
 use vm_virtio::device::{VirtioConfig, VirtioMmioDevice, WithDeviceOps, WithVirtioConfig};
 use vm_virtio::Queue;
@@ -22,7 +22,7 @@ use crate::device::virtio::features::{
     VIRTIO_F_IN_ORDER, VIRTIO_F_RING_EVENT_IDX, VIRTIO_F_VERSION_1,
 };
 use crate::device::virtio::{
-    MmioConfig, SingleFdSignalQueue, QUEUE_MAX_SIZE, VIRTIO_MMIO_QUEUE_NOTIFY_OFFSET,
+    MmioConfig, SingleFdSignalQueue, QUEUE_MAX_SIZE,
 };
 use crate::kvm::Hypervisor;
 

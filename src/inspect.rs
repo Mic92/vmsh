@@ -3,7 +3,7 @@
 use crate::result::Result;
 use nix::unistd::Pid;
 use simple_error::try_with;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc};
 
 use crate::kvm;
 use crate::kvm::Hypervisor;

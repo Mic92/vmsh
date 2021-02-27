@@ -14,7 +14,7 @@ pub fn attach_blk_dev() {
 pub struct Device {}
 
 impl Device {
-    fn create() {}
+    pub fn create() {}
 }
 
 #[cfg(test)]

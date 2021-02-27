@@ -11,7 +11,6 @@ use vm_memory::guest_memory::GuestAddress;
 use vm_memory::mmap::MmapRegion;
 use vm_memory::{FileOffset, GuestMemoryMmap, GuestRegionMmap};
 use vm_virtio::device::status::RESET;
-
 use crate::device::virtio::block::{self, BlockArgs};
 use crate::device::virtio::{CommonArgs, MmioConfig};
 use crate::kvm::Hypervisor;
@@ -27,7 +26,7 @@ pub const MMIO_MEM_START: u64 = FIRST_ADDR_PAST_32BITS - MEM_32BIT_GAP_SIZE;
 
 type Block = block::Block<Arc<GuestMemoryMmap>>;
 
-fn convert(mappings: &Vec<Mapping>) -> Result<GuestMemoryMmap> {
+fn convert(mappings: &[Mapping]) -> Result<GuestMemoryMmap> {
     let mut regions: Vec<Arc<GuestRegionMmap>> = vec![];
 
     for mapping in mappings {
@@ -37,7 +36,7 @@ fn convert(mappings: &Vec<Mapping>) -> Result<GuestMemoryMmap> {
             &mapping.pathname
         );
 
-        let file_offset = FileOffset::new(file, mapping.offset);
+        let _file_offset = FileOffset::new(file, mapping.offset);
         // TODO i think we need Some(file_offset) in mmap_region
         // TODO need reason for why this is safe. ("a smart human wrote it")
         let mmap_region = try_with!(unsafe {
@@ -101,7 +100,7 @@ impl Device {
 
         let blkdev: Arc<Mutex<Block>> = match Block::new(args) {
             Ok(v) => v,
-            Err(e) => return bail!("cannot create block device: {:?}", e)
+            Err(e) => bail!("cannot create block device: {:?}", e)
         };
 
         Ok(Device {
@@ -111,8 +110,8 @@ impl Device {
     }
 
     pub fn create(&self) {
-        let a = RESET;
-        let b = ResourceConstraint::new_pio(1);
+        let _a = RESET;
+        let _b = ResourceConstraint::new_pio(1);
         println!("create device");
     }
 }
