@@ -3,9 +3,7 @@
 use crate::result::Result;
 use nix::unistd::Pid;
 use simple_error::try_with;
-use std::sync::Arc;
 
-use crate::device::Device;
 use crate::kvm;
 
 pub struct InspectOptions {
@@ -25,8 +23,5 @@ pub fn inspect(opts: &InspectOptions) -> Result<()> {
         )
     }
 
-    let device = try_with!(Device::new(&Arc::new(vm)), "cannot create vm");
-    device.create();
-    device.create();
     Ok(())
 }

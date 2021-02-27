@@ -6,6 +6,7 @@ use std::str::FromStr;
 
 use crate::inspect::InspectOptions;
 
+mod attach;
 mod cpu;
 mod device;
 mod gdb_break;
@@ -22,6 +23,7 @@ mod result;
 #[derive(Debug)]
 enum Command {
     inspect,
+    attach,
 }
 
 impl FromStr for Command {
@@ -29,6 +31,7 @@ impl FromStr for Command {
     fn from_str(src: &str) -> std::result::Result<Command, ()> {
         match src {
             "inspect" => Ok(Command::inspect),
+            "attach" => Ok(Command::attach),
             _ => Err(()),
         }
     }
@@ -67,6 +70,14 @@ fn inspect_command(args: Vec<String>) {
     };
 }
 
+fn attach_command(args: Vec<String>) {
+    let opts = parse_inspect_args(args);
+    if let Err(err) = attach::attach(&opts) {
+        eprintln!("{}", err);
+        std::process::exit(1);
+    };
+}
+
 fn main() {
     let mut subcommand = Command::inspect;
     let mut args = vec![];
@@ -89,5 +100,6 @@ fn main() {
 
     match subcommand {
         Command::inspect => inspect_command(args),
+        Command::attach => attach_command(args),
     }
 }
