@@ -39,22 +39,30 @@ fn convert(mappings: &[Mapping]) -> Result<GuestMemoryMmap> {
         let _file_offset = FileOffset::new(file, mapping.offset);
         // TODO i think we need Some(file_offset) in mmap_region
         // TODO need reason for why this is safe. ("a smart human wrote it")
-        let mmap_region = try_with!(unsafe {
-            MmapRegion::build_raw(
-                mapping.start as *mut u8,
-                (mapping.end - mapping.start) as usize,
-                mapping.prot_flags.bits(),
-                mapping.map_flags.bits(),
-            )
-        }, "cannot instanciate MmapRegion");
+        let mmap_region = try_with!(
+            unsafe {
+                MmapRegion::build_raw(
+                    mapping.start as *mut u8,
+                    (mapping.end - mapping.start) as usize,
+                    mapping.prot_flags.bits(),
+                    mapping.map_flags.bits(),
+                )
+            },
+            "cannot instanciate MmapRegion"
+        );
 
-        let guest_region_mmap = try_with!(GuestRegionMmap::new(mmap_region, GuestAddress(mapping.phys_addr)),
-                                          "cannot allocate guest region");
+        let guest_region_mmap = try_with!(
+            GuestRegionMmap::new(mmap_region, GuestAddress(mapping.phys_addr)),
+            "cannot allocate guest region"
+        );
 
         regions.push(Arc::new(guest_region_mmap));
     }
 
-    Ok(try_with!(GuestMemoryMmap::from_arc_regions(regions), "GuestMemoryMmap error"))
+    Ok(try_with!(
+        GuestMemoryMmap::from_arc_regions(regions),
+        "GuestMemoryMmap error"
+    ))
 }
 
 pub struct Device {
