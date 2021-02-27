@@ -1,5 +1,5 @@
-use libc::SYS_ioctl;
 use libc::{c_int, c_long, c_ulong, c_void, pid_t};
+use libc::{SYS_getpid, SYS_ioctl};
 use nix::sys::signal::Signal;
 use nix::sys::wait::{waitpid, WaitStatus};
 use nix::unistd::Pid;
@@ -133,6 +133,13 @@ impl Process {
         self.syscall(&args).map(|v| v as c_int)
     }
 
+    #[allow(dead_code)]
+    pub fn getpid(&self) -> Result<pid_t> {
+        let args = syscall_args!(self.saved_regs, SYS_getpid as c_ulong);
+
+        self.syscall(&args).map(|v| v as c_int)
+    }
+
     fn syscall(&self, regs: &Regs) -> Result<isize> {
         try_with!(
             self.main_thread().setregs(regs),
@@ -191,5 +198,82 @@ impl Drop for Process {
             self.saved_text as *mut c_void,
         );
         let _ = self.main_thread().setregs(&self.saved_regs);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use nix::{fcntl::OFlag, unistd::pipe2};
+    use std::fs::File;
+    use std::io::Write;
+    use std::os::unix::io::FromRawFd;
+    use std::path::Path;
+    use std::process::Command;
+    use std::process::Stdio;
+    use tempfile::tempdir;
+
+    fn compile_executable(source: &str, target: &Path) {
+        let cc = std::env::var("CC").unwrap_or_else(|_| String::from("cc"));
+        let args = &[
+            "-xc",
+            "-",
+            "-g",
+            "-Wall",
+            "-o",
+            target.to_str().unwrap(),
+            "-pthread",
+        ];
+        println!("$ {} {}", cc, args.join(" "));
+        let mut child = Command::new(cc)
+            .args(args)
+            .stdin(Stdio::piped())
+            .spawn()
+            .expect("cannot compile program");
+        {
+            let stdin = child.stdin.as_mut().expect("cannot get child stdin");
+            stdin
+                .write_all(source.as_bytes())
+                .expect("cannot write stdin");
+        }
+        assert!(child.wait().expect("process failed").success());
+    }
+
+    #[test]
+    fn test_syscall_inject() {
+        println!("######################");
+        let dir = tempdir().expect("cannot create tempdir");
+        let binary = dir.path().join("main");
+        compile_executable(
+            r#"
+#include <unistd.h>
+#include <stdio.h>
+int main() {
+  int a; a = read(0, &a, sizeof(a));
+  puts("OK");
+  return 0;
+}
+"#,
+            &binary,
+        );
+        let (readfd, writefd) = pipe2(OFlag::O_CLOEXEC).expect("cannot create pipe");
+        let read_end = unsafe { Stdio::from_raw_fd(readfd) };
+        let write_end = unsafe { File::from_raw_fd(writefd) };
+        let child = Command::new(binary)
+            .stdin(read_end)
+            .stdout(Stdio::piped())
+            .spawn()
+            .expect("test program failed");
+        let pid = Pid::from_raw(child.id() as i32);
+        {
+            let proc = attach(pid).expect("cannot attach with ptrace");
+            assert_eq!(proc.getpid().expect("getpid failed"), pid.as_raw());
+        }
+        drop(write_end);
+        let output = child
+            .wait_with_output()
+            .expect("could not read stdout")
+            .stdout;
+        assert_eq!(output, b"OK\n");
     }
 }

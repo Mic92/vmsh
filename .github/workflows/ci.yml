@@ -12,7 +12,8 @@ jobs:
       matrix:
         target:
           - x86_64-unknown-linux-gnu
-          - x86_64-unknown-linux-musl
+          # we need a static libbcc for that
+          #- x86_64-unknown-linux-musl
         rust: [ 1.50.0 ]
     steps:
       - name: Checkout
@@ -34,7 +35,7 @@ jobs:
           path: ~/.cargo
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.toml') }}
       - name: Install bcc
-        run: sudo apt install libbpfcc
+        run: sudo apt install libbpfcc musl-tools
       - name: Test
         uses: actions-rs/cargo@v1
         with:
