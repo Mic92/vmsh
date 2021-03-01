@@ -241,7 +241,6 @@ mod tests {
 
     #[test]
     fn test_syscall_inject() {
-        println!("######################");
         let dir = tempdir().expect("cannot create tempdir");
         let binary = dir.path().join("main");
         compile_executable(
