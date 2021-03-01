@@ -16,7 +16,7 @@ members = ["src/virtio"]
 
 [dependencies]
 argparse = "0.2.*"
-nix = "0.19.*"
+nix = "0.20.*"
 libc = "0.2.*"
 bcc = "0.0.*"
 simple-error = "0.2.*"
