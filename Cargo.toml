@@ -19,7 +19,6 @@ argparse = "0.2.*"
 nix = "0.19.*"
 libc = "0.2.*"
 bcc = "0.0.*"
-ctrlc = "3.1.*"
 simple-error = "0.2.*"
 kvm-bindings = "0.3.*"
 virtio = { path = "src/virtio" }
