@@ -85,12 +85,12 @@ fn write_corefile(pid: Pid, core_file: &mut File, maps: &[Mapping]) -> Result<()
         "cannot truncate core file"
     );
     try_with!(
-        core_file.write(unsafe { any_as_bytes(&ehdr) }),
+        core_file.write_all(unsafe { any_as_bytes(&ehdr) }),
         "cannot write elf header"
     );
     for header in section_headers {
         try_with!(
-            core_file.write(unsafe { any_as_bytes(&header) }),
+            core_file.write_all(unsafe { any_as_bytes(&header) }),
             "cannot write elf header"
         );
     }
