@@ -28,6 +28,12 @@ pub struct Mapping {
     pub phys_addr: usize,
 }
 
+impl Mapping {
+    pub fn size(&self) -> usize {
+        self.end - self.start
+    }
+}
+
 pub fn find_mapping(mappings: &[Mapping], ip: usize) -> Option<Mapping> {
     mappings
         .iter()

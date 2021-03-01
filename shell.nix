@@ -1,9 +1,9 @@
-{ pkgs ? (import (import ./nix/sources.nix).nixpkgs {}) }:
+{ pkgs ? (import (import ./nix/sources.nix).nixpkgs { }) }:
 
 let
   sources = import ./nix/sources.nix;
-  naersk = pkgs.callPackage sources.naersk {};
-  niv = pkgs.callPackage sources.niv {};
+  naersk = pkgs.callPackage sources.naersk { };
+  niv = pkgs.callPackage sources.niv { };
 
   vmsh = pkgs.callPackage ./vmsh.nix {
     inherit naersk;
@@ -22,5 +22,10 @@ pkgs.mkShell {
     pkgs.rustc
     pkgs.cargo-watch
     pkgs.cargo-deny
+    pkgs.pre-commit
+    pkgs.git # needed for pre-commit install
   ] ++ vmsh.nativeBuildInputs;
+  shellHook = ''
+    pre-commit install
+  '';
 }

@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 // EI_CLASS
 const ELFCLASSNONE: u8 = 0;
 const ELFCLASS32: u8 = 1;
@@ -33,6 +35,11 @@ pub const EV_NUM: Elf_Word = 2;
 // e_shstrndx
 pub const SHN_UNDEF: Elf_Half = 0;
 
+// e_type
+pub const PF_X: Elf_Word = 1 << 0;
+pub const PF_W: Elf_Word = 1 << 1;
+pub const PF_R: Elf_Word = 1 << 2;
+
 pub const ELFMAG0: u8 = 0x7f;
 pub const ELFMAG1: u8 = b'E';
 pub const ELFMAG2: u8 = b'L';
@@ -47,6 +54,7 @@ const ELFDATA2MSB: u8 = 2;
 
 #[cfg(target_pointer_width = "32")]
 mod headers {
+    pub use libc::Elf32_Addr as Elf_Addr;
     pub use libc::Elf32_Ehdr as Ehdr;
     pub use libc::Elf32_Half as Elf_Half;
     pub use libc::Elf32_Off as Elf_Off;
@@ -57,6 +65,7 @@ mod headers {
 }
 #[cfg(target_pointer_width = "64")]
 mod headers {
+    pub use libc::Elf64_Addr as Elf_Addr;
     pub use libc::Elf64_Ehdr as Ehdr;
     pub use libc::Elf64_Half as Elf_Half;
     pub use libc::Elf64_Off as Elf_Off;
