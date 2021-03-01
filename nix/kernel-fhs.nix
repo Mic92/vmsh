@@ -1,4 +1,4 @@
-{ pkgs ? (import (import ./sources.nix).nixpkgs {})
+{ pkgs ? (import (import ./sources.nix).nixpkgs { })
 , runScript ? ''bash -c''
 }:
 

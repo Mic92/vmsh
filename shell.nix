@@ -1,9 +1,9 @@
-{ pkgs ? (import (import ./nix/sources.nix).nixpkgs {}) }:
+{ pkgs ? (import (import ./nix/sources.nix).nixpkgs { }) }:
 
 let
   sources = import ./nix/sources.nix;
-  naersk = pkgs.callPackage sources.naersk {};
-  niv = pkgs.callPackage sources.niv {};
+  naersk = pkgs.callPackage sources.naersk { };
+  niv = pkgs.callPackage sources.niv { };
 
   vmsh = pkgs.callPackage ./vmsh.nix {
     inherit naersk;
