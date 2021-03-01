@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 // EI_CLASS
 const ELFCLASSNONE: u8 = 0;
 const ELFCLASS32: u8 = 1;
