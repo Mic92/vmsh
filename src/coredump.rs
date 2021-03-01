@@ -1,17 +1,32 @@
-use nix::unistd::Pid;
+use libc::PT_LOAD;
+use nix::{sys::mman::ProtFlags, unistd::Pid};
 use simple_error::try_with;
 use std::fs::File;
-use std::mem::{size_of, size_of_val};
+use std::mem::size_of;
 
-use crate::inspect::InspectOptions;
-use crate::{
-    elf::{
-        Ehdr, Elf_Half, Elf_Off, Phdr, Shdr, ELFARCH, ELFCLASS, ELFDATA2, ELFMAG0, ELFMAG1,
-        ELFMAG2, ELFMAG3, ET_CORE, EV_CURRENT, SHN_UNDEF,
-    },
-    page_math::page_align,
+use crate::elf::{
+    Ehdr, Elf_Addr, Elf_Half, Elf_Off, Elf_Word, Phdr, Shdr, ELFARCH, ELFCLASS, ELFDATA2, ELFMAG0,
+    ELFMAG1, ELFMAG2, ELFMAG3, ET_CORE, EV_CURRENT, PF_W, PF_X, SHN_UNDEF,
 };
+use crate::inspect::InspectOptions;
+use crate::page_math::{page_align, page_size};
 use crate::{kvm, proc::Mapping, result::Result};
+
+fn p_flags(f: &ProtFlags) -> Elf_Word {
+    (if f.contains(ProtFlags::PROT_READ) {
+        PF_X
+    } else {
+        0
+    }) | (if f.contains(ProtFlags::PROT_WRITE) {
+        PF_W
+    } else {
+        0
+    }) | (if f.contains(ProtFlags::PROT_EXEC) {
+        PF_X
+    } else {
+        0
+    })
+}
 
 fn write_corefile(pid: Pid, core_file: &mut File, maps: &[Mapping]) {
     let ehdr = Ehdr {
@@ -33,8 +48,56 @@ fn write_corefile(pid: Pid, core_file: &mut File, maps: &[Mapping]) {
         e_shstrndx: SHN_UNDEF,
     };
 
-    let section_headers: Vec<Phdr> = Vec::with_capacity(ehdr.e_phnum as usize);
-    let offset = page_align(size_of::<Ehdr>() + size_of_val(&section_headers));
+    let offset = page_align(size_of::<Ehdr>() + (size_of::<Phdr>() * ehdr.e_phnum as usize));
+    let mut core_size = offset;
+
+    let section_headers: Vec<_> = maps
+        .iter()
+        .map(|m| -> Phdr {
+            let phdr = Phdr {
+                p_type: PT_LOAD,
+                p_flags: p_flags(&m.prot_flags),
+                p_offset: core_size as Elf_Off,
+                p_vaddr: m.start as Elf_Addr,
+                p_paddr: m.phys_addr as Elf_Addr,
+                p_filesz: m.size() as Elf_Addr,
+                p_memsz: m.size() as Elf_Addr,
+                p_align: page_size() as Elf_Addr,
+            };
+            core_size += m.size();
+            phdr
+        })
+        .collect();
+
+    //src_iovecs = (iovec * len(slots))()
+    //dst_iovec = iovec()
+
+    //core_file.truncate(core_size)
+    //core_file.write(bytearray(ehdr))
+    //core_file.write(bytearray(section_headers))
+    //core_file.flush()
+
+    //buf = mmap.mmap(
+    //    core_file.fileno(),
+    //    core_size - offset,
+    //    mmap.MAP_SHARED,
+    //    mmap.PROT_WRITE,
+    //    offset=offset,
+    //)
+    //try:
+    //    c_void = ctypes.c_void_p.from_buffer(buf)  # type: ignore
+    //    ptr = ctypes.addressof(c_void)
+    //    dst_iovec.iov_base = ptr
+    //    dst_iovec.iov_len = core_size - offset
+    //    for iov, slot in zip(src_iovecs, slots):
+    //        iov.iov_base = slot.start
+    //        iov.iov_len = slot.size
+    //    libc.process_vm_readv(pid, dst_iovec, 1, src_iovecs, len(src_iovecs), 0)
+    //finally:
+    //    # gc references to buf so we can close it
+    //    del ptr
+    //    del c_void
+    //    buf.close()
 }
 
 pub fn generate_coredump(opts: &InspectOptions) -> Result<()> {
