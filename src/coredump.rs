@@ -7,6 +7,7 @@ use nix::{
     unistd::Pid,
 };
 use simple_error::try_with;
+use std::fs::OpenOptions;
 use std::{fs::File, io::Write, ptr, slice::from_raw_parts_mut};
 use std::{mem::size_of, os::unix::prelude::AsRawFd};
 
@@ -54,7 +55,7 @@ fn write_corefile(pid: Pid, core_file: &mut File, maps: &[Mapping]) -> Result<()
         e_ehsize: size_of::<Ehdr>() as Elf_Half,
         e_phentsize: size_of::<Phdr>() as Elf_Half,
         e_phnum: maps.len() as Elf_Half,
-        e_shentsize: size_of::<Shdr> as Elf_Half,
+        e_shentsize: size_of::<Shdr>() as Elf_Half,
         e_shnum: 0,
         e_shstrndx: SHN_UNDEF,
     };
@@ -133,7 +134,11 @@ pub fn generate_coredump(opts: &InspectOptions) -> Result<()> {
     let core_path = format!("core.{}", opts.pid);
     println!("Write {}", core_path);
     let mut core_file = try_with!(
-        File::create(&core_path),
+        OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .open(&core_path),
         "cannot open core_file: {}",
         &core_path
     );
