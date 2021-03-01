@@ -22,5 +22,10 @@ pkgs.mkShell {
     pkgs.rustc
     pkgs.cargo-watch
     pkgs.cargo-deny
+    pkgs.pre-commit
+    pkgs.git # needed for pre-commit install
   ] ++ vmsh.nativeBuildInputs;
+  shellHook = ''
+    pre-commit install
+  '';
 }
