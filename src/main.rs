@@ -100,7 +100,7 @@ fn main() {
         ap.refer(&mut subcommand).required().add_argument(
             "command",
             Store,
-            r#"Command to run (either "inspect")"#,
+            r#"Command to run (either "inspect", "attach", "coredump")"#,
         );
         ap.refer(&mut args)
             .add_argument("arguments", List, r#"Arguments for command"#);
