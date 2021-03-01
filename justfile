@@ -48,6 +48,9 @@ qemu: build-linux nixos-image
 inspect-qemu:
   cargo run -- inspect "$(pidof qemu-system-x86_64)"
 
+coredump-qemu:
+  cargo run -- coredump "$(pidof qemu-system-x86_64)"
+
 trace-qemu:
   perf trace "$(pidof qemu-system-x86_64)"
 
