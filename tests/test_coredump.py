@@ -2,6 +2,7 @@
 
 import subprocess
 import os
+import socket
 import json
 from shlex import quote
 from pathlib import Path
@@ -21,7 +22,7 @@ class Vm:
 
 def rootfs_image(image: Path):
     result = subprocess.run(
-        ["nix-build", str(image), "-A", "json"], text=True, stdout=subprocess.PIPE
+        ["nix-build", str(image), "-A", "json"], text=True, stdout=subprocess.PIPE, check=True
     )
     with open(result.stdout.strip("\n")) as f:
         data = json.load(f)
@@ -32,10 +33,24 @@ def rootfs_image(image: Path):
             kernel_params=data["kernelParams"],
         )
 
+def is_open(ip,port):
+   s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+   try:
+      s.connect((ip, int(port)))
+      s.shutdown(2)
+      return True
+   except:
+      return False
 
 class Qemu:
     def __init__(self, vm: Vm):
         self.vm = vm
+
+    def attach(self):
+        """
+        Attach to qemu session via tmux. This is useful for debugging
+        """
+        subprocess.run(["tmux", "-L", self.tmux_session, "attach"])
 
     def __enter__(self) -> int:
         params = " ".join(self.vm.kernel_params)
@@ -54,6 +69,8 @@ class Qemu:
             "-nographic",
             "-append",
             f"console=ttyS0 {params} quiet panic=-1",
+            "-netdev", "user,id=n1,hostfwd=tcp:127.0.0.1:0-:22",
+            "-device", "virtio-net-pci,netdev=n1",
             "-no-reboot",
             "-device",
             "virtio-rng-pci",
@@ -70,8 +87,9 @@ class Qemu:
         subprocess.run(["tmux", "-L", self.tmux_session, "kill-server"])
 
 
-def test_update(helpers: conftest.Helpers) -> None:
+def test_coredump(helpers: conftest.Helpers) -> None:
     vm = rootfs_image(helpers.root().joinpath("../nix/not-os-image.nix"))
     qemu = Qemu(vm)
     with qemu as pid:
+        p = subprocess.run(["cargo", "run", "--", "coredump", str(pid)])
         pass

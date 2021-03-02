@@ -23,8 +23,9 @@ pkgs.mkShell {
     pkgs.cargo-watch
     pkgs.cargo-deny
     pkgs.pre-commit
-    pkgs.python3.pkgs.pytest
     pkgs.git # needed for pre-commit install
+    pkgs.python3.pkgs.pytest
+    pkgs.tmux # needed for integration test
   ] ++ vmsh.nativeBuildInputs;
   shellHook = ''
     pre-commit install

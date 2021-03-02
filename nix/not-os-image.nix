@@ -4,34 +4,54 @@
 let
   config = (import not-os {
     nixpkgs = pkgs.path;
-    inherit (pkgs) system;
-    extraModules = [
-      (not-os  + "/qemu.nix")
-      ({ pkgs, ... }: {
-        environment.etc = {
-          "service/backdoor/run".source = pkgs.writeScript "backdoor_run" ''
-            #!/bin/sh
-            export USER=root
-            export HOME=/root
-            cd $HOME
+    configuration = { pkgs, ... }: {
+      imports = [
+        (not-os  + "/qemu.nix")
+      ];
+      environment.systemPackages = [
+        pkgs.utillinux
+        pkgs.gnugrep
+        pkgs.kmod
+      ];
 
-            source /etc/profile
+      not-os.nix = true;
+      not-os.simpleStaticIp = true;
+      not-os.preMount = ''
+        echo 'nixos' > /proc/sys/kernel/hostname
+        ip addr add 127.0.0.1/8 dev lo
+        ip addr add ::1/128 dev lo
+        ip link dev lo up
+        ip addr add 10.0.2.15/24 dev eth0
+      '';
 
-            echo 'nixos' > /proc/sys/kernel/hostname
-
-            exec < /dev/ttyS0 > /dev/ttyS0 2>&1
-            echo "If you are connect via serial console:"
-            echo "Type Ctrl-a c to switch to the qemu console"
-            echo "and 'quit' to stop the VM."
-            exec ${pkgs.utillinux}/bin/setsid ${pkgs.bash}/bin/bash -l
-          '';
-        };
-        environment.etc.profile.text = ''
-          export PS1="\e[0;32m[\u@\h \w]\$ \e[0m"
+      environment.etc = {
+        "hosts".text = ''
+          127.0.0.1 localhost
+          ::1 localhost
+          127.0.0.1 nixos
+          ::1 nixos
         '';
-        boot.initrd.availableKernelModules = [ "virtio_console" ];
-      })
-    ];
+        "service/shell/run".source = pkgs.writeScript "shell" ''
+          #!/bin/sh
+          export USER=root
+          export HOME=/root
+          cd $HOME
+
+          source /etc/profile
+
+          exec < /dev/ttyS0 > /dev/ttyS0 2>&1
+          echo "If you are connect via serial console:"
+          echo "Type Ctrl-a c to switch to the qemu console"
+          echo "and 'quit' to stop the VM."
+          exec ${pkgs.utillinux}/bin/setsid ${pkgs.bash}/bin/bash -l
+        '';
+      };
+      environment.etc.profile.text = ''
+        export PS1="\e[0;32m[\u@\h \w]\$ \e[0m"
+      '';
+      boot.initrd.availableKernelModules = [ "virtio_console" ];
+    };
+    inherit (pkgs) system;
   }).config;
 in
 {
