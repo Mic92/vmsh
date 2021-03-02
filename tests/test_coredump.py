@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 
 import subprocess
-import conftest
+import os
 import json
+from shlex import quote
 from pathlib import Path
 from typing import List, Any
 from dataclasses import dataclass
+
+import conftest
 
 
 @dataclass
@@ -55,17 +58,16 @@ class Qemu:
             "-device",
             "virtio-rng-pci",
         ]
-        print("$ " + " ".join(cmd))
-        self.proc = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
 
-        return self.proc.pid
+        self.tmux_session = f"pytest-{os.getpid()}"
+        tmux = ["tmux",  "-L", self.tmux_session, "new-session", "-d", " ".join(map(quote, cmd))]
+        print("$ " + " ".join(map(quote, tmux)))
+        subprocess.run(tmux, check=True)
+        proc = subprocess.run(["tmux", "-L", self.tmux_session, "list-panes", "-a", "-F", "#{pane_pid}"], stdout=subprocess.PIPE, check=True)
+        return int(proc.stdout)
 
     def __exit__(self, type: Any, value: Any, traceback: Any) -> None:
-        self.proc.kill()
+        subprocess.run(["tmux", "-L", self.tmux_session, "kill-server"])
 
 
 def test_update(helpers: conftest.Helpers) -> None:
