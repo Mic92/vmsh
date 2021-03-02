@@ -7,8 +7,6 @@ linux_dir := invocation_directory() + "/../linux"
 
 kernel_fhs := `nix-build --no-out-link nix/kernel-fhs.nix` + "/bin/linux-kernel-build"
 
-nixos_image := `nix-build --no-out-link nix/minimal-vm.nix` + "/nixos.qcow2"
-
 clone-linux:
   [[ -d {{linux_dir}} ]] || \
     git clone https://github.com/torvalds/linux {{linux_dir}}
@@ -33,9 +31,9 @@ build-linux: configure-linux
   {{kernel_fhs}} "yes \n | make -C {{linux_dir}} -j$(nproc)"
 
 nixos-image:
-  [[ {{linux_dir}}/nixos.qcow2 -nt minimal-vm.nix ]] || \
-  [[ {{linux_dir}}/nixos.qcow2 -nt sources.json ]] || \
-  install -m600 {{nixos_image}} {{linux_dir}}/nixos.qcow2
+  [[ {{linux_dir}}/nixos.qcow2 -nt nix/nixos-image.nix ]] || \
+  [[ {{linux_dir}}/nixos.qcow2 -nt nix/sources.json ]] || \
+  install -m600 "$(nix-build --no-out-link nix/nixos-image.nix)/nixos.qcow2" {{linux_dir}}/nixos.qcow2
 
 qemu: build-linux nixos-image
   qemu-system-x86_64 \
