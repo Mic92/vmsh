@@ -34,5 +34,17 @@
         "type": "tarball",
         "url": "https://github.com/NixOS/nixpkgs/archive/870dbb751f4d851a3dfb554835a0c2f528386982.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
+    },
+    "not-os": {
+        "branch": "master",
+        "description": "An operating system generator, based on NixOS, that, given a config, outputs a small (47 MB), read-only squashfs for a runit-based operating system, with support for iPXE and signed boot.",
+        "homepage": "",
+        "owner": "cleverca22",
+        "repo": "not-os",
+        "rev": "04197710314a088c291d0759467150eab7155cb7",
+        "sha256": "1zn910d9r8pp819ah4f8rszc9zh1p0gxgdww4mkg13jkiarzsg55",
+        "type": "tarball",
+        "url": "https://github.com/cleverca22/not-os/archive/04197710314a088c291d0759467150eab7155cb7.tar.gz",
+        "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     }
 }
