@@ -95,22 +95,6 @@ jobs:
   cargo-deny:
     name: Cargo Deny (crate metadata checks)
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        rust: [ 1.50.0 ]
     steps:
-      - name: Install rust
-        uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: stable
-          override: true
-      - name: Checkout
-        uses: actions/checkout@v2
-      - name: Install cargo-deny
-        uses: actions-rs/install@v0.1
-        with:
-          crate: cargo-deny
-          use-tool-cache: true
-      - name: Check chargo deny
-        run: cargo deny check
+    - uses: actions/checkout@v2
+    - uses: EmbarkStudios/cargo-deny-action@v1

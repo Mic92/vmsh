@@ -24,6 +24,8 @@ pkgs.mkShell {
     pkgs.cargo-deny
     pkgs.pre-commit
     pkgs.git # needed for pre-commit install
+    (pkgs.python3.withPackages(ps: [ps.pytest ps.black ps.flake8 ps.mypy]))
+    pkgs.tmux # needed for integration test
   ] ++ vmsh.nativeBuildInputs;
   shellHook = ''
     pre-commit install
