@@ -218,7 +218,7 @@ def run_vmsh_command(args: List[str]) -> None:
             "--addamb=cap_sys_ptrace",
             "--",
             "-c",
-            cargoCmd
+            cargoCmd,
         ]
         print("$ " + " ".join(map(quote, cmd)))
         subprocess.run(cmd, check=True)
