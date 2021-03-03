@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 
-import pytest
 import sys
 from pathlib import Path
 from typing import Type
 
+import pytest
 
 TEST_ROOT = Path(__file__).parent.resolve()
 sys.path.append(str(TEST_ROOT.parent))
