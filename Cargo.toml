@@ -15,7 +15,7 @@ tempfile = "3"
 members = ["src/virtio"]
 
 [dependencies]
-argparse = "0.2.*"
+clap = "2"
 nix = "0.20.*"
 libc = "0.2.*"
 bcc = "0.0.*"
