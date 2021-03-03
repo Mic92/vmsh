@@ -29,7 +29,7 @@ vm-device = { git = "https://github.com/rust-vmm/vm-device" } # does no kvm oper
 
 # src/device/virtio/ deps:
 event-manager = { version = "0.2.0", features = ["remote_endpoint"] }
-vmm-sys-util = "0.6.1" # only for its ::eventfd::EventFd
+vmm-sys-util = "0.8.0" # only for its ::eventfd::EventFd
 vm-memory = { version = "0.5.0", features = ["backend-mmap"] }
 log = "0.4.6"
 
