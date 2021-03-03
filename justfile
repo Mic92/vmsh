@@ -7,6 +7,17 @@ linux_dir := invocation_directory() + "/../linux"
 
 kernel_fhs := `nix-build --no-out-link nix/kernel-fhs.nix` + "/bin/linux-kernel-build"
 
+lint:
+  flake8
+  black --check tests
+  mypy tests
+  cargo clippy
+  cargo fmt -- --check
+
+fmt:
+  black tests
+  cargo fmt
+
 clone-linux:
   [[ -d {{linux_dir}} ]] || \
     git clone https://github.com/torvalds/linux {{linux_dir}}
