@@ -1,11 +1,3 @@
-use argparse::{ArgumentParser, List, Store};
-use libc::pid_t;
-use nix::unistd::Pid;
-use std::io::{stderr, stdout};
-use std::str::FromStr;
-
-use crate::inspect::InspectOptions;
-
 mod attach;
 mod coredump;
 mod cpu;
@@ -22,69 +14,50 @@ mod proc;
 mod ptrace;
 mod result;
 
-#[allow(non_camel_case_types)]
-#[derive(Debug)]
-enum Command {
-    inspect,
-    attach,
-    coredump,
+use crate::inspect::InspectOptions;
+use clap::{crate_authors, crate_version, value_t, App, AppSettings, Arg, ArgMatches, SubCommand};
+use nix::unistd::Pid;
+
+fn pid_arg(index: u64) -> Arg<'static, 'static> {
+    Arg::with_name("pid")
+        .help("Pid of the hypervisor we get the information from")
+        .required(true)
+        .index(index)
 }
 
-impl FromStr for Command {
-    type Err = ();
-    fn from_str(src: &str) -> std::result::Result<Command, ()> {
-        match src {
-            "inspect" => Ok(Command::inspect),
-            "attach" => Ok(Command::attach),
-            "coredump" => Ok(Command::coredump),
-            _ => Err(()),
-        }
-    }
+fn parse_pid_arg(args: &ArgMatches) -> Pid {
+    let pid = value_t!(args, "pid", i32).unwrap_or_else(|e| e.exit());
+
+    Pid::from_raw(pid)
 }
 
-fn parse_pid_args(args: Vec<String>, description: &str) -> InspectOptions {
-    let mut options = InspectOptions {
-        pid: Pid::from_raw(0),
+fn inspect(args: &ArgMatches) {
+    let opts = InspectOptions {
+        pid: parse_pid_arg(&args),
     };
-    let mut hypervisor_pid: pid_t = 0;
-    {
-        let mut ap = ArgumentParser::new();
-        ap.set_description(description);
-        ap.refer(&mut hypervisor_pid).required().add_argument(
-            "pid",
-            Store,
-            "Pid of the hypervisor we get the information from",
-        );
-        match ap.parse(args, &mut stdout(), &mut stderr()) {
-            Ok(()) => {}
-            Err(x) => {
-                std::process::exit(x);
-            }
-        }
-    }
-    options.pid = Pid::from_raw(hypervisor_pid);
 
-    options
-}
-
-fn inspect_command(args: Vec<String>) {
-    let opts = parse_pid_args(args, "inspect memory maps of the vm");
     if let Err(err) = inspect::inspect(&opts) {
         eprintln!("{}", err);
         std::process::exit(1);
     };
 }
 
-fn attach_command(args: Vec<String>) {
-    let opts = parse_pid_args(args, "attach to a vm");
+fn attach(args: &ArgMatches) {
+    let opts = InspectOptions {
+        pid: parse_pid_arg(&args),
+    };
+
     if let Err(err) = attach::attach(&opts) {
         eprintln!("{}", err);
         std::process::exit(1);
     };
 }
 
-fn coredump_command(args: Vec<String>) {
-    let opts = parse_pid_args(args, "get coredump of a vm");
+fn coredump(args: &ArgMatches) {
+    let opts = InspectOptions {
+        pid: parse_pid_arg(&args),
+    };
+
     if let Err(err) = coredump::generate_coredump(&opts) {
         eprintln!("{}", err);
         std::process::exit(1);
@@ -92,28 +65,39 @@ fn coredump_command(args: Vec<String>) {
 }
 
 fn main() {
-    let mut subcommand = Command::inspect;
-    let mut args = vec![];
-    {
-        let mut ap = ArgumentParser::new();
-        ap.set_description("Enter or executed in container");
-        ap.refer(&mut subcommand).required().add_argument(
-            "command",
-            Store,
-            r#"Command to run (either "inspect", "attach", "coredump")"#,
-        );
-        ap.refer(&mut args)
-            .add_argument("arguments", List, r#"Arguments for command"#);
+    let inspect_command = SubCommand::with_name("inspect")
+        .about("Inspect a virtual machine.")
+        .version(crate_version!())
+        .author(crate_authors!("\n"))
+        .arg(pid_arg(1));
 
-        ap.stop_on_first_argument(true);
-        ap.parse_args_or_exit();
-    }
+    let attach_command = SubCommand::with_name("attach")
+        .about("Attach to a virtual machine.")
+        .version(crate_version!())
+        .author(crate_authors!("\n"))
+        .arg(pid_arg(1));
 
-    args.insert(0, format!("subcommand {:?}", subcommand));
+    let coredump_command = SubCommand::with_name("coredump")
+        .about("Get a coredump of a virtual machine.")
+        .version(crate_version!())
+        .author(crate_authors!("\n"))
+        .arg(pid_arg(1));
 
-    match subcommand {
-        Command::inspect => inspect_command(args),
-        Command::attach => attach_command(args),
-        Command::coredump => coredump_command(args),
+    let main_app = App::new("vmsh")
+        .about("Enter and execute in a virtual machine.")
+        .version(crate_version!())
+        .author(crate_authors!("\n"))
+        .setting(AppSettings::SubcommandRequiredElseHelp)
+        .subcommand(inspect_command)
+        .subcommand(attach_command)
+        .subcommand(coredump_command);
+
+    let matches = main_app.get_matches();
+    match matches.subcommand() {
+        ("inspect", Some(sub_matches)) => inspect(&sub_matches),
+        ("attach", Some(sub_matches)) => attach(&sub_matches),
+        ("coredump", Some(sub_matches)) => coredump(&sub_matches),
+        ("", None) => unreachable!(), // beause of AppSettings::SubCommandRequiredElseHelp
+        _ => unreachable!(),
     }
 }
