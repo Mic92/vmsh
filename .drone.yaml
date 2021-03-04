@@ -1,0 +1,48 @@
+---
+kind: pipeline
+type: ssh
+name: Test
+
+server:
+  host: martha.r
+  user: ci
+  ssh_key:
+    from_secret: SSH_KEY
+
+platform:
+  os: linux
+  arch: amd64
+
+clone:
+  depth: 1
+
+steps:
+- name: build
+  commands:
+  - cargo build
+- name: upload
+  commands:
+  - |
+    nix path-info --json -r result* > path-info.json # only local built derivations
+    # drone-runner-exec-chroot contains character device files
+    nix shell 'nixpkgs#jq' -c jq -r 'map(select(.ca == null and .signatures == null)) | map(.path) | .[]' < path-info.json > paths
+    nix shell 'nixpkgs#cachix' -c cachix push --jobs 32 mic92 < paths
+  environment:
+    CACHIX_SIGNING_KEY:
+      from_secret: CACHIX_SIGNING_KEY
+  when:
+    event:
+      exclude:
+      - pull_request
+    status:
+    - failure
+    - success
+
+trigger:
+  branch:
+  - master
+  event:
+  - push
+  - pull_request
+
+...
