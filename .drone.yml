@@ -17,27 +17,9 @@ clone:
   depth: 1
 
 steps:
-- name: build
+- name: run tests
   commands:
-  - cargo build
-#- name: upload
-#  commands:
-#  - |
-#    nix path-info --json -r result* > path-info.json # only local built derivations
-#    # drone-runner-exec-chroot contains character device files
-#    nix shell 'nixpkgs#jq' -c jq -r 'map(select(.ca == null and .signatures == null)) | map(.path) | .[]' < path-info.json > paths
-#    nix shell 'nixpkgs#cachix' -c cachix push --jobs 32 mic92 < paths
-#  environment:
-#    CACHIX_SIGNING_KEY:
-#      from_secret: CACHIX_SIGNING_KEY
-#  when:
-#    event:
-#      exclude:
-#      - pull_request
-#    status:
-#    - failure
-#    - success
-
+  - pytest -s ./tests
 trigger:
   branch:
   - main
@@ -47,6 +29,6 @@ trigger:
 
 ---
 kind: signature
-hmac: 9f14fbe05c2c3092eef7dbd32098ae2306419b2314afa7ee560a0ab3359b6065
+hmac: 0e3b46ca414f8f949406a2cb3a4455d88c84f09ca51a873de9c71b8941d8a2af
 
 ...

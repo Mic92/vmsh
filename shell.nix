@@ -27,6 +27,7 @@ pkgs.mkShell {
     (pkgs.python3.withPackages(ps: [ps.pytest ps.black ps.flake8 ps.mypy]))
     pkgs.tmux # needed for integration test
   ] ++ vmsh.nativeBuildInputs;
+  buildInputs = vmsh.buildInputs;
   shellHook = ''
     pre-commit install
   '';

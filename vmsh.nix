@@ -1,6 +1,6 @@
 { naersk, pkgs, bcc ? pkgs.linuxPackages.bcc }:
 
 naersk.buildPackage {
-  nativeBuildInputs = [ pkgs.linuxPackages.bcc ];
+  buildInputs = [ pkgs.linuxPackages.bcc ];
   root = ./.;
 }
