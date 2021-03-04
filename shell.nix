@@ -16,7 +16,6 @@ pkgs.mkShell {
     pkgs.rust-analyzer
     pkgs.rustfmt
     pkgs.just
-    pkgs.qemu_kvm
     pkgs.clippy
     pkgs.rustfmt
     pkgs.rustc
@@ -25,6 +24,8 @@ pkgs.mkShell {
     pkgs.pre-commit
     pkgs.git # needed for pre-commit install
     (pkgs.python3.withPackages(ps: [ps.pytest ps.black ps.flake8 ps.mypy]))
+
+    pkgs.qemu_kvm
     pkgs.tmux # needed for integration test
   ] ++ vmsh.nativeBuildInputs;
   buildInputs = vmsh.buildInputs;
