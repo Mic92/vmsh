@@ -13,6 +13,7 @@ pkgs.mkShell {
   nativeBuildInputs = [
     pkgs.rustc
     pkgs.cargo
+    pkgs.tmux # needed for integration test
     (pkgs.python3.withPackages(ps: [ ps.pytest ]))
   ] ++ vmsh.nativeBuildInputs;
   buildInputs = vmsh.buildInputs;
