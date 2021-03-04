@@ -20,23 +20,23 @@ steps:
 - name: build
   commands:
   - cargo build
-- name: upload
-  commands:
-  - |
-    nix path-info --json -r result* > path-info.json # only local built derivations
-    # drone-runner-exec-chroot contains character device files
-    nix shell 'nixpkgs#jq' -c jq -r 'map(select(.ca == null and .signatures == null)) | map(.path) | .[]' < path-info.json > paths
-    nix shell 'nixpkgs#cachix' -c cachix push --jobs 32 mic92 < paths
-  environment:
-    CACHIX_SIGNING_KEY:
-      from_secret: CACHIX_SIGNING_KEY
-  when:
-    event:
-      exclude:
-      - pull_request
-    status:
-    - failure
-    - success
+#- name: upload
+#  commands:
+#  - |
+#    nix path-info --json -r result* > path-info.json # only local built derivations
+#    # drone-runner-exec-chroot contains character device files
+#    nix shell 'nixpkgs#jq' -c jq -r 'map(select(.ca == null and .signatures == null)) | map(.path) | .[]' < path-info.json > paths
+#    nix shell 'nixpkgs#cachix' -c cachix push --jobs 32 mic92 < paths
+#  environment:
+#    CACHIX_SIGNING_KEY:
+#      from_secret: CACHIX_SIGNING_KEY
+#  when:
+#    event:
+#      exclude:
+#      - pull_request
+#    status:
+#    - failure
+#    - success
 
 trigger:
   branch:
@@ -47,6 +47,6 @@ trigger:
 
 ---
 kind: signature
-hmac: 229c77ec682dce234df6b93b669d436cd1ae899c40d9b96cb59929cdb7fca6c1
+hmac: 9f14fbe05c2c3092eef7dbd32098ae2306419b2314afa7ee560a0ab3359b6065
 
 ...
