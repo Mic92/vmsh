@@ -40,13 +40,13 @@ steps:
 
 trigger:
   branch:
-  - master
+  - main
   event:
   - push
   - pull_request
 
 ---
 kind: signature
-hmac: 52fe71d9f1271c6114cdd23401be3d9d9f7dc3f0f01ccc666e694c4b10e14a1e
+hmac: 229c77ec682dce234df6b93b669d436cd1ae899c40d9b96cb59929cdb7fca6c1
 
 ...

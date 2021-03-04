@@ -35,6 +35,11 @@ configure-linux: clone-linux
     {{kernel_fhs}} "yes \n | scripts/config --set-val DEBUG_DRIVER y"
   fi
 
+sign-drone:
+  DRONE_SERVER=https://drone.thalheim.io \
+  DRONE_TOKEN=$(cat $HOME/.secret/drone-token) \
+    nix-shell -p drone-cli --run 'drone sign Mic92/vmsh --save'
+
 build-linux-shell:
   nix-shell {{invocation_directory()}}/nix/fhs-shell.nix
 
