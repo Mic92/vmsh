@@ -19,7 +19,7 @@ clone:
 steps:
 - name: run tests
   commands:
-  - pytest -s ./tests
+  - nix-shell ./ci.nix --run 'pytest -s ./tests'
 trigger:
   branch:
   - main
@@ -29,6 +29,6 @@ trigger:
 
 ---
 kind: signature
-hmac: 0e3b46ca414f8f949406a2cb3a4455d88c84f09ca51a873de9c71b8941d8a2af
+hmac: 2e94c7008120a63c43aff741d60969b44d46f74db0f65bb82fde6ddaee261bf5
 
 ...
