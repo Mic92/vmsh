@@ -18,6 +18,10 @@ fmt:
   black tests
   cargo fmt
 
+test:
+  cargo test
+  pytest -s tests
+
 clone-linux:
   [[ -d {{linux_dir}} ]] || \
     git clone https://github.com/torvalds/linux {{linux_dir}}
