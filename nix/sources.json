@@ -41,10 +41,10 @@
         "homepage": "",
         "owner": "Mic92",
         "repo": "not-os",
-        "rev": "aced8caac92fc64186b280558b0f8d099ca792be",
-        "sha256": "12saadbsh9h2bqsj7x3n36dhjf45863cmz7s0g9n9l4819l4bzwr",
+        "rev": "86a1076f5db775165a522d4534c36c2559c2653f",
+        "sha256": "11bhqs1lnvxgymrywf7wrs2mql5d8bqg6rz4liwdgkyp830vlrhl",
         "type": "tarball",
-        "url": "https://github.com/Mic92/not-os/archive/aced8caac92fc64186b280558b0f8d099ca792be.tar.gz",
+        "url": "https://github.com/Mic92/not-os/archive/86a1076f5db775165a522d4534c36c2559c2653f.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     }
 }
