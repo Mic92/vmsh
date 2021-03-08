@@ -1,10 +1,10 @@
 use std::process::Command;
 
-use libc::{pid_t, syscall, SYS_gettid};
+use libc::gettid;
 
 #[allow(dead_code)]
 pub fn gdb_break() {
-    let tid = unsafe { syscall(SYS_gettid) as pid_t }.to_string();
+    let tid = unsafe { gettid() }.to_string();
 
     println!("GDB PROBE HIT, WAITING");
     // 1. finish: wait4
