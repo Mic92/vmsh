@@ -126,9 +126,9 @@ dependencies = [
 
 [[package]]
 name = "kvm-bindings"
-version = "0.3.0"
+version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8f1c07667561c3d12d77342baf28ca5d0f8c3ea2160778485640ec84a4571da2"
+checksum = "4e9742810f4cb95388955853c032cd50415d18834357f67b7b299fc28217cd3d"
 
 [[package]]
 name = "libc"
