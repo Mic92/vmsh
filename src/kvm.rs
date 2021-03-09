@@ -23,7 +23,7 @@ impl<'a> Tracee<'a> {
     //    self.proc
     //        .ioctl(self.hypervisor.vcpus[cpu].fd_num, request, arg)
     //}
-    pub fn check_extension(self, cap: c_int) -> Result<c_int> {
+    pub fn check_extension(&self, cap: c_int) -> Result<c_int> {
         self.vm_ioctl(KVM_CHECK_EXTENSION(), cap)
     }
 }
