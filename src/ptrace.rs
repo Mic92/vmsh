@@ -76,14 +76,12 @@ impl Thread {
         ))
     }
 
-    pub fn write(&self, addr: AddressType, data: *mut c_void) -> Result<()> {
-        unsafe {
-            try_with!(
-                ptrace::write(self.tid, addr, data),
-                "cannot write with ptrace"
-            );
-            Ok(())
-        }
+    pub unsafe fn write(&self, addr: AddressType, data: *mut c_void) -> Result<()> {
+        try_with!(
+            ptrace::write(self.tid, addr, data),
+            "cannot write with ptrace"
+        );
+        Ok(())
     }
 }
 

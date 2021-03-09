@@ -57,7 +57,7 @@ pub fn attach(pid: Pid) -> Result<Process> {
         "cannot get text for main process"
     );
     try_with!(
-        threads[process_idx].write(ip as *mut c_void, cpu::SYSCALL_TEXT as *mut c_void),
+        unsafe { threads[process_idx].write(ip as *mut c_void, cpu::SYSCALL_TEXT as *mut c_void) },
         "cannot patch syscall instruction"
     );
 
@@ -196,10 +196,12 @@ impl Process {
 
 impl Drop for Process {
     fn drop(&mut self) {
-        let _ = self.main_thread().write(
-            self.saved_regs.ip() as *mut c_void,
-            self.saved_text as *mut c_void,
-        );
+        let _ = unsafe {
+            self.main_thread().write(
+                self.saved_regs.ip() as *mut c_void,
+                self.saved_text as *mut c_void,
+            )
+        };
         let _ = self.main_thread().setregs(&self.saved_regs);
     }
 }

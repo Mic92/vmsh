@@ -190,7 +190,9 @@ def ensure_debugfs_access() -> Iterator[None]:
         yield
 
 
-def run_vmsh_command(args: List[str]) -> None:
+# cargo_options: additional args to pass to cargo. Example: "--bin test_ioctls"
+# to run a non-default binary
+def run_vmsh_command(args: List[str], cargo_options: List[str] = []) -> None:
     if not os.path.isdir("/sys/module/kheaders"):
         subprocess.run(["sudo", "modprobe", "kheaders"])
     uid = os.getuid()
@@ -200,8 +202,10 @@ def run_vmsh_command(args: List[str]) -> None:
         cargoArgs = [
             "cargo",
             "run",
-            "--",
-        ] + args
+        ]
+        cargoArgs += cargo_options
+        cargoArgs += ["--"]
+        cargoArgs += args
         cargoCmd = " ".join(map(quote, cargoArgs))
 
         cmd = [
@@ -228,3 +232,9 @@ def test_coredump(helpers: conftest.Helpers) -> None:
     image = rootfs_image(helpers.root().joinpath("../nix/not-os-image.nix"))
     with spawn_qemu(image) as vm:
         run_vmsh_command(["coredump", str(vm.pid)])
+
+
+def test_ioctl_injection(helpers: conftest.Helpers) -> None:
+    image = rootfs_image(helpers.root().joinpath("../nix/not-os-image.nix"))
+    with spawn_qemu(image) as vm:
+        run_vmsh_command([str(vm.pid)], cargo_options=["--bin", "test_ioctls"])
