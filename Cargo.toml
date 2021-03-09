@@ -6,6 +6,7 @@ authors = [
   "Pogobanane <aenderboy@gmx.de>"
 ]
 edition = "2018"
+default-run = "vmsh"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [dev-dependencies]

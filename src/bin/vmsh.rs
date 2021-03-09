@@ -1,22 +1,7 @@
-mod attach;
-mod coredump;
-mod cpu;
-mod device;
-mod elf;
-mod gdb_break;
-mod inject_syscall;
-mod inspect;
-mod kvm;
-mod kvm_ioctls;
-mod kvm_memslots;
-mod page_math;
-mod proc;
-mod ptrace;
-mod result;
-
-use crate::inspect::InspectOptions;
 use clap::{crate_authors, crate_version, value_t, App, AppSettings, Arg, ArgMatches, SubCommand};
 use nix::unistd::Pid;
+use vmsh::inspect::InspectOptions;
+use vmsh::{attach, coredump, inspect};
 
 fn pid_arg(index: u64) -> Arg<'static, 'static> {
     Arg::with_name("pid")
