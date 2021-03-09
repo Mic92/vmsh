@@ -70,7 +70,7 @@ coredump-qemu:
   cargo run -- coredump "$(pidof qemu-system-x86_64)"
 
 trace-qemu:
-  perf trace "$(pidof qemu-system-x86_64)"
+  perf trace -p "$(pidof qemu-system-x86_64)"
 
 capsh:
   @ if [ -n "${IN_CAPSH:-}" ]; then \
