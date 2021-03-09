@@ -1,7 +1,7 @@
 use libc::{c_int, c_long, c_ulong, c_void, pid_t};
 use libc::{SYS_getpid, SYS_ioctl};
-use nix::sys::signal::Signal;
 use nix::sys::wait::{waitpid, WaitStatus};
+use nix::sys::{signal::Signal, wait::WaitPidFlag};
 use nix::unistd::Pid;
 use simple_error::bail;
 use simple_error::try_with;
@@ -40,13 +40,16 @@ pub fn attach(pid: Pid) -> Result<Process> {
             if tid == pid {
                 process_idx = i;
             }
-            ptrace::attach(tid)
+            let thread = ptrace::attach(tid);
+            try_with!(waitpid(tid, Some(WaitPidFlag::WSTOPPED)), "waitpid failed");
+            thread
         })
         .collect::<Result<Vec<_>>>()?;
 
     let saved_regs = try_with!(
         threads[process_idx].getregs(),
-        "cannot get registers for main process"
+        "cannot get registers for main process ({})",
+        threads[process_idx].tid
     );
     let ip = saved_regs.ip();
     let saved_text = try_with!(
