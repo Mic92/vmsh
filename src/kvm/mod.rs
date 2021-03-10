@@ -3,6 +3,7 @@ use nix::sys::uio::{process_vm_readv, process_vm_writev, IoVec, RemoteIoVec};
 use nix::unistd::Pid;
 use simple_error::{bail, try_with};
 use std::ffi::OsStr;
+use std::mem::MaybeUninit;
 use std::os::unix::prelude::RawFd;
 use std::{mem::size_of, os::unix::prelude::AsRawFd};
 
@@ -169,9 +170,11 @@ impl Hypervisor {
     /// read from a virtual addr of the hypervisor
     pub fn read<T: Sized + Copy>(&self, addr: *const c_void) -> Result<T> {
         let len = size_of::<T>();
-        let mut t_bytes: Vec<u8> = vec![0; len];
+        let mut t_mem = MaybeUninit::<T>::uninit();
+        let mut t_slice =
+            unsafe { std::slice::from_raw_parts_mut(t_mem.as_mut_ptr() as *mut u8, len) };
 
-        let local_iovec = vec![IoVec::from_mut_slice(t_bytes.as_mut_slice())];
+        let local_iovec = vec![IoVec::from_mut_slice(t_slice)];
         let remote_iovec = vec![RemoteIoVec {
             base: addr as usize,
             len,
@@ -189,18 +192,15 @@ impl Hypervisor {
             )
         }
 
-        let t_ptr: *const u8 = t_bytes.as_ptr();
-        // t_bytes (and thus the [u8] pointed to by t_ptr) is of size len. Therefore it is safe to
-        // copy the bytes to t which has the same size len.
-        let t: T = unsafe { *(t_ptr as *const T) };
-        return Ok(t);
+        let t: T = unsafe { t_mem.assume_init() };
+        Ok(t)
     }
 
     /// write to a virtual addr of the hypervisor
     pub fn write<T: Sized + Copy>(&self, addr: *mut c_void, val: &T) -> Result<()> {
         let len = size_of::<T>();
         // safe, because we won't need t_bytes for long
-        let mut t_bytes = unsafe { any_as_bytes(val) };
+        let t_bytes = unsafe { any_as_bytes(val) };
 
         let local_iovec = vec![IoVec::from_slice(t_bytes)];
         let remote_iovec = vec![RemoteIoVec {
