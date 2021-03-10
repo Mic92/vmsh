@@ -3,7 +3,6 @@ mod virtio;
 use crate::device::virtio::block::{self, BlockArgs};
 use crate::device::virtio::{CommonArgs, MmioConfig};
 use crate::kvm::Hypervisor;
-use crate::kvm_memslots;
 use crate::proc::Mapping;
 use crate::result::Result;
 use event_manager::{EventManager, MutEventSubscriber};
@@ -71,7 +70,8 @@ pub struct Device {
 
 impl Device {
     pub fn new(vmm: &Arc<Hypervisor>) -> Result<Device> {
-        let guest_memory = try_with!(kvm_memslots::get_maps(vmm), "cannot get guests memory");
+        let tracee = try_with!(vmm.attach(), "cannot attach");
+        let guest_memory = try_with!(tracee.get_maps(), "cannot get guests memory");
         let mem: Arc<GuestMemoryMmap> = Arc::new(try_with!(
             convert(&guest_memory),
             "cannot convert Mapping to GuestMemoryMmap"

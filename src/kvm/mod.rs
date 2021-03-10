@@ -1,4 +1,5 @@
-use libc::{c_int, c_ulong};
+use libc::{c_int, c_ulong, c_void};
+use nix::sys::uio::{process_vm_readv, process_vm_writev, IoVec, RemoteIoVec};
 use nix::unistd::Pid;
 use simple_error::{bail, try_with};
 use std::ffi::OsStr;
@@ -20,6 +21,7 @@ pub struct Tracee<'a> {
     proc: inject_syscall::Process,
 }
 
+/// Safe wrapper for unsafe inject_syscall::Process operations.
 impl<'a> Tracee<'a> {
     fn vm_ioctl(&self, request: c_ulong, arg: c_int) -> Result<c_int> {
         self.proc.ioctl(self.hypervisor.vm_fd, request, arg)
@@ -28,6 +30,21 @@ impl<'a> Tracee<'a> {
     //    self.proc
     //        .ioctl(self.hypervisor.vcpus[cpu].fd_num, request, arg)
     //}
+
+    /// Make the kernel allocate anonymous memory (anywhere he likes, not bound to a file
+    /// descriptor). This is not fully POSIX compliant, but works on linux.
+    ///
+    /// length in bytes.
+    pub fn malloc(&self, length: libc::size_t) -> Result<*mut c_void> {
+        let addr = libc::AT_NULL as *mut c_void; // make kernel choose location for us
+        let length = 4 as libc::size_t; // in bytes
+        let prot = libc::PROT_READ | libc::PROT_WRITE;
+        let flags = libc::MAP_SHARED | libc::MAP_ANONYMOUS;
+        let fd = 0 as RawFd; // ignored because of MAP_ANONYMOUS
+        let offset = 0 as libc::off_t;
+        self.proc.mmap(addr, length, prot, flags, fd, offset)
+    }
+
     pub fn check_extension(&self, cap: c_int) -> Result<c_int> {
         self.vm_ioctl(KVM_CHECK_EXTENSION(), cap)
     }
@@ -98,6 +115,59 @@ impl Hypervisor {
             hypervisor: self,
             proc,
         })
+    }
+
+    /// read from the virtual addr of the hypervisor
+    pub fn read_u32(&self, addr: usize) -> Result<u32> {
+        const LEN: usize = 4;
+
+        let mut buf = [0u8; LEN];
+        let local_iovec = vec![IoVec::from_mut_slice(&mut buf)];
+        let remote_iovec = vec![RemoteIoVec {
+            base: addr,
+            len: LEN,
+        }];
+
+        let f = try_with!(
+            process_vm_readv(self.pid, local_iovec.as_slice(), remote_iovec.as_slice()),
+            "cannot read hypervisor memory"
+        );
+        if f != LEN {
+            bail!(
+                "process_vm_readv read {} bytes when {} were expected",
+                f,
+                LEN
+            )
+        }
+
+        let result: u32 = u32::from_ne_bytes(buf);
+        return Ok(result);
+    }
+
+    /// write to the virtual addr of the hypervisor
+    pub fn write_u32(&self, addr: usize, val: u32) -> Result<()> {
+        const LEN: usize = 4;
+        let mut buf = [0u8; LEN];
+        buf = val.to_ne_bytes();
+        let local_iovec = vec![IoVec::from_slice(&buf)];
+        let remote_iovec = vec![RemoteIoVec {
+            base: addr,
+            len: LEN,
+        }];
+
+        let f = try_with!(
+            process_vm_writev(self.pid, local_iovec.as_slice(), remote_iovec.as_slice()),
+            "cannot read hypervisor memory"
+        );
+        if f != LEN {
+            bail!(
+                "process_vm_writev wrote {} bytes when {} were expected",
+                f,
+                LEN
+            )
+        }
+
+        Ok(())
     }
 }
 

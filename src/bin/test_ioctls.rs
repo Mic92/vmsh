@@ -1,4 +1,4 @@
-use clap::{value_t, App, Arg};
+use clap::{value_t, App, Arg, SubCommand};
 use nix::unistd::Pid;
 use simple_error::try_with;
 use vmsh::result::Result;
@@ -23,16 +23,48 @@ fn inject(pid: Pid) -> Result<()> {
     Ok(())
 }
 
+fn mmap(pid: Pid) -> Result<()> {
+    let vm = try_with!(
+        kvm::get_hypervisor(pid),
+        "cannot get vms for process {}",
+        pid
+    );
+
+    let tracee = vm.attach()?;
+    let addr = try_with!(tracee.malloc(4), "malloc failed");
+    assert_eq!(vm.read_u32(addr as usize)?, 0);
+    vm.write_u32(addr as usize, 0xdeadbeef);
+    assert_eq!(vm.read_u32(addr as usize)?, 0xdeadbeef);
+
+    Ok(())
+}
+
+fn subtest(name: &str) -> App {
+    SubCommand::with_name(name).arg(Arg::with_name("pid").required(true).index(1))
+}
+
 fn main() {
     let app = App::new("test_ioctls")
         .about("Something between integration and unit test to be used by pytest.")
-        .arg(Arg::with_name("pid").required(true).index(1));
+        .subcommand(subtest("mmap"))
+        .subcommand(subtest("inject"));
+
     let matches = app.get_matches();
-    let pid = value_t!(matches, "pid", i32).unwrap_or_else(|e| e.exit());
+    let subcommand_name = matches.subcommand_name().expect("subcommad required");
+    let subcommand_matches = matches.subcommand_matches(subcommand_name).expect("foo");
+    let pid = value_t!(subcommand_matches, "pid", i32).unwrap_or_else(|e| e.exit());
     let pid = Pid::from_raw(pid);
 
-    if let Err(err) = inject(pid) {
+    let result = match subcommand_name {
+        "mmap" => mmap(pid),
+        "inject" => inject(pid),
+        _ => std::process::exit(2),
+    };
+
+    if let Err(err) = result {
         eprintln!("{}", err);
         std::process::exit(1);
+    } else {
+        println!("ok");
     }
 }

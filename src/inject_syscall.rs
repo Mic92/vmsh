@@ -1,5 +1,5 @@
-use libc::{c_int, c_long, c_ulong, c_void, pid_t};
-use libc::{SYS_getpid, SYS_ioctl};
+use libc::{c_int, c_long, c_ulong, c_void, off_t, pid_t, size_t};
+use libc::{SYS_getpid, SYS_ioctl, SYS_mmap};
 use nix::sys::wait::{waitpid, WaitStatus};
 use nix::sys::{signal::Signal, wait::WaitPidFlag};
 use nix::unistd::Pid;
@@ -141,6 +141,42 @@ impl Process {
         let args = syscall_args!(self.saved_regs, SYS_getpid as c_ulong);
 
         self.syscall(&args).map(|v| v as c_int)
+    }
+
+    pub fn mmap(
+        &self,
+        addr: *mut c_void,
+        length: size_t,
+        prot: c_int,
+        flags: c_int,
+        fd: RawFd,
+        offset: off_t,
+    ) -> Result<*mut c_void> {
+        let args = syscall_args!(
+            self.saved_regs,
+            SYS_mmap as c_ulong,
+            addr,
+            length,
+            prot,
+            flags,
+            fd,
+            offset
+        );
+
+        self.syscall(&args).map(|v| v as *mut c_void)
+    }
+
+    pub fn munmap(&self) -> Result<()> {
+        // TODO
+        unimplemented!();
+    }
+
+    pub fn open(&self) -> Result<c_int> {
+        unimplemented!();
+    }
+
+    pub fn write(&self) -> Result<()> {
+        unimplemented!();
     }
 
     fn syscall(&self, regs: &Regs) -> Result<isize> {
