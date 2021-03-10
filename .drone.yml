@@ -21,14 +21,11 @@ steps:
   commands:
   - nix-shell ./ci.nix --run 'pytest -s ./tests'
 trigger:
-  branch:
-  - main
   event:
   - push
-  - pull_request
 
 ---
 kind: signature
-hmac: 2e94c7008120a63c43aff741d60969b44d46f74db0f65bb82fde6ddaee261bf5
+hmac: f76f9042f2f43346e512039664b2650bf4fbb38468f8b376cad80dff9b514542
 
 ...
