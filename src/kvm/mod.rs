@@ -1,3 +1,4 @@
+use kvm_bindings as kvmb;
 use libc::{c_int, c_ulong, c_void};
 use nix::sys::uio::{process_vm_readv, process_vm_writev, IoVec, RemoteIoVec};
 use nix::unistd::Pid;
@@ -6,7 +7,6 @@ use std::ffi::OsStr;
 use std::mem::MaybeUninit;
 use std::os::unix::prelude::RawFd;
 use std::{mem::size_of, os::unix::prelude::AsRawFd};
-use kvm_bindings as kvmb;
 
 mod cpus;
 mod ioctls;
@@ -86,7 +86,6 @@ impl<'a> Tracee<'a> {
     /// returns void pointer to the allocated virtual memory address of the hypervisor.
     pub fn malloc(&self, length: libc::size_t) -> Result<*mut c_void> {
         let addr = libc::AT_NULL as *mut c_void; // make kernel choose location for us
-        let length = 4 as libc::size_t; // in bytes
         let prot = libc::PROT_READ | libc::PROT_WRITE;
         let flags = libc::MAP_SHARED | libc::MAP_ANONYMOUS;
         let fd = 0 as RawFd; // ignored because of MAP_ANONYMOUS
@@ -94,7 +93,7 @@ impl<'a> Tracee<'a> {
         self.proc.mmap(addr, length, prot, flags, fd, offset)
     }
 
-    pub fn free(&self, addr: *mut c_void, length: libc::size_t) -> Result<()> {
+    pub fn free(&self, _addr: *mut c_void, _length: libc::size_t) -> Result<()> {
         // TODO
         unimplemented!()
     }
@@ -179,8 +178,7 @@ impl Hypervisor {
     pub fn read<T: Sized + Copy>(&self, addr: *const c_void) -> Result<T> {
         let len = size_of::<T>();
         let mut t_mem = MaybeUninit::<T>::uninit();
-        let mut t_slice =
-            unsafe { std::slice::from_raw_parts_mut(t_mem.as_mut_ptr() as *mut u8, len) };
+        let t_slice = unsafe { std::slice::from_raw_parts_mut(t_mem.as_mut_ptr() as *mut u8, len) };
 
         let local_iovec = vec![IoVec::from_mut_slice(t_slice)];
         let remote_iovec = vec![RemoteIoVec {
