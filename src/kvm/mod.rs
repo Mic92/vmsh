@@ -9,7 +9,7 @@ use std::mem::MaybeUninit;
 use std::os::unix::prelude::RawFd;
 
 mod cpus;
-mod ioctls;
+pub mod ioctls;
 mod memslots;
 
 use crate::cpu::Regs;
@@ -48,27 +48,22 @@ impl<'a> Tracee<'a> {
     /// The caller should ensure to pass a valid file descriptor and have the
     /// return value checked. Also he may take care to use the correct argument type belonging to
     /// the request type.
-    pub unsafe fn vm_ioctl_with_ref<T: Sized + Copy>(
-        self,
-        request: c_ulong,
-        arg: &T,
-    ) -> Result<c_int> {
-        let struct_arg: *mut c_void =
-            try_with!(self.mmap(size_of::<T>()), "cannot allocate memory");
+    pub fn vm_ioctl_with_ref<T: Sized + Copy>(&self, request: c_ulong, arg: &T) -> Result<c_int> {
+        let arg_ptr: *mut c_void = try_with!(self.mmap(size_of::<T>()), "cannot allocate memory");
 
         try_with!(
-            self.hypervisor.write(struct_arg, arg),
+            self.hypervisor.write(arg_ptr, arg),
             "cannot write ioctl arg struct to hv"
         );
 
-        let ioeventfd: kvmb::kvm_ioeventfd = try_with!(self.hypervisor.read(struct_arg), "foobar");
+        let ioeventfd: kvmb::kvm_ioeventfd = try_with!(self.hypervisor.read(arg_ptr), "foobar");
         println!(
             "arg {:?}, {:?}, {:?}",
             ioeventfd.len, ioeventfd.addr, ioeventfd.fd
         );
 
-        println!("arg_ptr {:?}", struct_arg);
-        let ret = self.vm_ioctl(request, struct_arg as c_ulong);
+        println!("arg_ptr {:?}", arg_ptr);
+        let ret = self.vm_ioctl(request, arg_ptr as c_ulong);
 
         // TODO
         //try_with!(
