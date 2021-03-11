@@ -124,7 +124,7 @@ macro_rules! syscall_args {
 }
 
 impl Process {
-    pub fn ioctl(&self, fd: RawFd, request: c_ulong, arg: c_int) -> Result<c_int> {
+    pub fn ioctl(&self, fd: RawFd, request: c_ulong, arg: c_ulong) -> Result<c_int> {
         let args = syscall_args!(
             self.saved_regs,
             SYS_ioctl as c_ulong,

@@ -6,6 +6,7 @@ use std::ffi::OsStr;
 use std::mem::MaybeUninit;
 use std::os::unix::prelude::RawFd;
 use std::{mem::size_of, os::unix::prelude::AsRawFd};
+use kvm_bindings as kvmb;
 
 mod cpus;
 mod ioctls;
@@ -25,7 +26,7 @@ pub struct Tracee<'a> {
 
 /// Safe wrapper for unsafe inject_syscall::Process operations.
 impl<'a> Tracee<'a> {
-    fn vm_ioctl(&self, request: c_ulong, arg: c_int) -> Result<c_int> {
+    fn vm_ioctl(&self, request: c_ulong, arg: c_ulong) -> Result<c_int> {
         self.proc.ioctl(self.hypervisor.vm_fd, request, arg)
     }
     //fn cpu_ioctl(&self, cpu: usize, request: c_ulong, arg: c_int) -> Result<c_int> {
@@ -60,13 +61,20 @@ impl<'a> Tracee<'a> {
             "cannot write ioctl arg struct to hv"
         );
 
-        let arg = arg as *const T as *const c_void; // arg actually is a *const c_void
-        let ret = self.vm_ioctl(request, arg as c_int); // but self.proc.ioctl wants a c_int
-
-        try_with!(
-            self.free(struct_arg, size_of::<T>()),
-            "cannot free memory allocated for ioctl request"
+        let ioeventfd: kvmb::kvm_ioeventfd = try_with!(self.hypervisor.read(struct_arg), "foobar");
+        println!(
+            "arg {:?}, {:?}, {:?}",
+            ioeventfd.len, ioeventfd.addr, ioeventfd.fd
         );
+
+        println!("arg_ptr {:?}", struct_arg);
+        let ret = self.vm_ioctl(request, struct_arg as c_ulong);
+
+        // TODO
+        //try_with!(
+        //self.free(struct_arg, size_of::<T>()),
+        //"cannot free memory allocated for ioctl request"
+        //);
 
         ret
     }
@@ -92,7 +100,7 @@ impl<'a> Tracee<'a> {
     }
 
     pub fn check_extension(&self, cap: c_int) -> Result<c_int> {
-        self.vm_ioctl(KVM_CHECK_EXTENSION(), cap)
+        self.vm_ioctl(KVM_CHECK_EXTENSION(), cap as c_ulong)
     }
 
     pub fn pid(&self) -> Pid {
