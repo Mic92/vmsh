@@ -16,7 +16,7 @@ pub fn inspect(opts: &InspectOptions) -> Result<()> {
         "cannot get vms for process {}",
         opts.pid
     );
-    for map in vm.get_maps()? {
+    for map in vm.attach()?.get_maps()? {
         println!(
             "vm mem: 0x{:x} -> 0x{:x} (physical: 0x{:x}, flags: {:?} | {:?})",
             map.start, map.end, map.phys_addr, map.prot_flags, map.map_flags,

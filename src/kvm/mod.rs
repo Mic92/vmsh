@@ -4,9 +4,14 @@ use simple_error::{bail, try_with};
 use std::ffi::OsStr;
 use std::os::unix::prelude::RawFd;
 
+mod cpus;
+mod ioctls;
+mod memslots;
+
+use crate::cpu::Regs;
 use crate::inject_syscall;
-use crate::kvm_ioctls::KVM_CHECK_EXTENSION;
-use crate::kvm_memslots::get_maps;
+use crate::kvm::ioctls::KVM_CHECK_EXTENSION;
+use crate::kvm::memslots::get_maps;
 use crate::proc::{openpid, Mapping, PidHandle};
 use crate::result::Result;
 
@@ -25,6 +30,49 @@ impl<'a> Tracee<'a> {
     //}
     pub fn check_extension(&self, cap: c_int) -> Result<c_int> {
         self.vm_ioctl(KVM_CHECK_EXTENSION(), cap)
+    }
+
+    pub fn pid(&self) -> Pid {
+        self.hypervisor.pid
+    }
+    pub fn get_maps(&self) -> Result<Vec<Mapping>> {
+        get_maps(self)
+    }
+    pub fn mappings(&self) -> &[Mapping] {
+        self.hypervisor.mappings.as_slice()
+    }
+
+    pub fn get_regs(&self, vcpu: &VCPU) -> Result<Regs> {
+        let regs = Regs {
+            r15: 0,
+            r14: 0,
+            r13: 0,
+            r12: 0,
+            rbp: 0,
+            rbx: 0,
+            r11: 0,
+            r10: 0,
+            r9: 0,
+            r8: 0,
+            rax: 0,
+            rcx: 0,
+            rdx: 0,
+            rsi: 0,
+            rdi: 0,
+            orig_rax: 0,
+            rip: 0,
+            cs: 0,
+            eflags: 0,
+            rsp: 0,
+            ss: 0,
+            fs_base: 0,
+            gs_base: 0,
+            ds: 0,
+            es: 0,
+            fs: 0,
+            gs: 0,
+        };
+        Ok(regs)
     }
 }
 
@@ -50,9 +98,6 @@ impl Hypervisor {
             hypervisor: self,
             proc,
         })
-    }
-    pub fn get_maps(&self) -> Result<Vec<Mapping>> {
-        get_maps(self)
     }
 }
 
