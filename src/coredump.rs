@@ -8,6 +8,7 @@ use nix::{
 };
 use simple_error::try_with;
 use std::fs::OpenOptions;
+use std::path::PathBuf;
 use std::{fs::File, io::Write, ptr, slice::from_raw_parts_mut};
 use std::{mem::size_of, os::unix::prelude::AsRawFd};
 
@@ -15,10 +16,14 @@ use crate::elf::{
     Ehdr, Elf_Addr, Elf_Half, Elf_Off, Elf_Word, Phdr, Shdr, ELFARCH, ELFCLASS, ELFDATA2, ELFMAG0,
     ELFMAG1, ELFMAG2, ELFMAG3, ET_CORE, EV_CURRENT, PF_W, PF_X, SHN_UNDEF,
 };
-use crate::inspect::InspectOptions;
 use crate::page_math::{page_align, page_size};
 use crate::result::Result;
 use crate::{kvm, proc::Mapping};
+
+pub struct CoredumpOptions {
+    pub pid: Pid,
+    pub path: PathBuf,
+}
 
 fn p_flags(f: &ProtFlags) -> Elf_Word {
     (if f.contains(ProtFlags::PROT_READ) {
@@ -130,17 +135,16 @@ fn write_corefile(pid: Pid, core_file: &mut File, maps: &[Mapping]) -> Result<()
     Ok(())
 }
 
-pub fn generate_coredump(opts: &InspectOptions) -> Result<()> {
-    let core_path = format!("core.{}", opts.pid);
-    println!("Write {}", core_path);
+pub fn generate_coredump(opts: &CoredumpOptions) -> Result<()> {
+    println!("Write {}", opts.path.display());
     let mut core_file = try_with!(
         OpenOptions::new()
             .read(true)
             .write(true)
             .create(true)
-            .open(&core_path),
+            .open(&opts.path),
         "cannot open core_file: {}",
-        &core_path
+        opts.path.display()
     );
     let vm = try_with!(
         kvm::get_hypervisor(opts.pid),
