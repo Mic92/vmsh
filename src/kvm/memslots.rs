@@ -11,7 +11,7 @@ use std::{fmt, ptr};
 
 use crate::proc::{self, Mapping};
 use crate::result::Result;
-use crate::{kvm::Hypervisor, page_math::page_size};
+use crate::{kvm::Tracee, page_math::page_size};
 
 #[derive(Clone, Debug)]
 #[repr(C)]
@@ -105,8 +105,8 @@ fn bpf_prog(pid: Pid) -> Result<BPF> {
     Ok(try_with!(builder_with_cflags.build(), "build failed"))
 }
 
-pub fn get_maps(hv: &Hypervisor) -> Result<Vec<Mapping>> {
-    let mut module = bpf_prog(hv.pid)?;
+pub fn get_maps(tracee: &Tracee) -> Result<Vec<Mapping>> {
+    let mut module = bpf_prog(tracee.pid())?;
     try_with!(
         Kprobe::new()
             .handler("kvm_vm_ioctl")
@@ -127,7 +127,6 @@ pub fn get_maps(hv: &Hypervisor) -> Result<Vec<Mapping>> {
         })
     });
     let mut perf_map = try_with!(builder.build(), "could not install perf event handler");
-    let tracee = hv.attach()?;
     try_with!(tracee.check_extension(0), "cannot query kvm extensions");
 
     perf_map.poll(0);
@@ -138,7 +137,7 @@ pub fn get_maps(hv: &Hypervisor) -> Result<Vec<Mapping>> {
     memslots
         .iter()
         .map(
-            |slot| match proc::find_mapping(&hv.mappings, slot.start()) {
+            |slot| match proc::find_mapping(tracee.mappings(), slot.start()) {
                 Some(mut m) => {
                     m.start = slot.start();
                     m.end = slot.end();
@@ -148,7 +147,7 @@ pub fn get_maps(hv: &Hypervisor) -> Result<Vec<Mapping>> {
                 None => bail!(
                     "No mapping of memslot {} found in hypervisor (/proc/{}/maps)",
                     slot,
-                    hv.pid
+                    tracee.pid()
                 ),
             },
         )

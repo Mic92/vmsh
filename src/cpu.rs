@@ -5,10 +5,19 @@ mod arch {
     #[repr(C)]
     #[derive(Clone)]
     pub struct Regs {
-        regs: [u64; 31],
-        sp: u64,
-        pc: u64,
-        pstate: u64,
+        pub regs: [u64; 31],
+        pub sp: u64,
+        pub pc: u64,
+        pub pstate: u64,
+    }
+
+    #[repr(C)]
+    #[derive(Clone)]
+    #[allow(non_camel_case_types)]
+    pub struct elf_fpregset_t {
+        pub vregs: [u128; 32],
+        pub fpsr: u32,
+        pub fpcr: u32,
     }
 
     impl Regs {
@@ -32,6 +41,7 @@ mod arch {
             self.regs[0]
         }
     }
+
     // $ rasm2  -a arm -b 64 'svc 0'
     pub const SYSCALL_TEXT: u64 = 0x010000D4;
     pub const SYSCALL_SIZE: u64 = 8;
@@ -42,33 +52,50 @@ mod arch {
     #[repr(C)]
     #[derive(Clone)]
     pub struct Regs {
-        r15: u64,
-        r14: u64,
-        r13: u64,
-        r12: u64,
-        rbp: u64,
-        rbx: u64,
-        r11: u64,
-        r10: u64,
-        r9: u64,
-        r8: u64,
-        rax: u64,
-        rcx: u64,
-        rdx: u64,
-        rsi: u64,
-        rdi: u64,
-        orig_rax: u64,
-        rip: u64,
-        cs: u64,
-        eflags: u64,
-        rsp: u64,
-        ss: u64,
-        fs_base: u64,
-        gs_base: u64,
-        ds: u64,
-        es: u64,
-        fs: u64,
-        gs: u64,
+        pub r15: u64,
+        pub r14: u64,
+        pub r13: u64,
+        pub r12: u64,
+        pub rbp: u64,
+        pub rbx: u64,
+        pub r11: u64,
+        pub r10: u64,
+        pub r9: u64,
+        pub r8: u64,
+        pub rax: u64,
+        pub rcx: u64,
+        pub rdx: u64,
+        pub rsi: u64,
+        pub rdi: u64,
+        pub orig_rax: u64,
+        pub rip: u64,
+        pub cs: u64,
+        pub eflags: u64,
+        pub rsp: u64,
+        pub ss: u64,
+        pub fs_base: u64,
+        pub gs_base: u64,
+        pub ds: u64,
+        pub es: u64,
+        pub fs: u64,
+        pub gs: u64,
+    }
+
+    #[repr(C)]
+    #[derive(Clone)]
+    #[allow(non_camel_case_types)]
+    pub struct elf_fpregset_t {
+        pub cwd: u16,
+        pub swd: u16,
+        pub ftw: u16,
+        pub fop: u16,
+        pub rip: u64,
+        pub rdp: u64,
+        pub mxcsr: u32,
+        pub mxcr_mask: u32,
+        pub st_space: [u32; 32],
+        pub xmm_space: [u32; 64],
+        pub padding: [u32; 24],
     }
 
     impl Regs {
