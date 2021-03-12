@@ -55,15 +55,25 @@ nixos-image:
   [[ {{linux_dir}}/nixos.qcow2 -nt nix/sources.json ]] || \
   install -m600 "$(nix-build --no-out-link nix/nixos-image.nix)/nixos.qcow2" {{linux_dir}}/nixos.qcow2
 
+# built image for qemu_nested.sh
+nested-nixos-image:
+  [[ {{linux_dir}}/nixos_nested.qcow2 -nt nix/nixos-image.nix ]] || \
+  [[ {{linux_dir}}/nixos_nested.qcow2 -nt nix/sources.json ]] || \
+  install -m600 "$(nix-build --no-out-link nix/nixos-image.nix)/nixos.qcow2" {{linux_dir}}/nixos_nested.qcow2
+
+# in qemu mount home via: mkdir /mnt && mount -t 9p -o trans=virtio home /mnt
 qemu: build-linux nixos-image
   qemu-system-x86_64 \
     -kernel {{linux_dir}}/arch/x86/boot/bzImage \
     -hda {{linux_dir}}/nixos.qcow2 \
-    -append "root=/dev/sda console=ttyS0" \
+    -append "root=/dev/sda console=ttyS0 nokaslr" \
     -net nic,netdev=user.0,model=virtio \
     -netdev user,id=user.0,hostfwd=tcp::2222-:22 \
     -m 512M \
-    -nographic -enable-kvm
+    -cpu host \
+    -virtfs local,path=/home/okelmann,security_model=none,mount_tag=home \
+    -nographic -enable-kvm \
+    -s
 
 inspect-qemu:
   cargo run -- inspect "$(pidof qemu-system-x86_64)"
