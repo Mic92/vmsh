@@ -15,7 +15,7 @@ use vm_device::resources::ResourceConstraint;
 use vm_memory::guest_memory::GuestAddress;
 use vm_memory::mmap::MmapRegion;
 use vm_memory::GuestMemoryRegion;
-use vm_memory::{FileOffset, GuestMemoryMmap, GuestRegionMmap};
+use vm_memory::{GuestMemoryMmap, GuestRegionMmap};
 use vm_virtio::device::status::RESET;
 
 // Where BIOS/VGA magic would live on a real PC.

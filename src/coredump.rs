@@ -151,7 +151,7 @@ fn write_note_section<T: Sized>(core_file: &mut File, hdr: &Nhdr, payload: &T) -
     Ok(())
 }
 
-fn write_note_sections(core_file: &mut File, regs: &[Regs]) -> Result<()> {
+fn write_note_sections(core_file: &mut File, regs: &[VcpuState]) -> Result<()> {
     try_with!(
         write_note_section(
             core_file,
@@ -262,13 +262,18 @@ pub fn note_size<T>() -> usize {
     size_of::<Nhdr>() + name_size + size_of::<T>()
 }
 
-fn write_corefile(pid: Pid, core_file: &mut File, maps: &[Mapping], regs: &[Regs]) -> Result<()> {
+fn write_corefile(
+    pid: Pid,
+    core_file: &mut File,
+    maps: &[Mapping],
+    vcpus: &[VcpuState],
+) -> Result<()> {
     // +1 == PT_NOTE section
     let ehdr = elf_header((maps.len() + 1) as Elf_Half);
 
     let pt_note_size = note_size::<elf_prpsinfo>()
         + note_size::<core_user>()
-        + regs.len() * (note_size::<elf_prstatus>() + note_size::<elf_fpregset_t>());
+        + vcpus.len() * (note_size::<elf_prstatus>() + note_size::<elf_fpregset_t>());
 
     let metadata_size =
         page_align(size_of::<Ehdr>() + (size_of::<Phdr>() * ehdr.e_phnum as usize + pt_note_size));
@@ -276,7 +281,7 @@ fn write_corefile(pid: Pid, core_file: &mut File, maps: &[Mapping], regs: &[Regs
 
     let mut section_headers = vec![pt_note_header(
         core_size as Elf_Off,
-        (regs.len() * size_of::<Nhdr>()) as u64,
+        (vcpus.len() * size_of::<Nhdr>()) as u64,
     )];
 
     for m in maps {
@@ -304,7 +309,7 @@ fn write_corefile(pid: Pid, core_file: &mut File, maps: &[Mapping], regs: &[Regs
         "cannot write pt note section"
     );
 
-    write_note_sections(core_file, regs)?;
+    write_note_sections(core_file, vcpus)?;
 
     try_with!(core_file.flush(), "cannot flush core file");
 
@@ -315,6 +320,12 @@ fn write_corefile(pid: Pid, core_file: &mut File, maps: &[Mapping], regs: &[Regs
         metadata_size as off_t,
         maps,
     )
+}
+
+struct VcpuState {
+    num: usize,
+    regs: Regs,
+    fregs: elf_fpregset_t,
 }
 
 pub fn generate_coredump(opts: &CoredumpOptions) -> Result<()> {
@@ -335,15 +346,23 @@ pub fn generate_coredump(opts: &CoredumpOptions) -> Result<()> {
     );
     let tracee = vm.attach()?;
     let maps = tracee.get_maps()?;
-    let regs = try_with!(
-        vm.vcpus
-            .iter()
-            .map(|vcpu| tracee.get_regs(vcpu))
-            .collect::<Result<Vec<Regs>>>(),
-        "fail to dump vcpu registers"
-    );
+    let res = vm
+        .vcpus
+        .iter()
+        .enumerate()
+        .map(|(i, vcpu)| {
+            let regs = tracee.get_regs(vcpu)?;
+            let fregs = tracee.get_fregs(vcpu)?;
+            Ok(VcpuState {
+                num: i,
+                regs,
+                fregs,
+            })
+        })
+        .collect::<Result<Vec<VcpuState>>>();
+    let vcpu_states = try_with!(res, "fail to dump vcpu registers");
     try_with!(
-        write_corefile(opts.pid, &mut core_file, &maps, regs.as_slice()),
+        write_corefile(opts.pid, &mut core_file, &maps, vcpu_states.as_slice()),
         "cannot write core file"
     );
     Ok(())
