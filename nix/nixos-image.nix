@@ -3,12 +3,15 @@
 # $ ./run-vm.sh
 { pkgs ? (import (import ../nix/sources.nix).nixpkgs { }) }:
 
-import (pkgs.path + "/nixos/lib/make-disk-image.nix") {
+let
+  keys = map (key: "${builtins.getEnv "HOME"}/.ssh/${key}")
+    ["id_rsa.pub" "id_ecdsa.pub" "id_ed25519.pub"];
+in import (pkgs.path + "/nixos/lib/make-disk-image.nix") {
   inherit pkgs;
   inherit (pkgs) lib;
   config = (import (pkgs.path + "/nixos/lib/eval-config.nix") {
     inherit (pkgs) system;
-    modules = [{
+    modules = [({ lib, ... }: {
       imports = [
         (pkgs.path + "/nixos/modules/profiles/qemu-guest.nix")
       ];
@@ -18,6 +21,10 @@ import (pkgs.path + "/nixos/lib/make-disk-image.nix") {
       boot.loader.initScript.enable = true;
       # login with empty password
       users.extraUsers.root.initialHashedPassword = "";
+      services.openssh.enable = true;
+
+      users.users.root.openssh.authorizedKeys.keyFiles = lib.filter builtins.pathExists keys;
+      networking.firewall.enable = false;
 
       services.getty.helpLine = ''
         Log in as "root" with an empty password.
@@ -27,7 +34,7 @@ import (pkgs.path + "/nixos/lib/make-disk-image.nix") {
       '';
       documentation.doc.enable = false;
       environment.systemPackages = [ pkgs.kmod ];
-    }];
+    })];
   }).config;
   partitionTableType = "none";
   diskSize = 8192;

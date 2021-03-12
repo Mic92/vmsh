@@ -60,6 +60,8 @@ qemu: build-linux nixos-image
     -kernel {{linux_dir}}/arch/x86/boot/bzImage \
     -hda {{linux_dir}}/nixos.qcow2 \
     -append "root=/dev/sda console=ttyS0" \
+    -net nic,netdev=user.0,model=virtio \
+    -netdev user,id=user.0,hostfwd=tcp::2222-:22 \
     -m 512M \
     -nographic -enable-kvm
 
