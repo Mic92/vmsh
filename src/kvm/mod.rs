@@ -1,7 +1,11 @@
-use libc::{c_int, c_ulong};
+use kvm_bindings as kvmb;
+use libc::{c_int, c_ulong, c_void};
+use nix::sys::uio::{process_vm_readv, process_vm_writev, IoVec, RemoteIoVec};
 use nix::unistd::Pid;
 use simple_error::{bail, try_with};
 use std::ffi::OsStr;
+use std::mem::size_of;
+use std::mem::MaybeUninit;
 use std::os::unix::prelude::RawFd;
 
 mod cpus;
@@ -20,16 +24,82 @@ pub struct Tracee<'a> {
     proc: inject_syscall::Process,
 }
 
+/// Safe wrapper for unsafe inject_syscall::Process operations.
 impl<'a> Tracee<'a> {
-    fn vm_ioctl(&self, request: c_ulong, arg: c_int) -> Result<c_int> {
+    fn vm_ioctl(&self, request: c_ulong, arg: c_ulong) -> Result<c_int> {
         self.proc.ioctl(self.hypervisor.vm_fd, request, arg)
     }
     //fn cpu_ioctl(&self, cpu: usize, request: c_ulong, arg: c_int) -> Result<c_int> {
     //    self.proc
     //        .ioctl(self.hypervisor.vcpus[cpu].fd_num, request, arg)
     //}
+
+    // comment borrowed from vmm-sys-util
+    /// Run an [`ioctl`](http://man7.org/linux/man-pages/man2/ioctl.2.html)
+    /// with an immutable reference.
+    ///
+    /// # Arguments
+    ///
+    /// * `req`: a device-dependent request code.
+    /// * `arg`: an immutable reference passed to ioctl.
+    ///
+    /// # Safety
+    ///
+    /// The caller should ensure to pass a valid file descriptor and have the
+    /// return value checked. Also he may take care to use the correct argument type belonging to
+    /// the request type.
+    pub unsafe fn vm_ioctl_with_ref<T: Sized + Copy>(
+        self,
+        request: c_ulong,
+        arg: &T,
+    ) -> Result<c_int> {
+        let struct_arg: *mut c_void =
+            try_with!(self.mmap(size_of::<T>()), "cannot allocate memory");
+
+        try_with!(
+            self.hypervisor.write(struct_arg, arg),
+            "cannot write ioctl arg struct to hv"
+        );
+
+        let ioeventfd: kvmb::kvm_ioeventfd = try_with!(self.hypervisor.read(struct_arg), "foobar");
+        println!(
+            "arg {:?}, {:?}, {:?}",
+            ioeventfd.len, ioeventfd.addr, ioeventfd.fd
+        );
+
+        println!("arg_ptr {:?}", struct_arg);
+        let ret = self.vm_ioctl(request, struct_arg as c_ulong);
+
+        // TODO
+        //try_with!(
+        //self.munmap(struct_arg, size_of::<T>()),
+        //"cannot munmap memory allocated for ioctl request"
+        //);
+
+        ret
+    }
+
+    /// Make the kernel allocate anonymous memory (anywhere he likes, not bound to a file
+    /// descriptor). This is not fully POSIX compliant, but works on linux.
+    ///
+    /// length in bytes.
+    /// returns void pointer to the allocated virtual memory address of the hypervisor.
+    pub fn mmap(&self, length: libc::size_t) -> Result<*mut c_void> {
+        let addr = libc::AT_NULL as *mut c_void; // make kernel choose location for us
+        let prot = libc::PROT_READ | libc::PROT_WRITE;
+        let flags = libc::MAP_SHARED | libc::MAP_ANONYMOUS;
+        let fd = 0 as RawFd; // ignored because of MAP_ANONYMOUS
+        let offset = 0 as libc::off_t;
+        self.proc.mmap(addr, length, prot, flags, fd, offset)
+    }
+
+    pub fn munmap(&self, _addr: *mut c_void, _length: libc::size_t) -> Result<()> {
+        // TODO
+        unimplemented!()
+    }
+
     pub fn check_extension(&self, cap: c_int) -> Result<c_int> {
-        self.vm_ioctl(KVM_CHECK_EXTENSION(), cap)
+        self.vm_ioctl(KVM_CHECK_EXTENSION(), cap as c_ulong)
     }
 
     pub fn pid(&self) -> Pid {
@@ -76,6 +146,10 @@ impl<'a> Tracee<'a> {
     }
 }
 
+pub unsafe fn any_as_bytes<T: Sized>(p: &T) -> &[u8] {
+    std::slice::from_raw_parts((p as *const T) as *const u8, size_of::<T>())
+}
+
 pub struct VCPU {
     pub idx: usize,
     pub fd_num: RawFd,
@@ -98,6 +172,61 @@ impl Hypervisor {
             hypervisor: self,
             proc,
         })
+    }
+
+    /// read from a virtual addr of the hypervisor
+    pub fn read<T: Sized + Copy>(&self, addr: *const c_void) -> Result<T> {
+        let len = size_of::<T>();
+        let mut t_mem = MaybeUninit::<T>::uninit();
+        let t_slice = unsafe { std::slice::from_raw_parts_mut(t_mem.as_mut_ptr() as *mut u8, len) };
+
+        let local_iovec = vec![IoVec::from_mut_slice(t_slice)];
+        let remote_iovec = vec![RemoteIoVec {
+            base: addr as usize,
+            len,
+        }];
+
+        let f = try_with!(
+            process_vm_readv(self.pid, local_iovec.as_slice(), remote_iovec.as_slice()),
+            "cannot read hypervisor memory"
+        );
+        if f != len {
+            bail!(
+                "process_vm_readv read {} bytes when {} were expected",
+                f,
+                len
+            )
+        }
+
+        let t: T = unsafe { t_mem.assume_init() };
+        Ok(t)
+    }
+
+    /// write to a virtual addr of the hypervisor
+    pub fn write<T: Sized + Copy>(&self, addr: *mut c_void, val: &T) -> Result<()> {
+        let len = size_of::<T>();
+        // safe, because we won't need t_bytes for long
+        let t_bytes = unsafe { any_as_bytes(val) };
+
+        let local_iovec = vec![IoVec::from_slice(t_bytes)];
+        let remote_iovec = vec![RemoteIoVec {
+            base: addr as usize,
+            len,
+        }];
+
+        let f = try_with!(
+            process_vm_writev(self.pid, local_iovec.as_slice(), remote_iovec.as_slice()),
+            "cannot write hypervisor memory"
+        );
+        if f != len {
+            bail!(
+                "process_vm_writev written {} bytes when {} were expected",
+                f,
+                len
+            )
+        }
+
+        Ok(())
     }
 }
 

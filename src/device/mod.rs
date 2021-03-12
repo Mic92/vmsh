@@ -14,6 +14,7 @@ use vm_device::device_manager::IoManager;
 use vm_device::resources::ResourceConstraint;
 use vm_memory::guest_memory::GuestAddress;
 use vm_memory::mmap::MmapRegion;
+use vm_memory::GuestMemoryRegion;
 use vm_memory::{FileOffset, GuestMemoryMmap, GuestRegionMmap};
 use vm_virtio::device::status::RESET;
 
@@ -29,15 +30,8 @@ type Block = block::Block<Arc<GuestMemoryMmap>>;
 fn convert(mappings: &[Mapping]) -> Result<GuestMemoryMmap> {
     let mut regions: Vec<Arc<GuestRegionMmap>> = vec![];
 
+    println!("{}", mappings.len());
     for mapping in mappings {
-        let file = try_with!(
-            std::fs::File::open(&mapping.pathname),
-            "cannot open file: {}",
-            &mapping.pathname
-        );
-
-        let _file_offset = FileOffset::new(file, mapping.offset);
-        // TODO i think we need Some(file_offset) in mmap_region
         // TODO need reason for why this is safe. ("a smart human wrote it")
         let mmap_region = try_with!(
             unsafe {
@@ -59,6 +53,10 @@ fn convert(mappings: &[Mapping]) -> Result<GuestMemoryMmap> {
         regions.push(Arc::new(guest_region_mmap));
     }
 
+    // sort after guest address
+    regions.sort_unstable_by_key(|r| r.start_addr());
+
+    // trows regions overlap error because start_addr (guest) is 0 for all regions.
     Ok(try_with!(
         GuestMemoryMmap::from_arc_regions(regions),
         "GuestMemoryMmap error"
@@ -72,8 +70,10 @@ pub struct Device {
 
 impl Device {
     pub fn new(vmm: &Arc<Hypervisor>) -> Result<Device> {
+        let tracee = try_with!(vmm.attach(), "cannot attach");
+        let guest_memory = try_with!(tracee.get_maps(), "cannot get guests memory");
         let mem: Arc<GuestMemoryMmap> = Arc::new(try_with!(
-            convert(&vmm.mappings),
+            convert(&guest_memory),
             "cannot convert Mapping to GuestMemoryMmap"
         ));
 
