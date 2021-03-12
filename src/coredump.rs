@@ -59,9 +59,6 @@ fn dump_mappings(
     maps: &[Mapping],
 ) -> Result<()> {
     let buf_size = core_size - file_offset;
-    dbg!(core_size);
-    dbg!(buf_size);
-    dbg!(file_offset);
     let res = unsafe {
         mmap(
             ptr::null_mut::<c_void>(),
