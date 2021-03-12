@@ -31,7 +31,7 @@ fn mmap(pid: Pid) -> Result<()> {
     );
 
     let tracee = vm.attach()?;
-    let addr = try_with!(tracee.malloc(4), "malloc failed");
+    let addr = try_with!(tracee.mmap(4), "mmap failed");
     assert_eq!(vm.read::<u32>(addr)?, 0);
     vm.write::<u32>(addr, &0xdeadbeef)?;
     assert_eq!(vm.read::<u32>(addr)?, 0xdeadbeef);

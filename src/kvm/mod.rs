@@ -4,9 +4,9 @@ use nix::sys::uio::{process_vm_readv, process_vm_writev, IoVec, RemoteIoVec};
 use nix::unistd::Pid;
 use simple_error::{bail, try_with};
 use std::ffi::OsStr;
+use std::mem::size_of;
 use std::mem::MaybeUninit;
 use std::os::unix::prelude::RawFd;
-use std::{mem::size_of, os::unix::prelude::AsRawFd};
 
 mod cpus;
 mod ioctls;
@@ -54,7 +54,7 @@ impl<'a> Tracee<'a> {
         arg: &T,
     ) -> Result<c_int> {
         let struct_arg: *mut c_void =
-            try_with!(self.malloc(size_of::<T>()), "cannot allocate memory");
+            try_with!(self.mmap(size_of::<T>()), "cannot allocate memory");
 
         try_with!(
             self.hypervisor.write(struct_arg, arg),
@@ -72,8 +72,8 @@ impl<'a> Tracee<'a> {
 
         // TODO
         //try_with!(
-        //self.free(struct_arg, size_of::<T>()),
-        //"cannot free memory allocated for ioctl request"
+        //self.munmap(struct_arg, size_of::<T>()),
+        //"cannot munmap memory allocated for ioctl request"
         //);
 
         ret
@@ -84,7 +84,7 @@ impl<'a> Tracee<'a> {
     ///
     /// length in bytes.
     /// returns void pointer to the allocated virtual memory address of the hypervisor.
-    pub fn malloc(&self, length: libc::size_t) -> Result<*mut c_void> {
+    pub fn mmap(&self, length: libc::size_t) -> Result<*mut c_void> {
         let addr = libc::AT_NULL as *mut c_void; // make kernel choose location for us
         let prot = libc::PROT_READ | libc::PROT_WRITE;
         let flags = libc::MAP_SHARED | libc::MAP_ANONYMOUS;
@@ -93,7 +93,7 @@ impl<'a> Tracee<'a> {
         self.proc.mmap(addr, length, prot, flags, fd, offset)
     }
 
-    pub fn free(&self, _addr: *mut c_void, _length: libc::size_t) -> Result<()> {
+    pub fn munmap(&self, _addr: *mut c_void, _length: libc::size_t) -> Result<()> {
         // TODO
         unimplemented!()
     }
