@@ -45,7 +45,7 @@ sign-drone:
     nix-shell -p drone-cli --run 'drone sign Mic92/vmsh --save'
 
 build-linux-shell:
-  nix-shell {{invocation_directory()}}/nix/fhs-shell.nix
+  nix-shell {{invocation_directory()}}/nix/kernel-fhs-shell.nix
 
 build-linux: configure-linux
   {{kernel_fhs}} "yes \n | make -C {{linux_dir}} -j$(nproc)"
@@ -71,7 +71,7 @@ qemu: build-linux nixos-image
     -netdev user,id=user.0,hostfwd=tcp::2222-:22 \
     -m 512M \
     -cpu host \
-    -virtfs local,path=/home/okelmann,security_model=none,mount_tag=home \
+    -virtfs local,path={{invocation_directory()}}/..,security_model=none,mount_tag=home \
     -nographic -enable-kvm \
     -s
 
