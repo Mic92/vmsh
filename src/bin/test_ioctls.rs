@@ -2,6 +2,8 @@ use clap::{value_t, App, Arg, SubCommand};
 use kvm_bindings as kvmb;
 use nix::unistd::Pid;
 use simple_error::{bail, try_with};
+use std::os::unix::io::AsRawFd;
+use vmm_sys_util::eventfd::{EventFd, EFD_NONBLOCK};
 use vmsh::kvm::ioctls;
 use vmsh::result::Result;
 
@@ -87,6 +89,52 @@ fn guest_add_mem(pid: Pid) -> Result<()> {
     Ok(())
 }
 
+fn guest_ioeventfd(pid: Pid) -> Result<()> {
+    let vm = try_with!(
+        kvm::get_hypervisor(pid),
+        "cannot get vms for process {}",
+        pid
+    );
+    let tracee = vm.attach()?;
+
+    let has_cap = try_with!(
+        tracee.check_extension(kvmb::KVM_CAP_IOEVENTFD as i32),
+        "cannot check kvm extension capabilities"
+    );
+    if has_cap == 0 {
+        bail!(
+            "This operation requires KVM_CAP_IOEVENTFD which your KVM does not have: {}",
+            has_cap
+        );
+    }
+    println!("caps good");
+
+    //let ioeventfd_fd = tracee.open(); TODO
+    let ioeventfd_fd = try_with!(EventFd::new(EFD_NONBLOCK), "cannot create event fd");
+    println!("{:?}", ioeventfd_fd.as_raw_fd());
+    //let ioeventfd_mmap_fd = tracee.open(); TODO
+    //let ioeventfd = tracee.malloc(ioeventfd_mmap_fd); TODO
+    //let mmio_mem = try_with!(tracee.mmap(16), "cannot allocate mmio region");
+
+    let ioeventfd = kvmb::kvm_ioeventfd {
+        datamatch: 0,
+        len: 8,
+        addr: 0xfffffff0,
+        fd: ioeventfd_fd.as_raw_fd(),
+        flags: 0,
+        ..Default::default()
+    };
+    let ret = try_with!(
+        tracee.vm_ioctl_with_ref(ioctls::KVM_IOEVENTFD(), &ioeventfd),
+        "kvm ioeventfd ioctl injection failed"
+    );
+    if ret != 0 {
+        bail!("cannot register KVM_IOEVENTFD via ioctl: {:?}", ret);
+    }
+
+    Ok(())
+}
+
 fn subtest(name: &str) -> App {
     SubCommand::with_name(name).arg(Arg::with_name("pid").required(true).index(1))
 }
@@ -96,7 +144,8 @@ fn main() {
         .about("Something between integration and unit test to be used by pytest.")
         .subcommand(subtest("mmap"))
         .subcommand(subtest("inject"))
-        .subcommand(subtest("guest_add_mem"));
+        .subcommand(subtest("guest_add_mem"))
+        .subcommand(subtest("guest_ioeventfd"));
 
     let matches = app.get_matches();
     let subcommand_name = matches.subcommand_name().expect("subcommad required");
@@ -108,6 +157,7 @@ fn main() {
         "mmap" => mmap(pid),
         "inject" => inject(pid),
         "guest_add_mem" => guest_add_mem(pid),
+        "guest_ioeventfd" => guest_ioeventfd(pid),
         _ => std::process::exit(2),
     };
 
