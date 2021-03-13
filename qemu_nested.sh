@@ -4,7 +4,7 @@
 
 linux_dir=../linux
 
-sudo qemu-system-x86_64 \
+qemu-system-x86_64 \
   -kernel $linux_dir/arch/x86/boot/bzImage \
   -hda $linux_dir/nixos_nested.qcow2 \
   -append "root=/dev/sda console=ttyS0 nokaslr" \
