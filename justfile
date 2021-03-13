@@ -37,6 +37,8 @@ configure-linux: clone-linux
     {{kernel_fhs}} "yes \n | scripts/config --set-val DEBUG y"
     {{kernel_fhs}} "yes \n | scripts/config --set-val GDB_SCRIPTS y"
     {{kernel_fhs}} "yes \n | scripts/config --set-val DEBUG_DRIVER y"
+    {{kernel_fhs}} "yes \n | scripts/config --set-val KVM y"
+    {{kernel_fhs}} "yes \n | scripts/config --set-val KVM_INTEL y"
   fi
 
 sign-drone:
