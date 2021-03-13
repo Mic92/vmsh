@@ -120,7 +120,7 @@ fn guest_ioeventfd(pid: Pid) -> Result<()> {
         datamatch: 0,
         len: 8,
         addr: 0xfffffff0,
-        fd: ioeventfd_fd.as_raw_fd(),
+        fd: ioeventfd_fd.as_raw_fd(), // thats why we get -22 EINVAL
         flags: 0,
         ..Default::default()
     };

@@ -39,6 +39,7 @@ configure-linux: clone-linux
     {{kernel_fhs}} "yes \n | scripts/config --set-val DEBUG_DRIVER y"
     {{kernel_fhs}} "yes \n | scripts/config --set-val KVM y"
     {{kernel_fhs}} "yes \n | scripts/config --set-val KVM_INTEL y"
+    {{kernel_fhs}} "yes \n | scripts/config --set-val BPF_SYSCALL y"
   fi
 
 sign-drone:
