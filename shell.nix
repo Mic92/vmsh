@@ -26,6 +26,7 @@ pkgs.mkShell {
     (pkgs.python3.withPackages(ps: [ps.pytest ps.black ps.flake8 ps.mypy]))
 
     pkgs.qemu_kvm
+    pkgs.gdb
     pkgs.tmux # needed for integration test
   ] ++ vmsh.nativeBuildInputs;
   buildInputs = vmsh.buildInputs;

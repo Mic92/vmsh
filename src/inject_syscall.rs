@@ -167,7 +167,7 @@ impl Process {
     }
 
     pub fn munmap(&self) -> Result<()> {
-        // TODO
+        // TODO SYS_munmap
         unimplemented!();
     }
 

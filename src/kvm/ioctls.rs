@@ -1,4 +1,7 @@
 // borrowed from vmm-sys-util
+
+use kvm_bindings as kvmb;
+
 /// Expression that calculates an ioctl number.
 ///
 /// ```
@@ -51,6 +54,35 @@ macro_rules! ioctl_io_nr {
     };
     ($name:ident, $ty:expr, $nr:expr, $($v:ident),+) => {
         ioctl_ioc_nr!($name, _IOC_NONE, $ty, $nr, 0, $($v),+);
+    };
+}
+
+/// Declare an ioctl that writes data.
+///
+/// ```
+/// # #[macro_use] extern crate vmm_sys_util;
+/// const TUNTAP: ::std::os::raw::c_uint = 0x54;
+/// ioctl_iow_nr!(TUNSETQUEUE, TUNTAP, 0xd9, ::std::os::raw::c_int);
+/// ```
+macro_rules! ioctl_iow_nr {
+    ($name:ident, $ty:expr, $nr:expr, $size:ty) => {
+        ioctl_ioc_nr!(
+            $name,
+            _IOC_WRITE,
+            $ty,
+            $nr,
+            ::std::mem::size_of::<$size>() as u32
+        );
+    };
+    ($name:ident, $ty:expr, $nr:expr, $size:ty, $($v:ident),+) => {
+        ioctl_ioc_nr!(
+            $name,
+            _IOC_WRITE,
+            $ty,
+            $nr,
+            ::std::mem::size_of::<$size>() as u32,
+            $($v),+
+        );
     };
 }
 
@@ -142,6 +174,17 @@ const KVMIO: c_uint = 0xAE;
 
 // Ioctls for /dev/kvm.
 ioctl_io_nr!(KVM_CHECK_EXTENSION, KVMIO, 0x03);
+
+// Available with KVM_CAP_IOEVENTFD
+ioctl_iow_nr!(KVM_IOEVENTFD, KVMIO, 0x79, kvmb::kvm_ioeventfd);
+
+// Avaulable with KVM_CAP_USER_MEMORY
+ioctl_iow_nr!(
+    KVM_SET_USER_MEMORY_REGION,
+    KVMIO,
+    0x46,
+    kvmb::kvm_userspace_memory_region
+);
 
 // Ioctls for VM fds.
 /* Available with KVM_CAP_USER_MEMORY */

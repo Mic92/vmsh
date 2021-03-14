@@ -37,6 +37,9 @@ configure-linux: clone-linux
     {{kernel_fhs}} "yes \n | scripts/config --set-val DEBUG y"
     {{kernel_fhs}} "yes \n | scripts/config --set-val GDB_SCRIPTS y"
     {{kernel_fhs}} "yes \n | scripts/config --set-val DEBUG_DRIVER y"
+    {{kernel_fhs}} "yes \n | scripts/config --set-val KVM y"
+    {{kernel_fhs}} "yes \n | scripts/config --set-val KVM_INTEL y"
+    {{kernel_fhs}} "yes \n | scripts/config --set-val BPF_SYSCALL y"
   fi
 
 sign-drone:
@@ -45,7 +48,7 @@ sign-drone:
     nix-shell -p drone-cli --run 'drone sign Mic92/vmsh --save'
 
 build-linux-shell:
-  nix-shell {{invocation_directory()}}/nix/fhs-shell.nix
+  nix-shell {{invocation_directory()}}/nix/kernel-fhs-shell.nix
 
 build-linux: configure-linux
   {{kernel_fhs}} "yes \n | make -C {{linux_dir}} -j$(nproc)"
@@ -55,15 +58,25 @@ nixos-image:
   [[ {{linux_dir}}/nixos.qcow2 -nt nix/sources.json ]] || \
   install -m600 "$(nix-build --no-out-link nix/nixos-image.nix)/nixos.qcow2" {{linux_dir}}/nixos.qcow2
 
+# built image for qemu_nested.sh
+nested-nixos-image:
+  [[ {{linux_dir}}/nixos_nested.qcow2 -nt nix/nixos-image.nix ]] || \
+  [[ {{linux_dir}}/nixos_nested.qcow2 -nt nix/sources.json ]] || \
+  install -m600 "$(nix-build --no-out-link nix/nixos-image.nix)/nixos.qcow2" {{linux_dir}}/nixos_nested.qcow2
+
+# in qemu mount home via: mkdir /mnt && mount -t 9p -o trans=virtio home /mnt
 qemu: build-linux nixos-image
   qemu-system-x86_64 \
     -kernel {{linux_dir}}/arch/x86/boot/bzImage \
     -hda {{linux_dir}}/nixos.qcow2 \
-    -append "root=/dev/sda console=ttyS0" \
+    -append "root=/dev/sda console=ttyS0 nokaslr" \
     -net nic,netdev=user.0,model=virtio \
     -netdev user,id=user.0,hostfwd=tcp::2222-:22 \
     -m 512M \
-    -nographic -enable-kvm
+    -cpu host \
+    -virtfs local,path={{invocation_directory()}}/..,security_model=none,mount_tag=home \
+    -nographic -enable-kvm \
+    -s
 
 inspect-qemu:
   cargo run -- inspect "$(pidof qemu-system-x86_64)"
