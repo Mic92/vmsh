@@ -1,4 +1,4 @@
-use libc::{c_int, c_long, c_ulong, c_void, off_t, pid_t, size_t};
+use libc::{c_int, c_long, c_ulong, c_void, off_t, pid_t, size_t, SYS_munmap};
 use libc::{SYS_getpid, SYS_ioctl, SYS_mmap};
 use nix::sys::wait::{waitpid, WaitStatus};
 use nix::sys::{signal::Signal, wait::WaitPidFlag};
@@ -166,9 +166,10 @@ impl Process {
         self.syscall(&args).map(|v| v as *mut c_void)
     }
 
-    pub fn munmap(&self) -> Result<()> {
-        // TODO SYS_munmap
-        unimplemented!();
+    pub fn munmap(&self, addr: *mut c_void, length: libc::size_t) -> Result<()> {
+        let args = syscall_args!(self.saved_regs, SYS_munmap as c_ulong, addr, length);
+
+        self.syscall(&args).map(drop)
     }
 
     pub fn open(&self) -> Result<c_int> {

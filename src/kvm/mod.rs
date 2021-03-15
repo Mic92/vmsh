@@ -1,20 +1,22 @@
 use kvm_bindings as kvmb;
 use libc::{c_int, c_ulong, c_void};
+use log::warn;
 use nix::sys::uio::{process_vm_readv, process_vm_writev, IoVec, RemoteIoVec};
 use nix::unistd::Pid;
 use simple_error::{bail, try_with};
-use std::ffi::OsStr;
+use std::marker::PhantomData;
 use std::mem::size_of;
 use std::mem::MaybeUninit;
 use std::os::unix::prelude::RawFd;
+use std::{ffi::OsStr, slice::from_raw_parts_mut};
 
 mod cpus;
 pub mod ioctls;
 mod memslots;
 
-use crate::cpu::Regs;
+use crate::cpu::{elf_fpregset_t, Regs};
 use crate::inject_syscall;
-use crate::kvm::ioctls::KVM_CHECK_EXTENSION;
+use crate::kvm::ioctls::{KVM_CHECK_EXTENSION, KVM_GET_REGS};
 use crate::kvm::memslots::get_maps;
 use crate::proc::{openpid, Mapping, PidHandle};
 use crate::result::Result;
@@ -24,15 +26,55 @@ pub struct Tracee<'a> {
     proc: inject_syscall::Process,
 }
 
+pub struct TraceeMem<'a, T> {
+    pub ptr: *mut c_void,
+    tracee: &'a Tracee<'a>,
+    phantom: PhantomData<T>,
+}
+
+impl<'a, T> Drop for TraceeMem<'a, T> {
+    fn drop(&mut self) {
+        if let Err(e) = self.tracee.munmap(self.ptr, size_of::<T>()) {
+            warn!("failed to unmap memory from process: {}", e);
+        }
+    }
+}
+
+impl<'a, T> TraceeMem<'a, T> {
+    fn data(&self) -> Result<T> {
+        let mut data = MaybeUninit::uninit();
+        let buf = unsafe { from_raw_parts_mut(data.as_mut_ptr() as *mut u8, size_of::<T>()) };
+        let dst_iovs = vec![IoVec::from_mut_slice(buf)];
+        let src_iovs = vec![RemoteIoVec {
+            base: self.ptr as usize,
+            len: size_of::<T>(),
+        }];
+        try_with!(
+            process_vm_readv(self.tracee.pid(), dst_iovs.as_slice(), src_iovs.as_slice()),
+            "cannot read process memory"
+        );
+        Ok(unsafe { data.assume_init() })
+    }
+}
+
 /// Safe wrapper for unsafe inject_syscall::Process operations.
 impl<'a> Tracee<'a> {
     fn vm_ioctl(&self, request: c_ulong, arg: c_ulong) -> Result<c_int> {
         self.proc.ioctl(self.hypervisor.vm_fd, request, arg)
     }
-    //fn cpu_ioctl(&self, cpu: usize, request: c_ulong, arg: c_int) -> Result<c_int> {
-    //    self.proc
-    //        .ioctl(self.hypervisor.vcpus[cpu].fd_num, request, arg)
-    //}
+
+    fn vcpu_ioctl(&self, vcpu: &VCPU, request: c_ulong, arg: c_ulong) -> Result<c_int> {
+        self.proc.ioctl(vcpu.fd_num, request, arg)
+    }
+
+    fn alloc_mem<T>(&self) -> Result<TraceeMem<T>> {
+        let ptr = self.mmap(size_of::<T>())?;
+        Ok(TraceeMem {
+            ptr,
+            tracee: self,
+            phantom: PhantomData,
+        })
+    }
 
     // comment borrowed from vmm-sys-util
     /// Run an [`ioctl`](http://man7.org/linux/man-pages/man2/ioctl.2.html)
@@ -49,27 +91,21 @@ impl<'a> Tracee<'a> {
     /// return value checked. Also he may take care to use the correct argument type belonging to
     /// the request type.
     pub fn vm_ioctl_with_ref<T: Sized + Copy>(&self, request: c_ulong, arg: &T) -> Result<c_int> {
-        let arg_ptr: *mut c_void = try_with!(self.mmap(size_of::<T>()), "cannot allocate memory");
+        let mem = try_with!(self.alloc_mem::<T>(), "cannot allocate memory");
 
         try_with!(
-            self.hypervisor.write(arg_ptr, arg),
+            self.hypervisor.write(mem.ptr, arg),
             "cannot write ioctl arg struct to hv"
         );
 
-        let ioeventfd: kvmb::kvm_ioeventfd = try_with!(self.hypervisor.read(arg_ptr), "foobar");
+        let ioeventfd: kvmb::kvm_ioeventfd = try_with!(self.hypervisor.read(mem.ptr), "foobar");
         println!(
             "arg {:?}, {:?}, {:?}",
             ioeventfd.len, ioeventfd.addr, ioeventfd.fd
         );
 
-        println!("arg_ptr {:?}", arg_ptr);
-        let ret = self.vm_ioctl(request, arg_ptr as c_ulong);
-
-        // TODO
-        //try_with!(
-        //self.munmap(struct_arg, size_of::<T>()),
-        //"cannot munmap memory allocated for ioctl request"
-        //);
+        println!("arg_ptr {:?}", mem.ptr);
+        let ret = self.vm_ioctl(request, mem.ptr as c_ulong);
 
         ret
     }
@@ -88,9 +124,8 @@ impl<'a> Tracee<'a> {
         self.proc.mmap(addr, length, prot, flags, fd, offset)
     }
 
-    pub fn munmap(&self, _addr: *mut c_void, _length: libc::size_t) -> Result<()> {
-        // TODO
-        unimplemented!()
+    pub fn munmap(&self, addr: *mut c_void, length: libc::size_t) -> Result<()> {
+        self.proc.munmap(addr, length)
     }
 
     pub fn check_extension(&self, cap: c_int) -> Result<c_int> {
@@ -100,44 +135,38 @@ impl<'a> Tracee<'a> {
     pub fn pid(&self) -> Pid {
         self.hypervisor.pid
     }
+
     pub fn get_maps(&self) -> Result<Vec<Mapping>> {
         get_maps(self)
     }
+
     pub fn mappings(&self) -> &[Mapping] {
         self.hypervisor.mappings.as_slice()
     }
 
-    pub fn get_regs(&self, vcpu: &VCPU) -> Result<Regs> {
-        let regs = Regs {
-            r15: 0,
-            r14: 0,
-            r13: 0,
-            r12: 0,
-            rbp: 0,
-            rbx: 0,
-            r11: 0,
-            r10: 0,
-            r9: 0,
-            r8: 0,
-            rax: 0,
-            rcx: 0,
-            rdx: 0,
-            rsi: 0,
-            rdi: 0,
-            orig_rax: 0,
+    pub fn get_fregs(&self, vcpu: &VCPU) -> Result<elf_fpregset_t> {
+        Ok(elf_fpregset_t {
+            cwd: 0,
+            swd: 0,
+            ftw: 0,
+            fop: 0,
             rip: 0,
-            cs: 0,
-            eflags: 0,
-            rsp: 0,
-            ss: 0,
-            fs_base: 0,
-            gs_base: 0,
-            ds: 0,
-            es: 0,
-            fs: 0,
-            gs: 0,
-        };
-        Ok(regs)
+            rdp: 0,
+            mxcsr: 0,
+            mxcr_mask: 0,
+            st_space: [0; 32],
+            xmm_space: [0; 64],
+            padding: [0; 24],
+        })
+    }
+
+    pub fn get_regs(&self, vcpu: &VCPU) -> Result<Regs> {
+        let regs = try_with!(self.alloc_mem::<Regs>(), "cannot allocate memory");
+        try_with!(
+            self.vcpu_ioctl(vcpu, KVM_GET_REGS(), regs.ptr as c_ulong),
+            "vcpu_ioctl failed"
+        );
+        regs.data()
     }
 }
 

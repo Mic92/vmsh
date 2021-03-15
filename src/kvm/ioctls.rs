@@ -93,27 +93,27 @@ macro_rules! ioctl_iow_nr {
 /// const TUNTAP: ::std::os::raw::c_uint = 0x54;
 /// ioctl_ior_nr!(TUNGETFEATURES, TUNTAP, 0xcf, ::std::os::raw::c_uint);
 /// ```
-//macro_rules! ioctl_ior_nr {
-//    ($name:ident, $ty:expr, $nr:expr, $size:ty) => {
-//        ioctl_ioc_nr!(
-//            $name,
-//            _IOC_READ,
-//            $ty,
-//            $nr,
-//            ::std::mem::size_of::<$size>() as u32
-//        );
-//    };
-//    ($name:ident, $ty:expr, $nr:expr, $size:ty, $($v:ident),+) => {
-//        ioctl_ioc_nr!(
-//            $name,
-//            _IOC_READ,
-//            $ty,
-//            $nr,
-//            ::std::mem::size_of::<$size>() as u32,
-//            $($v),+
-//        );
-//    };
-//}
+macro_rules! ioctl_ior_nr {
+    ($name:ident, $ty:expr, $nr:expr, $size:ty) => {
+        ioctl_ioc_nr!(
+            $name,
+            _IOC_READ,
+            $ty,
+            $nr,
+            ::std::mem::size_of::<$size>() as u32
+        );
+    };
+    ($name:ident, $ty:expr, $nr:expr, $size:ty, $($v:ident),+) => {
+        ioctl_ioc_nr!(
+            $name,
+            _IOC_READ,
+            $ty,
+            $nr,
+            ::std::mem::size_of::<$size>() as u32,
+            $($v),+
+        );
+    };
+}
 
 /// Declare an ioctl that writes data.
 ///
@@ -196,12 +196,12 @@ ioctl_iow_nr!(
 //);
 
 // Ioctls for VCPU fds.
-//#[cfg(not(any(target_arch = "arm", target_arch = "aarch64")))]
-//ioctl_ior_nr!(KVM_GET_REGS, KVMIO, 0x81, kvm_regs);
-//#[cfg(any(
-//    target_arch = "x86",
-//    target_arch = "x86_64",
-//    target_arch = "powerpc",
-//    target_arch = "powerpc64"
-//))]
-//ioctl_ior_nr!(KVM_GET_SREGS, KVMIO, 0x83, kvm_sregs);
+#[cfg(not(any(target_arch = "arm", target_arch = "aarch64")))]
+ioctl_ior_nr!(KVM_GET_REGS, KVMIO, 0x81, kvmb::kvm_regs);
+#[cfg(any(
+    target_arch = "x86",
+    target_arch = "x86_64",
+    target_arch = "powerpc",
+    target_arch = "powerpc64"
+))]
+ioctl_ior_nr!(KVM_GET_SREGS, KVMIO, 0x83, kvmb::kvm_sregs);
