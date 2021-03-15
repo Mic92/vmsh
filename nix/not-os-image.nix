@@ -2,8 +2,13 @@
 , not-os ? (import ../nix/sources.nix).not-os
 }:
 let
+  inherit (pkgs) stdenv lib;
+  inherit (pkgs.pkgsMusl.hostPlatform) system parsed;
+  useMusl = false;
+
   config = (import not-os {
     nixpkgs = pkgs.path;
+    system = if useMusl then null else pkgs.system;
     configuration = { pkgs, ... }: {
       imports = [
         (not-os  + "/qemu.nix")
@@ -13,6 +18,9 @@ let
         pkgs.gnugrep
         pkgs.kmod
       ];
+      nixpkgs.localSystem = lib.mkIf useMusl {
+        inherit system parsed;
+      };
 
       not-os.nix = true;
       not-os.simpleStaticIp = true;
@@ -51,7 +59,6 @@ let
       '';
       boot.initrd.availableKernelModules = [ "virtio_console" ];
     };
-    inherit (pkgs) system;
   }).config;
 in
 {
