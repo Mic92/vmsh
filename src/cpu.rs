@@ -3,7 +3,7 @@
 #[cfg(target_arch = "aarch64")]
 mod arch {
     #[repr(C)]
-    #[derive(Clone)]
+    #[derive(Clone, Copy)]
     pub struct Regs {
         pub regs: [u64; 31],
         pub sp: u64,
@@ -12,7 +12,7 @@ mod arch {
     }
 
     #[repr(C)]
-    #[derive(Clone)]
+    #[derive(Clone, Copy)]
     #[allow(non_camel_case_types)]
     pub struct elf_fpregset_t {
         pub vregs: [u128; 32],
@@ -50,7 +50,7 @@ mod arch {
 #[cfg(target_arch = "x86_64")]
 mod arch {
     #[repr(C)]
-    #[derive(Clone)]
+    #[derive(Clone, Copy)]
     pub struct Regs {
         pub r15: u64,
         pub r14: u64,
@@ -82,7 +82,7 @@ mod arch {
     }
 
     #[repr(C)]
-    #[derive(Clone)]
+    #[derive(Clone, Copy)]
     #[allow(non_camel_case_types)]
     pub struct elf_fpregset_t {
         pub cwd: u16,

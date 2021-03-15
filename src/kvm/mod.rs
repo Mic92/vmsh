@@ -26,34 +26,25 @@ pub struct Tracee<'a> {
     proc: inject_syscall::Process,
 }
 
-pub struct TraceeMem<'a, T> {
+pub struct TraceeMem<'a, T: Copy> {
     pub ptr: *mut c_void,
     tracee: &'a Tracee<'a>,
     phantom: PhantomData<T>,
 }
 
-impl<'a, T> Drop for TraceeMem<'a, T> {
+impl<'a, T: Copy> Drop for TraceeMem<'a, T> {
     fn drop(&mut self) {
         if let Err(e) = self.tracee.munmap(self.ptr, size_of::<T>()) {
             warn!("failed to unmap memory from process: {}", e);
         }
     }
 }
-
-impl<'a, T> TraceeMem<'a, T> {
-    fn data(&self) -> Result<T> {
-        let mut data = MaybeUninit::uninit();
-        let buf = unsafe { from_raw_parts_mut(data.as_mut_ptr() as *mut u8, size_of::<T>()) };
-        let dst_iovs = vec![IoVec::from_mut_slice(buf)];
-        let src_iovs = vec![RemoteIoVec {
-            base: self.ptr as usize,
-            len: size_of::<T>(),
-        }];
-        try_with!(
-            process_vm_readv(self.tracee.pid(), dst_iovs.as_slice(), src_iovs.as_slice()),
-            "cannot read process memory"
-        );
-        Ok(unsafe { data.assume_init() })
+impl<'a, T: Copy> TraceeMem<'a, T> {
+    pub fn read(&self) -> Result<T> {
+        self.tracee.hypervisor.read(self.ptr)
+    }
+    pub fn write(&self, val: &T) -> Result<()> {
+        self.tracee.hypervisor.write(self.ptr, val)
     }
 }
 
@@ -67,7 +58,7 @@ impl<'a> Tracee<'a> {
         self.proc.ioctl(vcpu.fd_num, request, arg)
     }
 
-    fn alloc_mem<T>(&self) -> Result<TraceeMem<T>> {
+    pub fn alloc_mem<T: Copy>(&self) -> Result<TraceeMem<T>> {
         let ptr = self.mmap(size_of::<T>())?;
         Ok(TraceeMem {
             ptr,
@@ -115,7 +106,7 @@ impl<'a> Tracee<'a> {
     ///
     /// length in bytes.
     /// returns void pointer to the allocated virtual memory address of the hypervisor.
-    pub fn mmap(&self, length: libc::size_t) -> Result<*mut c_void> {
+    fn mmap(&self, length: libc::size_t) -> Result<*mut c_void> {
         let addr = libc::AT_NULL as *mut c_void; // make kernel choose location for us
         let prot = libc::PROT_READ | libc::PROT_WRITE;
         let flags = libc::MAP_SHARED | libc::MAP_ANONYMOUS;
@@ -124,7 +115,10 @@ impl<'a> Tracee<'a> {
         self.proc.mmap(addr, length, prot, flags, fd, offset)
     }
 
-    pub fn munmap(&self, addr: *mut c_void, length: libc::size_t) -> Result<()> {
+    /// Unmap memory in the process
+    ///
+    /// length in bytes.
+    fn munmap(&self, addr: *mut c_void, length: libc::size_t) -> Result<()> {
         self.proc.munmap(addr, length)
     }
 
@@ -166,7 +160,7 @@ impl<'a> Tracee<'a> {
             self.vcpu_ioctl(vcpu, KVM_GET_REGS(), regs.ptr as c_ulong),
             "vcpu_ioctl failed"
         );
-        regs.data()
+        regs.read()
     }
 }
 
