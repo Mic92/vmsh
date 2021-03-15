@@ -27,7 +27,7 @@ fn inject(pid: Pid) -> Result<()> {
     Ok(())
 }
 
-fn mmap(pid: Pid) -> Result<()> {
+fn alloc_mem(pid: Pid) -> Result<()> {
     let vm = try_with!(
         kvm::get_hypervisor(pid),
         "cannot get vms for process {}",
@@ -35,10 +35,11 @@ fn mmap(pid: Pid) -> Result<()> {
     );
 
     let tracee = vm.attach()?;
-    let addr = try_with!(tracee.mmap(4), "mmap failed");
-    assert_eq!(vm.read::<u32>(addr)?, 0);
-    vm.write::<u32>(addr, &0xdeadbeef)?;
-    assert_eq!(vm.read::<u32>(addr)?, 0xdeadbeef);
+    let mem = try_with!(tracee.alloc_mem::<u32>(), "mmap failed");
+    assert_eq!(mem.read()?, 0);
+    let val: u32 = 0xdeadbeef;
+    mem.write(&val)?;
+    assert_eq!(mem.read()?, val);
 
     Ok(())
 }
@@ -62,14 +63,14 @@ fn guest_add_mem(pid: Pid) -> Result<()> {
     println!("--");
 
     // add memslot
-    let slot_len = 0x10;
-    let hv_memslot_addr = tracee.mmap(slot_len)?;
+    const SLOT_LEN: usize = 0x10;
+    let hv_memslot = tracee.alloc_mem::<[u8; SLOT_LEN]>()?;
     let arg = kvmb::kvm_userspace_memory_region {
         slot: memslots_a.len() as u32,
         flags: 0, // maybe KVM_MEM_READONLY
         guest_phys_addr: 0xd0000000,
-        memory_size: slot_len as u64,
-        userspace_addr: hv_memslot_addr as u64,
+        memory_size: SLOT_LEN as u64,
+        userspace_addr: hv_memslot.ptr as u64,
     };
     let ret = tracee.vm_ioctl_with_ref(ioctls::KVM_SET_USER_MEMORY_REGION(), &arg)?;
     if ret != 0 {
@@ -142,7 +143,7 @@ fn subtest(name: &str) -> App {
 fn main() {
     let app = App::new("test_ioctls")
         .about("Something between integration and unit test to be used by pytest.")
-        .subcommand(subtest("mmap"))
+        .subcommand(subtest("alloc_mem"))
         .subcommand(subtest("inject"))
         .subcommand(subtest("guest_add_mem"))
         .subcommand(subtest("guest_ioeventfd"));
@@ -154,7 +155,7 @@ fn main() {
     let pid = Pid::from_raw(pid);
 
     let result = match subcommand_name {
-        "mmap" => mmap(pid),
+        "alloc_mem" => alloc_mem(pid),
         "inject" => inject(pid),
         "guest_add_mem" => guest_add_mem(pid),
         "guest_ioeventfd" => guest_ioeventfd(pid),
