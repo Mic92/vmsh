@@ -17,6 +17,8 @@
     gnumake
     bc
     perl
+    hostname
+    cpio
   ]);
   inherit runScript;
 })
