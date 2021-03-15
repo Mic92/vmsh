@@ -21,7 +21,7 @@ nix = "0.20.*"
 libc = "0.2.*"
 bcc = "0.0.*"
 simple-error = "0.2.*"
-kvm-bindings = "0.3.*"
+kvm-bindings = "0.4.*"
 virtio = { path = "src/virtio" }
 
 # src/device/ deps:
