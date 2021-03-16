@@ -55,7 +55,16 @@ class QmpSession:
         self.send("qmp_capabilities")
 
     def _result(self) -> Dict[str, Any]:
-        return json.loads(self.reader.readline())
+        while True:
+            line = self.reader.readline()
+            res = json.loads(line)
+            # QMP is in the handshake
+            if "return" in res or "QMP" in res:
+                return res
+            elif "event" in res or "QMP" in res:
+                continue
+            else:
+                raise RuntimeError(f"Got unexpected qmp response: {line}")
 
     def send(self, cmd: str, args: Dict[str, str] = {}) -> Dict[str, str]:
         data: Dict[str, Any] = dict(execute=cmd)
