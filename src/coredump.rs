@@ -6,6 +6,8 @@ use nix::sys::{
 use nix::unistd::Pid;
 use simple_error::try_with;
 use std::fs::OpenOptions;
+use std::io::Seek;
+use std::io::SeekFrom;
 use std::path::PathBuf;
 use std::{fs::File, io::Write, ptr, slice::from_raw_parts_mut};
 use std::{mem::size_of, os::unix::prelude::AsRawFd};
@@ -109,14 +111,14 @@ fn elf_header(phnum: Elf_Half) -> Ehdr {
     }
 }
 
-fn pt_note_header(core_size: Elf_Off, filesize: Elf_Off) -> Phdr {
+fn pt_note_header(core_size: Elf_Off, file_size: Elf_Off) -> Phdr {
     Phdr {
         p_type: PT_NOTE,
         p_flags: 0,
         p_offset: core_size,
         p_vaddr: 0,
         p_paddr: 0,
-        p_filesz: filesize,
+        p_filesz: file_size,
         p_memsz: 0,
         p_align: 0,
     }
@@ -135,7 +137,12 @@ fn pt_load_header(m: &Mapping, offset: Elf_Off) -> Phdr {
     }
 }
 
-fn write_note_section<T: Sized>(core_file: &mut File, hdr: &Nhdr, payload: &T) -> Result<()> {
+fn write_note_section<T: Sized>(core_file: &mut File, ntype: Elf_Word, payload: &T) -> Result<()> {
+    let hdr = &Nhdr {
+        n_namesz: 5,
+        n_descsz: size_of::<T>() as Elf_Word,
+        n_type: ntype,
+    };
     try_with!(
         core_file.write_all(unsafe { any_as_bytes(hdr) }),
         "cannot write elf note header"
@@ -154,17 +161,22 @@ fn write_note_section<T: Sized>(core_file: &mut File, hdr: &Nhdr, payload: &T) -
 #[cfg(target_arch = "x86_64")]
 fn write_fpu_registers(core_file: &mut File, regs: &FpuRegs) -> Result<()> {
     use crate::elf::NT_PRXFPREG;
+    let hdr = &Nhdr {
+        n_namesz: 5,
+        n_descsz: size_of::<FpuRegs>() as Elf_Word,
+        n_type: NT_PRXFPREG,
+    };
     try_with!(
-        write_note_section(
-            core_file,
-            &Nhdr {
-                n_namesz: 5,
-                n_descsz: size_of::<FpuRegs>() as Elf_Word,
-                n_type: NT_PRXFPREG,
-            },
-            regs
-        ),
-        "failed to write NT_PRXFPREG"
+        core_file.write_all(unsafe { any_as_bytes(hdr) }),
+        "cannot write elf note header"
+    );
+    try_with!(
+        core_file.write_all(b"LINUX\0\0\0"),
+        "cannot write note name"
+    );
+    try_with!(
+        core_file.write_all(unsafe { any_as_bytes(regs) }),
+        "cannot write elf note header"
     );
     Ok(())
 }
@@ -175,11 +187,7 @@ fn write_fpu_registers(core_file: &mut File, regs: &FpuRegs) -> Result<()> {
     try_with!(
         write_note_section(
             core_file,
-            &Nhdr {
-                n_namesz: 5,
-                n_descsz: size_of::<FpuRegs>() as Elf_Word,
-                n_type: NT_PRFPREG,
-            },
+            NT_PRFPREG
             regs
         ),
         "failed to write NT_PRFPREG"
@@ -191,11 +199,7 @@ fn write_note_sections(core_file: &mut File, vcpus: &[VcpuState]) -> Result<()> 
     try_with!(
         write_note_section(
             core_file,
-            &Nhdr {
-                n_namesz: 5,
-                n_descsz: size_of::<elf_prpsinfo>() as Elf_Word,
-                n_type: NT_PRPSINFO,
-            },
+            NT_PRPSINFO,
             &elf_prpsinfo {
                 pr_state: 0,
                 pr_sname: 0,
@@ -216,15 +220,7 @@ fn write_note_sections(core_file: &mut File, vcpus: &[VcpuState]) -> Result<()> 
     );
 
     try_with!(
-        write_note_section(
-            core_file,
-            &Nhdr {
-                n_namesz: 5,
-                n_descsz: size_of::<core_user>() as Elf_Word,
-                n_type: NT_PRXREG,
-            },
-            &core_user { magic: 4242 }
-        ),
+        write_note_section(core_file, NT_PRXREG, &core_user { magic: 4242 }),
         "failed to write NT_PRXREG"
     );
 
@@ -237,12 +233,7 @@ fn write_note_sections(core_file: &mut File, vcpus: &[VcpuState]) -> Result<()> 
         try_with!(
             write_note_section(
                 core_file,
-                &Nhdr {
-                    n_namesz: 5,
-
-                    n_descsz: size_of::<elf_prstatus>() as Elf_Word,
-                    n_type: NT_PRSTATUS,
-                },
+                NT_PRSTATUS,
                 &elf_prstatus {
                     pr_info: elf_siginfo {
                         si_signo: 0,
@@ -273,6 +264,7 @@ fn write_note_sections(core_file: &mut File, vcpus: &[VcpuState]) -> Result<()> 
 }
 
 pub fn note_size<T>() -> usize {
+    // name is 4 bit aligned, we write CORE\0 to it
     let name_size = 8;
     size_of::<Nhdr>() + name_size + size_of::<T>()
 }
@@ -286,18 +278,14 @@ fn write_corefile(
     // +1 == PT_NOTE section
     let ehdr = elf_header((maps.len() + 1) as Elf_Half);
 
+    let metadata_size = size_of::<Ehdr>() + (size_of::<Phdr>() * ehdr.e_phnum as usize);
+    let mut core_size = metadata_size;
+
     let pt_note_size = note_size::<elf_prpsinfo>()
         + note_size::<core_user>()
         + vcpus.len() * (note_size::<elf_prstatus>() + note_size::<FpuRegs>());
-
-    let metadata_size =
-        page_align(size_of::<Ehdr>() + (size_of::<Phdr>() * ehdr.e_phnum as usize + pt_note_size));
-    let mut core_size = metadata_size;
-
-    let mut section_headers = vec![pt_note_header(
-        core_size as Elf_Off,
-        (vcpus.len() * size_of::<Nhdr>()) as u64,
-    )];
+    let mut section_headers = vec![pt_note_header(core_size as Elf_Off, pt_note_size as u64)];
+    core_size += pt_note_size;
 
     for m in maps {
         let phdr = pt_load_header(m, core_size as Elf_Off);
@@ -319,11 +307,6 @@ fn write_corefile(
             "cannot write elf header"
         );
     }
-    try_with!(
-        core_file.write_all(unsafe { any_as_bytes(&ehdr) }),
-        "cannot write pt note section"
-    );
-
     write_note_sections(core_file, vcpus)?;
 
     try_with!(core_file.flush(), "cannot flush core file");
@@ -332,7 +315,7 @@ fn write_corefile(
         pid,
         core_file,
         core_size as off_t,
-        metadata_size as off_t,
+        page_align(metadata_size + pt_note_size) as off_t,
         maps,
     )
 }
