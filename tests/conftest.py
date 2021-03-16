@@ -89,7 +89,10 @@ def connect_qmp(path: Path) -> Iterator[QmpSession]:
 
 
 class QemuVm:
-    def __init__(self, tmux_session: str, pid: int, ssh_port: int) -> None:
+    def __init__(
+        self, qmp_session: QmpSession, tmux_session: str, pid: int, ssh_port: int
+    ) -> None:
+        self.qmp_session = qmp_session
         self.tmux_session = tmux_session
         self.pid = pid
         self.ssh_port = ssh_port
@@ -99,6 +102,12 @@ class QemuVm:
         Attach to qemu session via tmux. This is useful for debugging
         """
         subprocess.run(["tmux", "-L", self.tmux_session, "attach"])
+
+    def send(self, cmd: str, args: Dict[str, str] = {}) -> Dict[str, str]:
+        """
+        Send a Qmp command (https://wiki.qemu.org/Documentation/QMP)
+        """
+        return self.qmp_session.send(cmd, args)
 
 
 @contextmanager
@@ -174,7 +183,7 @@ def spawn_qemu(image: VmImage) -> Iterator[QemuVm]:
                     if "TCP[HOST_FORWARD]" in fields and "22" in fields:
                         ssh_port = int(l.split()[3])
                 assert ssh_port is not None
-            yield QemuVm(tmux_session, qemu_pid, ssh_port)
+                yield QemuVm(session, tmux_session, qemu_pid, ssh_port)
         finally:
             subprocess.run(["tmux", "-L", tmux_session, "kill-server"])
 
