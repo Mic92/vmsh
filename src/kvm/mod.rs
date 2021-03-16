@@ -150,8 +150,8 @@ impl<'a> Tracee<'a> {
         get_maps(self)
     }
 
-    pub fn mappings(&self) -> &[Mapping] {
-        self.hypervisor.mappings.as_slice()
+    pub fn mappings(&self) -> Result<Vec<Mapping>> {
+        self.hypervisor.fetch_mappings()
     }
 
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -241,7 +241,6 @@ pub struct Hypervisor {
     pub pid: Pid,
     pub vm_fd: RawFd,
     pub vcpus: Vec<VCPU>,
-    pub mappings: Vec<Mapping>,
 }
 
 impl Hypervisor {
@@ -254,6 +253,12 @@ impl Hypervisor {
             hypervisor: self,
             proc,
         })
+    }
+
+    pub fn fetch_mappings(&self) -> Result<Vec<Mapping>> {
+        let handle = try_with!(openpid(self.pid), "cannot open handle in proc");
+        let mappings = try_with!(handle.maps(), "cannot read process maps");
+        Ok(mappings)
     }
 
     /// read from a virtual addr of the hypervisor
@@ -373,6 +378,5 @@ pub fn get_hypervisor(pid: Pid) -> Result<Hypervisor> {
         pid,
         vm_fd: vm_fds[0],
         vcpus,
-        mappings,
     })
 }

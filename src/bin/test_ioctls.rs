@@ -79,7 +79,7 @@ fn guest_add_mem(pid: Pid, re_get_slots: bool) -> Result<()> {
     println!("--");
 
     // add memslot
-    let slot_len = 4096; // must be page aligned
+    let slot_len = 4096; // must be a multiple of PAGESIZE
     let hv_memslot = tracee.alloc_mem_padded::<u64>(slot_len)?;
     let arg = kvmb::kvm_userspace_memory_region {
         slot: memslots_a.len() as u32,
@@ -102,7 +102,7 @@ fn guest_add_mem(pid: Pid, re_get_slots: bool) -> Result<()> {
                 map.start, map.end, map.phys_addr, map.prot_flags, map.map_flags,
             )
         });
-        assert_eq!(memslots_a.len(), memslots_b.len());
+        assert_eq!(memslots_a.len() + 1, memslots_b.len());
     }
 
     Ok(())
