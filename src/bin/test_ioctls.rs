@@ -24,6 +24,22 @@ fn inject(pid: Pid) -> Result<()> {
     }
     println!(" ok");
 
+    let tracee = vm.attach()?;
+
+    print!("get_regs");
+    for cpu in vm.vcpus.iter() {
+        let regs = tracee.get_regs(cpu)?;
+        assert_ne!(regs.ip(), 0);
+        print!(".")
+    }
+    println!(" ok");
+
+    print!("get_fpu_regs");
+    for cpu in vm.vcpus.iter() {
+        tracee.get_fpu_regs(cpu)?;
+        print!(".")
+    }
+    println!(" ok");
     Ok(())
 }
 
