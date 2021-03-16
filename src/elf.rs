@@ -47,6 +47,7 @@ pub const NT_LWPSINFO: Elf_Word = 17;
 pub const NT_PRFPXREG: Elf_Word = 20;
 pub const NT_SIGINFO: Elf_Word = 0x53494749;
 pub const NT_FILE: Elf_Word = 0x46494c45;
+#[cfg(target_arch = "x86_64")]
 pub const NT_PRXFPREG: Elf_Word = 0x46e62b7f;
 
 // e_version

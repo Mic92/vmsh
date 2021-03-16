@@ -1,9 +1,7 @@
-// struct Regs was taken from https://golang.org/pkg/syscall/#PtraceGetRegs
-
 #[cfg(target_arch = "aarch64")]
 mod arch {
     #[repr(C)]
-    #[derive(Clone, Copy)]
+    #[derive(Clone, Copy, Debug)]
     pub struct Regs {
         pub regs: [u64; 31],
         pub sp: u64,
@@ -12,9 +10,8 @@ mod arch {
     }
 
     #[repr(C)]
-    #[derive(Clone, Copy)]
-    #[allow(non_camel_case_types)]
-    pub struct elf_fpregset_t {
+    #[derive(Clone, Copy, Debug)]
+    pub struct FpuRegs {
         pub vregs: [u128; 32],
         pub fpsr: u32,
         pub fpcr: u32,
@@ -50,7 +47,7 @@ mod arch {
 #[cfg(target_arch = "x86_64")]
 mod arch {
     #[repr(C)]
-    #[derive(Clone, Copy)]
+    #[derive(Clone, Copy, Debug)]
     pub struct Regs {
         pub r15: u64,
         pub r14: u64,
@@ -82,20 +79,60 @@ mod arch {
     }
 
     #[repr(C)]
-    #[derive(Clone, Copy)]
-    #[allow(non_camel_case_types)]
-    pub struct elf_fpregset_t {
-        pub cwd: u16,
-        pub swd: u16,
-        pub ftw: u16,
-        pub fop: u16,
+    #[derive(Clone, Copy, Debug)]
+    pub struct Rip {
+        /// Instruction Pointer
         pub rip: u64,
+        /// Data Pointer
         pub rdp: u64,
+    }
+
+    #[repr(C)]
+    #[derive(Clone, Copy, Debug)]
+    pub struct Fip {
+        /// FPU IP Offset
+        pub fip: u32,
+        /// FPU IP Selector
+        pub fcs: u32,
+        /// FPU Operand Offset
+        pub foo: u32,
+        /// FPU Operand Selector
+        pub fos: u32,
+    }
+
+    #[repr(C)]
+    #[derive(Clone, Copy)]
+    pub union FpuPointer {
+        pub ip: Rip,
+        pub fip: Fip,
+    }
+
+    use std::fmt;
+    impl fmt::Debug for FpuPointer {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(f, "{:?}", unsafe { self.ip })
+        }
+    }
+
+    // from arch/x86/include/asm/fpu/types.h
+    #[repr(C, align(16))]
+    #[derive(Clone, Copy, Debug)]
+    pub struct FpuRegs {
+        /// Control Word
+        pub cwd: u16,
+        /// Status Word
+        pub swd: u16,
+        /// Tag Word
+        pub twd: u16,
+        /// Last Instruction Opcode
+        pub fop: u16,
+        pub p: FpuPointer,
         pub mxcsr: u32,
-        pub mxcr_mask: u32,
+        pub mxcsr_mask: u32,
         pub st_space: [u32; 32],
         pub xmm_space: [u32; 64],
-        pub padding: [u32; 24],
+        pub padding: [u64; 12],
+        pub padding1: [u64; 12],
     }
 
     impl Regs {

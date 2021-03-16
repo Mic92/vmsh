@@ -205,3 +205,8 @@ ioctl_ior_nr!(KVM_GET_REGS, KVMIO, 0x81, kvmb::kvm_regs);
     target_arch = "powerpc64"
 ))]
 ioctl_ior_nr!(KVM_GET_SREGS, KVMIO, 0x83, kvmb::kvm_sregs);
+
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+ioctl_ior_nr!(KVM_GET_FPU, KVMIO, 0x8c, kvmb::kvm_fpu);
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+ioctl_iow_nr!(KVM_SET_FPU, KVMIO, 0x8d, kvmb::kvm_fpu);

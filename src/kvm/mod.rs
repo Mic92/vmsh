@@ -1,22 +1,25 @@
+use crate::cpu::FpuPointer;
+use crate::cpu::Rip;
 use kvm_bindings as kvmb;
 use libc::{c_int, c_ulong, c_void};
 use log::warn;
 use nix::sys::uio::{process_vm_readv, process_vm_writev, IoVec, RemoteIoVec};
 use nix::unistd::Pid;
 use simple_error::{bail, try_with};
+use std::ffi::OsStr;
 use std::marker::PhantomData;
 use std::mem::size_of;
 use std::mem::MaybeUninit;
 use std::os::unix::prelude::RawFd;
-use std::{ffi::OsStr, slice::from_raw_parts_mut};
+use std::ptr;
 
 mod cpus;
 pub mod ioctls;
 mod memslots;
 
-use crate::cpu::{elf_fpregset_t, Regs};
+use crate::cpu::{FpuRegs, Regs};
 use crate::inject_syscall;
-use crate::kvm::ioctls::{KVM_CHECK_EXTENSION, KVM_GET_REGS};
+use crate::kvm::ioctls::KVM_CHECK_EXTENSION;
 use crate::kvm::memslots::get_maps;
 use crate::proc::{openpid, Mapping, PidHandle};
 use crate::result::Result;
@@ -138,29 +141,77 @@ impl<'a> Tracee<'a> {
         self.hypervisor.mappings.as_slice()
     }
 
-    pub fn get_fregs(&self, vcpu: &VCPU) -> Result<elf_fpregset_t> {
-        Ok(elf_fpregset_t {
-            cwd: 0,
-            swd: 0,
-            ftw: 0,
-            fop: 0,
-            rip: 0,
-            rdp: 0,
-            mxcsr: 0,
-            mxcr_mask: 0,
-            st_space: [0; 32],
-            xmm_space: [0; 64],
-            padding: [0; 24],
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    pub fn get_fpu_regs(&self, vcpu: &VCPU) -> Result<FpuRegs> {
+        use crate::kvm::ioctls::KVM_GET_FPU;
+        let regs_mem = try_with!(self.alloc_mem::<kvmb::kvm_fpu>(), "cannot allocate memory");
+        try_with!(
+            self.vcpu_ioctl(vcpu, KVM_GET_FPU(), regs_mem.ptr as c_ulong),
+            "vcpu_ioctl failed"
+        );
+        let regs = try_with!(regs_mem.read(), "cannot read fpu registers");
+        let st_space = unsafe { ptr::read(&regs.fpr as *const [u8; 16] as *const [u32; 32]) };
+        let xmm_space =
+            unsafe { ptr::read(&regs.xmm as *const [[u8; 16]; 16] as *const [u32; 64]) };
+
+        Ok(FpuRegs {
+            cwd: regs.fcw,
+            swd: regs.fsw,
+            twd: regs.ftwx as u16,
+            fop: regs.last_opcode,
+            p: FpuPointer {
+                ip: Rip {
+                    rip: regs.last_ip,
+                    rdp: regs.last_dp,
+                },
+            },
+            mxcsr: regs.mxcsr,
+            mxcsr_mask: 0,
+            st_space: st_space,
+            xmm_space: xmm_space,
+            padding: [0; 12],
+            padding1: [0; 12],
         })
     }
 
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     pub fn get_regs(&self, vcpu: &VCPU) -> Result<Regs> {
-        let regs = try_with!(self.alloc_mem::<Regs>(), "cannot allocate memory");
+        use crate::kvm::ioctls::KVM_GET_REGS;
+        let regs_mem = try_with!(self.alloc_mem::<kvmb::kvm_regs>(), "cannot allocate memory");
         try_with!(
-            self.vcpu_ioctl(vcpu, KVM_GET_REGS(), regs.ptr as c_ulong),
+            self.vcpu_ioctl(vcpu, KVM_GET_REGS(), regs_mem.ptr as c_ulong),
             "vcpu_ioctl failed"
         );
-        regs.read()
+        let regs = try_with!(regs_mem.read(), "cannot read registers");
+        Ok(Regs {
+            r15: regs.r15,
+            r14: regs.r14,
+            r13: regs.r13,
+            r12: regs.r12,
+            rbp: regs.rbp,
+            rbx: regs.rbx,
+            r11: regs.r11,
+            r10: regs.r10,
+            r9: regs.r9,
+            r8: regs.r8,
+            rax: regs.rax,
+            rcx: regs.rcx,
+            rdx: regs.rdx,
+            rsi: regs.rsi,
+            rdi: regs.rdi,
+            orig_rax: regs.rax,
+            rip: regs.rip,
+            cs: 0,
+            eflags: regs.rflags,
+            rsp: regs.rsp,
+            ss: 0,
+            fs_base: 0,
+            gs_base: 0,
+            ds: 0,
+            es: 0,
+            fs: 0,
+            gs: 0,
+        })
     }
 }
 

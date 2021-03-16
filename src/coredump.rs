@@ -10,11 +10,11 @@ use std::path::PathBuf;
 use std::{fs::File, io::Write, ptr, slice::from_raw_parts_mut};
 use std::{mem::size_of, os::unix::prelude::AsRawFd};
 
-use crate::cpu::{elf_fpregset_t, Regs};
+use crate::cpu::{FpuRegs, Regs};
 use crate::elf::{
     elf_prpsinfo, elf_prstatus, elf_siginfo, Ehdr, Elf_Addr, Elf_Half, Elf_Off, Elf_Word, Nhdr,
     Phdr, Shdr, ELFARCH, ELFCLASS, ELFDATA2, ELFMAG0, ELFMAG1, ELFMAG2, ELFMAG3, ELF_NGREG,
-    ET_CORE, EV_CURRENT, NT_PRFPREG, NT_PRPSINFO, NT_PRSTATUS, NT_PRXREG, PF_W, PF_X, SHN_UNDEF,
+    ET_CORE, EV_CURRENT, NT_PRPSINFO, NT_PRSTATUS, NT_PRXREG, PF_W, PF_X, SHN_UNDEF,
 };
 use crate::page_math::{page_align, page_size};
 use crate::result::Result;
@@ -151,7 +151,43 @@ fn write_note_section<T: Sized>(core_file: &mut File, hdr: &Nhdr, payload: &T) -
     Ok(())
 }
 
-fn write_note_sections(core_file: &mut File, regs: &[VcpuState]) -> Result<()> {
+#[cfg(target_arch = "x86_64")]
+fn write_fpu_registers(core_file: &mut File, regs: &FpuRegs) -> Result<()> {
+    use crate::elf::NT_PRXFPREG;
+    try_with!(
+        write_note_section(
+            core_file,
+            &Nhdr {
+                n_namesz: 5,
+                n_descsz: size_of::<FpuRegs>() as Elf_Word,
+                n_type: NT_PRXFPREG,
+            },
+            regs
+        ),
+        "failed to write NT_PRXFPREG"
+    );
+    Ok(())
+}
+
+#[cfg(not(target_arch = "x86_64"))]
+fn write_fpu_registers(core_file: &mut File, regs: &FpuRegs) -> Result<()> {
+    use crate::elf::NT_PRFPREG;
+    try_with!(
+        write_note_section(
+            core_file,
+            &Nhdr {
+                n_namesz: 5,
+                n_descsz: size_of::<FpuRegs>() as Elf_Word,
+                n_type: NT_PRFPREG,
+            },
+            regs
+        ),
+        "failed to write NT_PRFPREG"
+    );
+    Ok(())
+}
+
+fn write_note_sections(core_file: &mut File, vcpus: &[VcpuState]) -> Result<()> {
     try_with!(
         write_note_section(
             core_file,
@@ -196,7 +232,8 @@ fn write_note_sections(core_file: &mut File, regs: &[VcpuState]) -> Result<()> {
         tv_sec: 0,
         tv_usec: 0,
     };
-    for reg in regs {
+    for vcpu in vcpus {
+        let pr_reg = unsafe { ptr::read(&vcpu.regs as *const Regs as *const [u64; ELF_NGREG]) };
         try_with!(
             write_note_section(
                 core_file,
@@ -223,36 +260,14 @@ fn write_note_sections(core_file: &mut File, regs: &[VcpuState]) -> Result<()> {
                     pr_stime: zero,
                     pr_cutime: zero,
                     pr_cstime: zero,
-                    pr_reg: [0; ELF_NGREG],
+                    pr_reg: pr_reg,
                     pr_fpvalid: 1,
                 }
             ),
             "failed to write NT_PRSTATUS"
         );
-        try_with!(
-            write_note_section(
-                core_file,
-                &Nhdr {
-                    n_namesz: 5,
-                    n_descsz: size_of::<elf_prstatus>() as Elf_Word,
-                    n_type: NT_PRFPREG,
-                },
-                &elf_fpregset_t {
-                    cwd: 0,
-                    swd: 0,
-                    ftw: 0,
-                    fop: 0,
-                    rip: 0,
-                    rdp: 0,
-                    mxcsr: 0,
-                    mxcr_mask: 0,
-                    st_space: [0; 32],
-                    xmm_space: [0; 64],
-                    padding: [0; 24],
-                }
-            ),
-            "failed to write NT_PRSTATUS"
-        );
+
+        write_fpu_registers(core_file, &vcpu.fpu_regs)?;
     }
     Ok(())
 }
@@ -273,7 +288,7 @@ fn write_corefile(
 
     let pt_note_size = note_size::<elf_prpsinfo>()
         + note_size::<core_user>()
-        + vcpus.len() * (note_size::<elf_prstatus>() + note_size::<elf_fpregset_t>());
+        + vcpus.len() * (note_size::<elf_prstatus>() + note_size::<FpuRegs>());
 
     let metadata_size =
         page_align(size_of::<Ehdr>() + (size_of::<Phdr>() * ehdr.e_phnum as usize + pt_note_size));
@@ -325,7 +340,7 @@ fn write_corefile(
 struct VcpuState {
     num: usize,
     regs: Regs,
-    fregs: elf_fpregset_t,
+    fpu_regs: FpuRegs,
 }
 
 pub fn generate_coredump(opts: &CoredumpOptions) -> Result<()> {
@@ -352,11 +367,11 @@ pub fn generate_coredump(opts: &CoredumpOptions) -> Result<()> {
         .enumerate()
         .map(|(i, vcpu)| {
             let regs = tracee.get_regs(vcpu)?;
-            let fregs = tracee.get_fregs(vcpu)?;
+            let fpu_regs = tracee.get_fpu_regs(vcpu)?;
             Ok(VcpuState {
                 num: i,
                 regs,
-                fregs,
+                fpu_regs,
             })
         })
         .collect::<Result<Vec<VcpuState>>>();
