@@ -13,6 +13,7 @@ pkgs.mkShell {
   RUST_SRC_PATH = pkgs.rustPlatform.rustLibSrc;
   nativeBuildInputs = [
     niv.niv
+    pkgs.rls
     pkgs.rust-analyzer
     pkgs.rustfmt
     pkgs.just
