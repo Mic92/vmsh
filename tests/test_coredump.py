@@ -1,9 +1,10 @@
-import conftest
 import os
-import subprocess
 import re
+import subprocess
 from tempfile import TemporaryDirectory
 from typing import Dict
+
+import conftest
 
 
 def parse_regs(qemu_output: str) -> Dict[str, int]:
