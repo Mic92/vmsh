@@ -1,3 +1,4 @@
+use crate::proc::openpid;
 use bcc::perf_event::PerfMapBuilder;
 use bcc::{BPFBuilder, Kprobe, BPF};
 use core::slice::from_raw_parts as make_slice;
@@ -105,6 +106,12 @@ fn bpf_prog(pid: Pid) -> Result<BPF> {
     Ok(try_with!(builder_with_cflags.build(), "build failed"))
 }
 
+pub fn fetch_mappings(pid: Pid) -> Result<Vec<Mapping>> {
+    let handle = try_with!(openpid(pid), "cannot open handle in proc");
+    let mappings = try_with!(handle.maps(), "cannot read process maps");
+    Ok(mappings)
+}
+
 pub fn get_maps(tracee: &Tracee) -> Result<Vec<Mapping>> {
     let mut module = bpf_prog(tracee.pid())?;
     try_with!(
@@ -134,25 +141,21 @@ pub fn get_maps(tracee: &Tracee) -> Result<Vec<Mapping>> {
         receiver.recv_timeout(Duration::from_secs(0)),
         "could not receive memslots from kernel"
     );
+    let mappings = fetch_mappings(tracee.pid())?;
     memslots
         .iter()
-        .map(|slot| {
-            match proc::find_mapping(
-                try_with!(tracee.mappings(), "cannot get mappings").as_slice(),
-                slot.start(),
-            ) {
-                Some(mut m) => {
-                    m.start = slot.start();
-                    m.end = slot.end();
-                    m.phys_addr = slot.physical_start();
-                    Ok(m)
-                }
-                None => bail!(
-                    "No mapping of memslot {} found in hypervisor (/proc/{}/maps)",
-                    slot,
-                    tracee.pid()
-                ),
+        .map(|slot| match proc::find_mapping(&mappings, slot.start()) {
+            Some(mut m) => {
+                m.start = slot.start();
+                m.end = slot.end();
+                m.phys_addr = slot.physical_start();
+                Ok(m)
             }
+            None => bail!(
+                "No mapping of memslot {} found in hypervisor (/proc/{}/maps)",
+                slot,
+                tracee.pid()
+            ),
         })
         .collect()
 }

@@ -24,14 +24,15 @@ use crate::kvm::memslots::get_maps;
 use crate::proc::{openpid, Mapping, PidHandle};
 use crate::result::Result;
 
-pub struct Tracee<'a> {
-    hypervisor: &'a Hypervisor,
+pub struct Tracee {
+    pid: Pid,
+    vm_fd: RawFd,
     proc: inject_syscall::Process,
 }
 
 pub struct TraceeMem<'a, T: Copy> {
     pub ptr: *mut c_void,
-    tracee: &'a Tracee<'a>,
+    tracee: &'a Tracee,
     phantom: PhantomData<T>,
 }
 
@@ -44,17 +45,72 @@ impl<'a, T: Copy> Drop for TraceeMem<'a, T> {
 }
 impl<'a, T: Copy> TraceeMem<'a, T> {
     pub fn read(&self) -> Result<T> {
-        self.tracee.hypervisor.read(self.ptr)
+        process_read(self.tracee.pid, self.ptr)
     }
     pub fn write(&self, val: &T) -> Result<()> {
-        self.tracee.hypervisor.write(self.ptr, val)
+        process_write(self.tracee.pid, self.ptr, val)
     }
 }
 
+/// read from a virtual addr of the hypervisor
+pub fn process_read<T: Sized + Copy>(pid: Pid, addr: *const c_void) -> Result<T> {
+    let len = size_of::<T>();
+    let mut t_mem = MaybeUninit::<T>::uninit();
+    let t_slice = unsafe { std::slice::from_raw_parts_mut(t_mem.as_mut_ptr() as *mut u8, len) };
+
+    let local_iovec = vec![IoVec::from_mut_slice(t_slice)];
+    let remote_iovec = vec![RemoteIoVec {
+        base: addr as usize,
+        len,
+    }];
+
+    let f = try_with!(
+        process_vm_readv(pid, local_iovec.as_slice(), remote_iovec.as_slice()),
+        "cannot read memory"
+    );
+    if f != len {
+        bail!(
+            "process_vm_readv read {} bytes when {} were expected",
+            f,
+            len
+        )
+    }
+
+    let t: T = unsafe { t_mem.assume_init() };
+    Ok(t)
+}
+
+/// write to a virtual addr of the hypervisor
+pub fn process_write<T: Sized + Copy>(pid: Pid, addr: *mut c_void, val: &T) -> Result<()> {
+    let len = size_of::<T>();
+    // safe, because we won't need t_bytes for long
+    let t_bytes = unsafe { any_as_bytes(val) };
+
+    let local_iovec = vec![IoVec::from_slice(t_bytes)];
+    let remote_iovec = vec![RemoteIoVec {
+        base: addr as usize,
+        len,
+    }];
+
+    let f = try_with!(
+        process_vm_writev(pid, local_iovec.as_slice(), remote_iovec.as_slice()),
+        "cannot write memory"
+    );
+    if f != len {
+        bail!(
+            "process_vm_writev written {} bytes when {} were expected",
+            f,
+            len
+        )
+    }
+
+    Ok(())
+}
+
 /// Safe wrapper for unsafe inject_syscall::Process operations.
-impl<'a> Tracee<'a> {
+impl Tracee {
     fn vm_ioctl(&self, request: c_ulong, arg: c_ulong) -> Result<c_int> {
-        self.proc.ioctl(self.hypervisor.vm_fd, request, arg)
+        self.proc.ioctl(self.vm_fd, request, arg)
     }
 
     fn vcpu_ioctl(&self, vcpu: &VCPU, request: c_ulong, arg: c_ulong) -> Result<c_int> {
@@ -101,11 +157,11 @@ impl<'a> Tracee<'a> {
         let mem = try_with!(self.alloc_mem::<T>(), "cannot allocate memory");
 
         try_with!(
-            self.hypervisor.write(mem.ptr, arg),
+            process_write(self.pid, mem.ptr, arg),
             "cannot write ioctl arg struct to hv"
         );
 
-        let ioeventfd: kvmb::kvm_ioeventfd = try_with!(self.hypervisor.read(mem.ptr), "foobar");
+        let ioeventfd: kvmb::kvm_ioeventfd = try_with!(process_read(self.pid, mem.ptr), "foobar");
         println!(
             "arg {:?}, {:?}, {:?}",
             ioeventfd.len, ioeventfd.addr, ioeventfd.fd
@@ -143,15 +199,11 @@ impl<'a> Tracee<'a> {
     }
 
     pub fn pid(&self) -> Pid {
-        self.hypervisor.pid
+        self.pid
     }
 
     pub fn get_maps(&self) -> Result<Vec<Mapping>> {
         get_maps(self)
-    }
-
-    pub fn mappings(&self) -> Result<Vec<Mapping>> {
-        self.hypervisor.fetch_mappings()
     }
 
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -250,70 +302,10 @@ impl Hypervisor {
             "cannot attach to hypervisor"
         );
         Ok(Tracee {
-            hypervisor: self,
+            pid: self.pid,
+            vm_fd: self.vm_fd,
             proc,
         })
-    }
-
-    pub fn fetch_mappings(&self) -> Result<Vec<Mapping>> {
-        let handle = try_with!(openpid(self.pid), "cannot open handle in proc");
-        let mappings = try_with!(handle.maps(), "cannot read process maps");
-        Ok(mappings)
-    }
-
-    /// read from a virtual addr of the hypervisor
-    pub fn read<T: Sized + Copy>(&self, addr: *const c_void) -> Result<T> {
-        let len = size_of::<T>();
-        let mut t_mem = MaybeUninit::<T>::uninit();
-        let t_slice = unsafe { std::slice::from_raw_parts_mut(t_mem.as_mut_ptr() as *mut u8, len) };
-
-        let local_iovec = vec![IoVec::from_mut_slice(t_slice)];
-        let remote_iovec = vec![RemoteIoVec {
-            base: addr as usize,
-            len,
-        }];
-
-        let f = try_with!(
-            process_vm_readv(self.pid, local_iovec.as_slice(), remote_iovec.as_slice()),
-            "cannot read hypervisor memory"
-        );
-        if f != len {
-            bail!(
-                "process_vm_readv read {} bytes when {} were expected",
-                f,
-                len
-            )
-        }
-
-        let t: T = unsafe { t_mem.assume_init() };
-        Ok(t)
-    }
-
-    /// write to a virtual addr of the hypervisor
-    pub fn write<T: Sized + Copy>(&self, addr: *mut c_void, val: &T) -> Result<()> {
-        let len = size_of::<T>();
-        // safe, because we won't need t_bytes for long
-        let t_bytes = unsafe { any_as_bytes(val) };
-
-        let local_iovec = vec![IoVec::from_slice(t_bytes)];
-        let remote_iovec = vec![RemoteIoVec {
-            base: addr as usize,
-            len,
-        }];
-
-        let f = try_with!(
-            process_vm_writev(self.pid, local_iovec.as_slice(), remote_iovec.as_slice()),
-            "cannot write hypervisor memory"
-        );
-        if f != len {
-            bail!(
-                "process_vm_writev written {} bytes when {} were expected",
-                f,
-                len
-            )
-        }
-
-        Ok(())
     }
 }
 
@@ -363,7 +355,6 @@ pub fn get_hypervisor(pid: Pid) -> Result<Hypervisor> {
     let handle = try_with!(openpid(pid), "cannot open handle in proc");
 
     let (vm_fds, vcpus) = try_with!(find_vm_fd(&handle), "failed to access kvm fds");
-    let mappings = try_with!(handle.maps(), "cannot read process maps");
     if vm_fds.is_empty() {
         bail!("no VMs found");
     }

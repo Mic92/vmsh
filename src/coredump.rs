@@ -6,8 +6,6 @@ use nix::sys::{
 use nix::unistd::Pid;
 use simple_error::try_with;
 use std::fs::OpenOptions;
-use std::io::Seek;
-use std::io::SeekFrom;
 use std::path::PathBuf;
 use std::{fs::File, io::Write, ptr, slice::from_raw_parts_mut};
 use std::{mem::size_of, os::unix::prelude::AsRawFd};
