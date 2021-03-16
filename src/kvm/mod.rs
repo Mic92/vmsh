@@ -62,7 +62,20 @@ impl<'a> Tracee<'a> {
     }
 
     pub fn alloc_mem<T: Copy>(&self) -> Result<TraceeMem<T>> {
-        let ptr = self.mmap(size_of::<T>())?;
+        self.alloc_mem_padded::<T>(size_of::<T>())
+    }
+
+    /// allocate memory for T. Allocate more than necessary to increase allocation size to `size`.
+    pub fn alloc_mem_padded<T: Copy>(&self, size: usize) -> Result<TraceeMem<T>> {
+        if size < size_of::<T>() {
+            bail!(
+                "allocating {}b for item of size {} is not sufficient",
+                size,
+                size_of::<T>()
+            )
+        }
+        // safe, because TraceeMem enforces to write and read at most `size_of::<T> <= size` bytes.
+        let ptr = unsafe { self.mmap(size)? };
         Ok(TraceeMem {
             ptr,
             tracee: self,
@@ -109,12 +122,12 @@ impl<'a> Tracee<'a> {
     ///
     /// length in bytes.
     /// returns void pointer to the allocated virtual memory address of the hypervisor.
-    fn mmap(&self, length: libc::size_t) -> Result<*mut c_void> {
+    unsafe fn mmap(&self, length: libc::size_t) -> Result<*mut c_void> {
         let addr = libc::AT_NULL as *mut c_void; // make kernel choose location for us
         let prot = libc::PROT_READ | libc::PROT_WRITE;
         let flags = libc::MAP_SHARED | libc::MAP_ANONYMOUS;
-        let fd = 0 as RawFd; // ignored because of MAP_ANONYMOUS
-        let offset = 0 as libc::off_t;
+        let fd = -1 as RawFd; // ignored because of MAP_ANONYMOUS => should be -1
+        let offset = 0 as libc::off_t; // MAP_ANON => should be 0
         self.proc.mmap(addr, length, prot, flags, fd, offset)
     }
 
@@ -137,8 +150,8 @@ impl<'a> Tracee<'a> {
         get_maps(self)
     }
 
-    pub fn mappings(&self) -> &[Mapping] {
-        self.hypervisor.mappings.as_slice()
+    pub fn mappings(&self) -> Result<Vec<Mapping>> {
+        self.hypervisor.fetch_mappings()
     }
 
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -228,7 +241,6 @@ pub struct Hypervisor {
     pub pid: Pid,
     pub vm_fd: RawFd,
     pub vcpus: Vec<VCPU>,
-    pub mappings: Vec<Mapping>,
 }
 
 impl Hypervisor {
@@ -241,6 +253,12 @@ impl Hypervisor {
             hypervisor: self,
             proc,
         })
+    }
+
+    pub fn fetch_mappings(&self) -> Result<Vec<Mapping>> {
+        let handle = try_with!(openpid(self.pid), "cannot open handle in proc");
+        let mappings = try_with!(handle.maps(), "cannot read process maps");
+        Ok(mappings)
     }
 
     /// read from a virtual addr of the hypervisor
@@ -360,6 +378,5 @@ pub fn get_hypervisor(pid: Pid) -> Result<Hypervisor> {
         pid,
         vm_fd: vm_fds[0],
         vcpus,
-        mappings,
     })
 }

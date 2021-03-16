@@ -60,7 +60,7 @@ fn alloc_mem(pid: Pid) -> Result<()> {
     Ok(())
 }
 
-fn guest_add_mem(pid: Pid) -> Result<()> {
+fn guest_add_mem(pid: Pid, re_get_slots: bool) -> Result<()> {
     let vm = try_with!(
         kvm::get_hypervisor(pid),
         "cannot get vms for process {}",
@@ -79,13 +79,13 @@ fn guest_add_mem(pid: Pid) -> Result<()> {
     println!("--");
 
     // add memslot
-    const SLOT_LEN: usize = 0x10;
-    let hv_memslot = tracee.alloc_mem::<[u8; SLOT_LEN]>()?;
+    let slot_len = 4096; // must be a multiple of PAGESIZE
+    let hv_memslot = tracee.alloc_mem_padded::<u64>(slot_len)?;
     let arg = kvmb::kvm_userspace_memory_region {
         slot: memslots_a.len() as u32,
-        flags: 0, // maybe KVM_MEM_READONLY
-        guest_phys_addr: 0xd0000000,
-        memory_size: SLOT_LEN as u64,
+        flags: 0x00,                 // maybe KVM_MEM_READONLY
+        guest_phys_addr: 0xd0000000, // must be page aligned
+        memory_size: slot_len as u64,
         userspace_addr: hv_memslot.ptr as u64,
     };
     let ret = tracee.vm_ioctl_with_ref(ioctls::KVM_SET_USER_MEMORY_REGION(), &arg)?;
@@ -93,15 +93,17 @@ fn guest_add_mem(pid: Pid) -> Result<()> {
         bail!("ioctl_with_ref failed: {}", ret)
     }
 
-    // count memslots again
-    let memslots_b = tracee.get_maps()?;
-    memslots_b.iter().for_each(|map| {
-        println!(
-            "vm mem: 0x{:x} -> 0x{:x} (physical: 0x{:x}, flags: {:?} | {:?})",
-            map.start, map.end, map.phys_addr, map.prot_flags, map.map_flags,
-        )
-    });
-    assert_eq!(memslots_a.len(), memslots_b.len());
+    if re_get_slots {
+        // count memslots again
+        let memslots_b = tracee.get_maps()?;
+        memslots_b.iter().for_each(|map| {
+            println!(
+                "vm mem: 0x{:x} -> 0x{:x} (physical: 0x{:x}, flags: {:?} | {:?})",
+                map.start, map.end, map.phys_addr, map.prot_flags, map.map_flags,
+            )
+        });
+        assert_eq!(memslots_a.len() + 1, memslots_b.len());
+    }
 
     Ok(())
 }
@@ -162,6 +164,7 @@ fn main() {
         .subcommand(subtest("alloc_mem"))
         .subcommand(subtest("inject"))
         .subcommand(subtest("guest_add_mem"))
+        .subcommand(subtest("guest_add_mem_get_maps"))
         .subcommand(subtest("guest_ioeventfd"));
 
     let matches = app.get_matches();
@@ -173,7 +176,8 @@ fn main() {
     let result = match subcommand_name {
         "alloc_mem" => alloc_mem(pid),
         "inject" => inject(pid),
-        "guest_add_mem" => guest_add_mem(pid),
+        "guest_add_mem" => guest_add_mem(pid, false),
+        "guest_add_mem_get_maps" => guest_add_mem(pid, true),
         "guest_ioeventfd" => guest_ioeventfd(pid),
         _ => std::process::exit(2),
     };

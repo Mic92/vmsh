@@ -136,8 +136,11 @@ pub fn get_maps(tracee: &Tracee) -> Result<Vec<Mapping>> {
     );
     memslots
         .iter()
-        .map(
-            |slot| match proc::find_mapping(tracee.mappings(), slot.start()) {
+        .map(|slot| {
+            match proc::find_mapping(
+                try_with!(tracee.mappings(), "cannot get mappings").as_slice(),
+                slot.start(),
+            ) {
                 Some(mut m) => {
                     m.start = slot.start();
                     m.end = slot.end();
@@ -149,7 +152,7 @@ pub fn get_maps(tracee: &Tracee) -> Result<Vec<Mapping>> {
                     slot,
                     tracee.pid()
                 ),
-            },
-        )
+            }
+        })
         .collect()
 }
