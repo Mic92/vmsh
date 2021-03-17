@@ -173,6 +173,21 @@ impl Tracee {
         ret
     }
 
+    pub fn vm_add_mem(&self, slot_len: usize, hv_memslot: &TraceeMem<u32>) -> Result<()> {
+        let arg = kvmb::kvm_userspace_memory_region {
+            slot: self.get_maps()?.len() as u32,
+            flags: 0x00,                 // maybe KVM_MEM_READONLY
+            guest_phys_addr: 0xd0000000, // must be page aligned
+            memory_size: slot_len as u64,
+            userspace_addr: hv_memslot.ptr as u64,
+        };
+        let ret = self.vm_ioctl_with_ref(ioctls::KVM_SET_USER_MEMORY_REGION(), &arg)?;
+        if ret != 0 {
+            bail!("ioctl_with_ref failed: {}", ret)
+        }
+        Ok(())
+    }
+
     /// Make the kernel allocate anonymous memory (anywhere he likes, not bound to a file
     /// descriptor). This is not fully POSIX compliant, but works on linux.
     ///
