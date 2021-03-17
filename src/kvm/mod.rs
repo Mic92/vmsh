@@ -21,13 +21,14 @@ use crate::cpu::{FpuRegs, Regs};
 use crate::inject_syscall;
 use crate::kvm::ioctls::KVM_CHECK_EXTENSION;
 use crate::kvm::memslots::get_maps;
+use crate::page_math;
 use crate::proc::{openpid, Mapping, PidHandle};
 use crate::result::Result;
 
 pub struct Tracee {
     pid: Pid,
     vm_fd: RawFd,
-    proc: inject_syscall::Process,
+    proc: inject_syscall::Process, // make optional and implement play/pause
 }
 
 pub struct TraceeMem<'a, T: Copy> {
@@ -49,6 +50,34 @@ impl<'a, T: Copy> TraceeMem<'a, T> {
     }
     pub fn write(&self, val: &T) -> Result<()> {
         process_write(self.tracee.pid, self.ptr, val)
+    }
+}
+
+pub struct VmMem<'a, T: Copy> {
+    pub mem: TraceeMem<'a, T>,
+    ioctl_arg: kvmb::kvm_userspace_memory_region,
+}
+
+impl<'a, T: Copy> Drop for VmMem<'a, T> {
+    fn drop(&mut self) {
+        self.ioctl_arg.memory_size = 0; // indicates request for deletion
+        let ret = match self
+            .mem
+            .tracee
+            .vm_ioctl_with_ref(ioctls::KVM_SET_USER_MEMORY_REGION(), &self.ioctl_arg)
+        {
+            Ok(ret) => ret,
+            Err(e) => {
+                warn!("failed to remove memory from VM: {}", e);
+                return;
+            }
+        };
+        if ret != 0 {
+            warn!(
+                "ioctl_with_ref to remove memory from VM returned error code: {}",
+                ret
+            )
+        }
     }
 }
 
@@ -173,19 +202,28 @@ impl Tracee {
         ret
     }
 
-    pub fn vm_add_mem(&self, slot_len: usize, hv_memslot: &TraceeMem<u32>) -> Result<()> {
+    /// Safety: This function is safe for vmsh and the hypervisor. It is not for the guest.
+    pub fn vm_add_mem<T: Sized + Copy>(&self) -> Result<VmMem<T>> {
+        // must be a multiple of PAGESIZE
+        let slot_len = (size_of::<T>() / page_math::page_size() + 1) * page_math::page_size();
+        let hv_memslot = self.alloc_mem_padded::<T>(slot_len)?;
         let arg = kvmb::kvm_userspace_memory_region {
-            slot: self.get_maps()?.len() as u32,
-            flags: 0x00,                 // maybe KVM_MEM_READONLY
-            guest_phys_addr: 0xd0000000, // must be page aligned
+            slot: self.get_maps()?.len() as u32, // guess a hopfully available slot id
+            flags: 0x00,                         // maybe KVM_MEM_READONLY
+            guest_phys_addr: 0xd0000000,         // must be page aligned
             memory_size: slot_len as u64,
             userspace_addr: hv_memslot.ptr as u64,
         };
+
         let ret = self.vm_ioctl_with_ref(ioctls::KVM_SET_USER_MEMORY_REGION(), &arg)?;
         if ret != 0 {
             bail!("ioctl_with_ref failed: {}", ret)
         }
-        Ok(())
+
+        Ok(VmMem {
+            mem: hv_memslot,
+            ioctl_arg: arg,
+        })
     }
 
     /// Make the kernel allocate anonymous memory (anywhere he likes, not bound to a file

@@ -61,6 +61,8 @@ fn alloc_mem(pid: Pid) -> Result<()> {
 }
 
 fn guest_add_mem(pid: Pid, re_get_slots: bool) -> Result<()> {
+    let memslots_a_len;
+
     {
         let vm = try_with!(
             kvm::get_hypervisor(pid),
@@ -71,6 +73,7 @@ fn guest_add_mem(pid: Pid, re_get_slots: bool) -> Result<()> {
 
         // count memslots
         let memslots_a = tracee.get_maps()?;
+        memslots_a_len = memslots_a.len();
         memslots_a.iter().for_each(|map| {
             println!(
                 "vm mem: 0x{:x} -> 0x{:x} (physical: 0x{:x}, flags: {:?} | {:?})",
@@ -80,9 +83,7 @@ fn guest_add_mem(pid: Pid, re_get_slots: bool) -> Result<()> {
         println!("--");
 
         // add memslot
-        let slot_len = 4096; // must be a multiple of PAGESIZE
-        let hv_memslot = tracee.alloc_mem_padded::<u32>(slot_len)?;
-        tracee.vm_add_mem(slot_len, &hv_memslot)?;
+        let vm_mem = tracee.vm_add_mem::<u64>()?;
 
         if re_get_slots {
             // count memslots again
@@ -95,11 +96,28 @@ fn guest_add_mem(pid: Pid, re_get_slots: bool) -> Result<()> {
             });
             assert_eq!(memslots_a.len() + 1, memslots_b.len());
         }
-        println!("in scope. sleeping");
-        std::thread::sleep(std::time::Duration::from_secs(20));
+        println!("write 0xdeadbeef to 0xd0000000");
+        vm_mem.mem.write(&0xDEADBEEF)?;
     }
-    println!("out of scope. sleeping");
-    std::thread::sleep(std::time::Duration::from_secs(20));
+
+    // VmMem is out of scope and should thus have removed the memory again.
+    let vm = try_with!(
+        kvm::get_hypervisor(pid),
+        "cannot get vms for process {}",
+        pid
+    );
+    let tracee = vm.attach()?;
+    if re_get_slots {
+        // count memslots again
+        let memslots_c = tracee.get_maps()?;
+        memslots_c.iter().for_each(|map| {
+            println!(
+                "vm mem: 0x{:x} -> 0x{:x} (physical: 0x{:x}, flags: {:?} | {:?})",
+                map.start, map.end, map.phys_addr, map.prot_flags, map.map_flags,
+            )
+        });
+        assert_eq!(memslots_a_len, memslots_c.len());
+    }
     Ok(())
 }
 
