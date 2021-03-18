@@ -79,7 +79,7 @@ mod arch {
     }
 
     // from arch/x86/include/asm/fpu/types.h
-    #[repr(C, align(16))]
+    #[repr(C)]
     #[derive(Clone, Copy, Debug)]
     pub struct FpuRegs {
         /// Control Word
@@ -98,8 +98,8 @@ mod arch {
         pub mxcsr_mask: u32,
         pub st_space: [u32; 32],
         pub xmm_space: [u32; 64],
-        pub padding: [u64; 12],
-        pub padding1: [u64; 12],
+        pub padding: [u32; 12],
+        pub padding1: [u32; 12],
     }
 
     impl Regs {
