@@ -61,50 +61,63 @@ fn alloc_mem(pid: Pid) -> Result<()> {
 }
 
 fn guest_add_mem(pid: Pid, re_get_slots: bool) -> Result<()> {
+    let memslots_a_len;
+
+    {
+        let vm = try_with!(
+            kvm::get_hypervisor(pid),
+            "cannot get vms for process {}",
+            pid
+        );
+        let tracee = vm.attach()?;
+
+        // count memslots
+        let memslots_a = tracee.get_maps()?;
+        memslots_a_len = memslots_a.len();
+        memslots_a.iter().for_each(|map| {
+            println!(
+                "vm mem: 0x{:x} -> 0x{:x} (physical: 0x{:x}, flags: {:?} | {:?})",
+                map.start, map.end, map.phys_addr, map.prot_flags, map.map_flags,
+            )
+        });
+        println!("--");
+
+        // add memslot
+        let vm_mem = tracee.vm_add_mem::<u64>()?;
+
+        if re_get_slots {
+            // count memslots again
+            let memslots_b = tracee.get_maps()?;
+            memslots_b.iter().for_each(|map| {
+                println!(
+                    "vm mem: 0x{:x} -> 0x{:x} (physical: 0x{:x}, flags: {:?} | {:?})",
+                    map.start, map.end, map.phys_addr, map.prot_flags, map.map_flags,
+                )
+            });
+            assert_eq!(memslots_a.len() + 1, memslots_b.len());
+        }
+        println!("write 0xdeadbeef to 0xd0000000");
+        vm_mem.mem.write(&0xDEADBEEF)?;
+    }
+
+    // VmMem is out of scope and should thus have removed the memory again.
     let vm = try_with!(
         kvm::get_hypervisor(pid),
         "cannot get vms for process {}",
         pid
     );
     let tracee = vm.attach()?;
-
-    // count memslots
-    let memslots_a = tracee.get_maps()?;
-    memslots_a.iter().for_each(|map| {
-        println!(
-            "vm mem: 0x{:x} -> 0x{:x} (physical: 0x{:x}, flags: {:?} | {:?})",
-            map.start, map.end, map.phys_addr, map.prot_flags, map.map_flags,
-        )
-    });
-    println!("--");
-
-    // add memslot
-    let slot_len = 4096; // must be a multiple of PAGESIZE
-    let hv_memslot = tracee.alloc_mem_padded::<u64>(slot_len)?;
-    let arg = kvmb::kvm_userspace_memory_region {
-        slot: memslots_a.len() as u32,
-        flags: 0x00,                 // maybe KVM_MEM_READONLY
-        guest_phys_addr: 0xd0000000, // must be page aligned
-        memory_size: slot_len as u64,
-        userspace_addr: hv_memslot.ptr as u64,
-    };
-    let ret = tracee.vm_ioctl_with_ref(ioctls::KVM_SET_USER_MEMORY_REGION(), &arg)?;
-    if ret != 0 {
-        bail!("ioctl_with_ref failed: {}", ret)
-    }
-
     if re_get_slots {
         // count memslots again
-        let memslots_b = tracee.get_maps()?;
-        memslots_b.iter().for_each(|map| {
+        let memslots_c = tracee.get_maps()?;
+        memslots_c.iter().for_each(|map| {
             println!(
                 "vm mem: 0x{:x} -> 0x{:x} (physical: 0x{:x}, flags: {:?} | {:?})",
                 map.start, map.end, map.phys_addr, map.prot_flags, map.map_flags,
             )
         });
-        assert_eq!(memslots_a.len() + 1, memslots_b.len());
+        assert_eq!(memslots_a_len, memslots_c.len());
     }
-
     Ok(())
 }
 
