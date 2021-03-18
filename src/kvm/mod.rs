@@ -30,56 +30,6 @@ pub struct Tracee {
     proc: inject_syscall::Process, // TODO make optional and implement play/pause
 }
 
-pub struct TraceeMem<'a, T: Copy> {
-    pub ptr: *mut c_void,
-    tracee: &'a Tracee,
-    phantom: PhantomData<T>,
-}
-
-impl<'a, T: Copy> Drop for TraceeMem<'a, T> {
-    fn drop(&mut self) {
-        if let Err(e) = self.tracee.munmap(self.ptr, size_of::<T>()) {
-            warn!("failed to unmap memory from process: {}", e);
-        }
-    }
-}
-impl<'a, T: Copy> TraceeMem<'a, T> {
-    pub fn read(&self) -> Result<T> {
-        process_read(self.tracee.pid, self.ptr)
-    }
-    pub fn write(&self, val: &T) -> Result<()> {
-        process_write(self.tracee.pid, self.ptr, val)
-    }
-}
-
-pub struct VmMem<'a, T: Copy> {
-    pub mem: TraceeMem<'a, T>,
-    ioctl_arg: kvmb::kvm_userspace_memory_region,
-}
-
-impl<'a, T: Copy> Drop for VmMem<'a, T> {
-    fn drop(&mut self) {
-        self.ioctl_arg.memory_size = 0; // indicates request for deletion
-        let ret = match self
-            .mem
-            .tracee
-            .vm_ioctl_with_ref(ioctls::KVM_SET_USER_MEMORY_REGION(), &self.ioctl_arg)
-        {
-            Ok(ret) => ret,
-            Err(e) => {
-                warn!("failed to remove memory from VM: {}", e);
-                return;
-            }
-        };
-        if ret != 0 {
-            warn!(
-                "ioctl_with_ref to remove memory from VM returned error code: {}",
-                ret
-            )
-        }
-    }
-}
-
 /// read from a virtual addr of the hypervisor
 pub fn process_read<T: Sized + Copy>(pid: Pid, addr: *const c_void) -> Result<T> {
     let len = size_of::<T>();
@@ -145,12 +95,12 @@ impl Tracee {
         self.proc.ioctl(vcpu.fd_num, request, arg)
     }
 
-    pub fn alloc_mem<T: Copy>(&self) -> Result<TraceeMem<T>> {
+    pub fn alloc_mem<T: Copy>(&self) -> Result<HvMem<T>> {
         self.alloc_mem_padded::<T>(size_of::<T>())
     }
 
     /// allocate memory for T. Allocate more than necessary to increase allocation size to `size`.
-    pub fn alloc_mem_padded<T: Copy>(&self, size: usize) -> Result<TraceeMem<T>> {
+    pub fn alloc_mem_padded<T: Copy>(&self, size: usize) -> Result<HvMem<T>> {
         if size < size_of::<T>() {
             bail!(
                 "allocating {}b for item of size {} is not sufficient",
@@ -160,7 +110,7 @@ impl Tracee {
         }
         // safe, because TraceeMem enforces to write and read at most `size_of::<T> <= size` bytes.
         let ptr = unsafe { self.mmap(size)? };
-        Ok(TraceeMem {
+        Ok(HvMem {
             ptr,
             tracee: self,
             phantom: PhantomData,
@@ -349,6 +299,58 @@ impl Tracee {
 
 pub unsafe fn any_as_bytes<T: Sized>(p: &T) -> &[u8] {
     std::slice::from_raw_parts((p as *const T) as *const u8, size_of::<T>())
+}
+
+/// Hypervisor Memory
+pub struct HvMem<'a, T: Copy> {
+    pub ptr: *mut c_void,
+    tracee: &'a Tracee,
+    phantom: PhantomData<T>,
+}
+
+impl<'a, T: Copy> Drop for HvMem<'a, T> {
+    fn drop(&mut self) {
+        if let Err(e) = self.tracee.munmap(self.ptr, size_of::<T>()) {
+            warn!("failed to unmap memory from process: {}", e);
+        }
+    }
+}
+
+impl<'a, T: Copy> HvMem<'a, T> {
+    pub fn read(&self) -> Result<T> {
+        process_read(self.tracee.pid, self.ptr)
+    }
+    pub fn write(&self, val: &T) -> Result<()> {
+        process_write(self.tracee.pid, self.ptr, val)
+    }
+}
+
+pub struct VmMem<'a, T: Copy> {
+    pub mem: HvMem<'a, T>,
+    ioctl_arg: kvmb::kvm_userspace_memory_region,
+}
+
+impl<'a, T: Copy> Drop for VmMem<'a, T> {
+    fn drop(&mut self) {
+        self.ioctl_arg.memory_size = 0; // indicates request for deletion
+        let ret = match self
+            .mem
+            .tracee
+            .vm_ioctl_with_ref(ioctls::KVM_SET_USER_MEMORY_REGION(), &self.ioctl_arg)
+        {
+            Ok(ret) => ret,
+            Err(e) => {
+                warn!("failed to remove memory from VM: {}", e);
+                return;
+            }
+        };
+        if ret != 0 {
+            warn!(
+                "ioctl_with_ref to remove memory from VM returned error code: {}",
+                ret
+            )
+        }
+    }
 }
 
 pub struct VCPU {
