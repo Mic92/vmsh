@@ -1,3 +1,6 @@
+use crate::kvm::VCPU;
+use kvm::Tracee;
+use kvm_bindings as kvmb;
 use libc::{c_void, off_t, timeval, PT_LOAD, PT_NOTE};
 use nix::sys::{
     mman::{mmap, MapFlags, ProtFlags},
@@ -28,7 +31,8 @@ pub struct CoredumpOptions {
 #[repr(C)]
 #[derive(Clone)]
 pub struct core_user {
-    magic: u64,
+    vcpu: usize,
+    sregs: kvmb::kvm_sregs,
 }
 
 fn protection_flags(f: &ProtFlags) -> Elf_Word {
@@ -206,8 +210,8 @@ fn write_note_sections(core_file: &mut File, vcpus: &[VcpuState]) -> Result<()> 
                 pr_flag: 0,
                 pr_uid: 0,
                 pr_gid: 0,
-                pr_pid: 0,
-                pr_ppid: 0,
+                pr_pid: 1,
+                pr_ppid: 1,
                 pr_pgrp: 0,
                 pr_sid: 0,
                 pr_fname: *b"qemu-system-x86_",
@@ -217,16 +221,11 @@ fn write_note_sections(core_file: &mut File, vcpus: &[VcpuState]) -> Result<()> 
         "failed to write NT_PRPSINFO"
     );
 
-    try_with!(
-        write_note_section(core_file, NT_PRXREG, &core_user { magic: 4242 }),
-        "failed to write NT_PRXREG"
-    );
-
     let zero = timeval {
         tv_sec: 0,
         tv_usec: 0,
     };
-    for vcpu in vcpus {
+    for (i, vcpu) in vcpus.iter().enumerate() {
         let pr_reg = unsafe { ptr::read(&vcpu.regs as *const Regs as *const [u64; ELF_NGREG]) };
         try_with!(
             write_note_section(
@@ -241,8 +240,8 @@ fn write_note_sections(core_file: &mut File, vcpus: &[VcpuState]) -> Result<()> 
                     pr_cursig: 0,
                     pr_sigpend: 0,
                     pr_sighold: 0,
-                    pr_pid: 0,
-                    pr_ppid: 0,
+                    pr_pid: (i + 1) as i32,
+                    pr_ppid: 1,
                     pr_pgrp: 0,
                     pr_sid: 0,
                     pr_utime: zero,
@@ -254,6 +253,18 @@ fn write_note_sections(core_file: &mut File, vcpus: &[VcpuState]) -> Result<()> 
                 }
             ),
             "failed to write NT_PRSTATUS"
+        );
+
+        try_with!(
+            write_note_section(
+                core_file,
+                NT_PRXREG,
+                &core_user {
+                    vcpu: i,
+                    sregs: vcpu.sregs
+                }
+            ),
+            "failed to write NT_PRXREG"
         );
 
         write_fpu_registers(core_file, &vcpu.fpu_regs)?;
@@ -280,8 +291,8 @@ fn write_corefile(
     let mut core_size = metadata_size;
 
     let pt_note_size = note_size::<elf_prpsinfo>()
-        + note_size::<core_user>()
-        + vcpus.len() * (note_size::<elf_prstatus>() + note_size::<FpuRegs>());
+        + vcpus.len()
+            * (note_size::<core_user>() + note_size::<elf_prstatus>() + note_size::<FpuRegs>());
     let mut section_headers = vec![pt_note_header(core_size as Elf_Off, pt_note_size as u64)];
     core_size += pt_note_size;
 
@@ -319,9 +330,23 @@ fn write_corefile(
 }
 
 struct VcpuState {
-    num: usize,
     regs: Regs,
+    sregs: kvmb::kvm_sregs,
     fpu_regs: FpuRegs,
+}
+
+impl VcpuState {
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    fn new(vcpu: &VCPU, tracee: &Tracee) -> Result<VcpuState> {
+        let regs = tracee.get_regs(vcpu)?;
+        let sregs = tracee.get_sregs(vcpu)?;
+        let fpu_regs = tracee.get_fpu_regs(vcpu)?;
+        Ok(VcpuState {
+            regs,
+            sregs,
+            fpu_regs,
+        })
+    }
 }
 
 pub fn generate_coredump(opts: &CoredumpOptions) -> Result<()> {
@@ -345,16 +370,7 @@ pub fn generate_coredump(opts: &CoredumpOptions) -> Result<()> {
     let res = vm
         .vcpus
         .iter()
-        .enumerate()
-        .map(|(i, vcpu)| {
-            let regs = tracee.get_regs(vcpu)?;
-            let fpu_regs = tracee.get_fpu_regs(vcpu)?;
-            Ok(VcpuState {
-                num: i,
-                regs,
-                fpu_regs,
-            })
-        })
+        .map(|vcpu| VcpuState::new(&vcpu, &tracee))
         .collect::<Result<Vec<VcpuState>>>();
     let vcpu_states = try_with!(res, "fail to dump vcpu registers");
     try_with!(

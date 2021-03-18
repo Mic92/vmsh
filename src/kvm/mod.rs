@@ -13,11 +13,10 @@ use std::mem::MaybeUninit;
 use std::os::unix::prelude::RawFd;
 use std::ptr;
 
-mod cpus;
 pub mod ioctls;
 mod memslots;
 
-use crate::cpu::{FpuRegs, Regs};
+use crate::cpu;
 use crate::inject_syscall;
 use crate::kvm::ioctls::KVM_CHECK_EXTENSION;
 use crate::kvm::memslots::get_maps;
@@ -207,7 +206,7 @@ impl Tracee {
     }
 
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    pub fn get_fpu_regs(&self, vcpu: &VCPU) -> Result<FpuRegs> {
+    pub fn get_fpu_regs(&self, vcpu: &VCPU) -> Result<cpu::FpuRegs> {
         use crate::kvm::ioctls::KVM_GET_FPU;
         let regs_mem = try_with!(self.alloc_mem::<kvmb::kvm_fpu>(), "cannot allocate memory");
         try_with!(
@@ -219,7 +218,7 @@ impl Tracee {
         let xmm_space =
             unsafe { ptr::read(&regs.xmm as *const [[u8; 16]; 16] as *const [u32; 64]) };
 
-        Ok(FpuRegs {
+        Ok(cpu::FpuRegs {
             cwd: regs.fcw,
             swd: regs.fsw,
             twd: regs.ftwx as u16,
@@ -240,7 +239,22 @@ impl Tracee {
     }
 
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    pub fn get_regs(&self, vcpu: &VCPU) -> Result<Regs> {
+    pub fn get_sregs(&self, vcpu: &VCPU) -> Result<kvmb::kvm_sregs> {
+        use crate::kvm::ioctls::KVM_GET_SREGS;
+        let sregs_mem = try_with!(
+            self.alloc_mem::<kvmb::kvm_sregs>(),
+            "cannot allocate memory"
+        );
+        try_with!(
+            self.vcpu_ioctl(vcpu, KVM_GET_SREGS(), sregs_mem.ptr as c_ulong),
+            "vcpu_ioctl failed"
+        );
+        let sregs = try_with!(sregs_mem.read(), "cannot read registers");
+        Ok(sregs)
+    }
+
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    pub fn get_regs(&self, vcpu: &VCPU) -> Result<cpu::Regs> {
         use crate::kvm::ioctls::KVM_GET_REGS;
         let regs_mem = try_with!(self.alloc_mem::<kvmb::kvm_regs>(), "cannot allocate memory");
         try_with!(
@@ -248,7 +262,7 @@ impl Tracee {
             "vcpu_ioctl failed"
         );
         let regs = try_with!(regs_mem.read(), "cannot read registers");
-        Ok(Regs {
+        Ok(cpu::Regs {
             r15: regs.r15,
             r14: regs.r14,
             r13: regs.r13,
