@@ -35,7 +35,9 @@ jobs:
           path: ~/.cargo
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.toml') }}
       - name: Install bcc
-        run: sudo apt install libbpfcc musl-tools
+        run: |
+          # ubuntu forgot to set a soname symlink somehow
+          sudo apt install libbpfcc musl-tools && sudo ln -s /usr/lib/x86_64-linux-gnu/libbcc.so.0 /usr/lib/x86_64-linux-gnu/libbcc.so
       - name: Test
         uses: actions-rs/cargo@v1
         with:
