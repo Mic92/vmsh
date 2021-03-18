@@ -28,7 +28,7 @@ use crate::result::Result;
 pub struct Tracee {
     pid: Pid,
     vm_fd: RawFd,
-    proc: inject_syscall::Process, // make optional and implement play/pause
+    proc: inject_syscall::Process, // TODO make optional and implement play/pause
 }
 
 pub struct TraceeMem<'a, T: Copy> {
