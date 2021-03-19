@@ -26,6 +26,8 @@ use crate::page_math;
 use crate::proc::{openpid, Mapping, PidHandle};
 use crate::result::Result;
 
+/// This is a handle with abstractions for the syscall injector. Its primary goal is to be an interface for the
+/// destructors of `HvMem` and `VmMem` to be able to (de-)allocate memory.
 pub struct Tracee {
     pid: Pid,
     vm_fd: RawFd,
@@ -96,7 +98,7 @@ pub fn process_write<T: Sized + Copy>(pid: Pid, addr: *mut c_void, val: &T) -> R
 impl Tracee {
     /// Attach to pid. The target `proc` will be stopped until `Self.detach` or the end of the
     /// lifetime of self.
-    pub fn attach(&mut self) -> Result<()> {
+    fn attach(&mut self) -> Result<()> {
         if let None = self.proc {
             self.proc = Some(try_with!(
                 inject_syscall::attach(self.pid),
@@ -106,7 +108,7 @@ impl Tracee {
         Ok(())
     }
 
-    pub fn detach(&mut self) {
+    fn detach(&mut self) {
         self.proc = None;
     }
 
@@ -173,14 +175,8 @@ impl Tracee {
         proc.mmap(addr, length, prot, flags, fd, offset)
     }
 
-    /// arg `sregs`: This function requires some memory to work with allocated at the Hypervisor.
-    /// Its contents shall be understood as undefined.
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    pub fn get_sregs(
-        &self,
-        vcpu: &VCPU,
-        sregs: &HvMem<kvmb::kvm_sregs>,
-    ) -> Result<kvmb::kvm_sregs> {
+    fn get_sregs(&self, vcpu: &VCPU, sregs: &HvMem<kvmb::kvm_sregs>) -> Result<kvmb::kvm_sregs> {
         use crate::kvm::ioctls::KVM_GET_SREGS;
         try_with!(
             self.vcpu_ioctl(vcpu, KVM_GET_SREGS(), sregs.ptr as c_ulong),
@@ -190,10 +186,8 @@ impl Tracee {
         Ok(sregs)
     }
 
-    /// arg `regs`: This function requires some memory to work with allocated at the Hypervisor.
-    /// Its contents shall be understood as undefined.
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    pub fn get_regs(&self, vcpu: &VCPU, regs: &HvMem<kvmb::kvm_regs>) -> Result<cpu::Regs> {
+    fn get_regs(&self, vcpu: &VCPU, regs: &HvMem<kvmb::kvm_regs>) -> Result<cpu::Regs> {
         use crate::kvm::ioctls::KVM_GET_REGS;
         try_with!(
             self.vcpu_ioctl(vcpu, KVM_GET_REGS(), regs.ptr as c_ulong),
@@ -231,10 +225,8 @@ impl Tracee {
         })
     }
 
-    /// arg `regs`: This function requires some memory to work with allocated at the Hypervisor.
-    /// Its contents shall be understood as undefined.
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    pub fn get_fpu_regs(&self, vcpu: &VCPU, regs: &HvMem<kvmb::kvm_fpu>) -> Result<cpu::FpuRegs> {
+    fn get_fpu_regs(&self, vcpu: &VCPU, regs: &HvMem<kvmb::kvm_fpu>) -> Result<cpu::FpuRegs> {
         use crate::kvm::ioctls::KVM_GET_FPU;
         try_with!(
             self.vcpu_ioctl(vcpu, KVM_GET_FPU(), regs.ptr as c_ulong),
@@ -273,15 +265,15 @@ impl Tracee {
         proc.munmap(addr, length)
     }
 
-    pub fn check_extension(&self, cap: c_int) -> Result<c_int> {
+    fn check_extension(&self, cap: c_int) -> Result<c_int> {
         self.vm_ioctl(KVM_CHECK_EXTENSION(), cap as c_ulong)
     }
 
-    pub fn pid(&self) -> Pid {
+    fn pid(&self) -> Pid {
         self.pid
     }
 
-    pub fn get_maps(&self) -> Result<Vec<Mapping>> {
+    fn get_maps(&self) -> Result<Vec<Mapping>> {
         get_maps(self)
     }
 }
@@ -300,7 +292,7 @@ pub struct HvMem<T: Copy> {
 
 impl<T: Copy> Drop for HvMem<T> {
     fn drop(&mut self) {
-        let mut tracee = match self.tracee.write() {
+        let tracee = match self.tracee.write() {
             Err(e) => {
                 warn!("Could not aquire lock to drop HvMem: {}", e);
                 return;
@@ -330,7 +322,7 @@ pub struct VmMem<T: Copy> {
 
 impl<T: Copy> Drop for VmMem<T> {
     fn drop(&mut self) {
-        let mut tracee = match self.mem.tracee.write() {
+        let tracee = match self.mem.tracee.write() {
             Err(e) => {
                 warn!("Could not aquire lock to drop HvMem: {}", e);
                 return;
@@ -362,27 +354,22 @@ pub struct VCPU {
     pub fd_num: RawFd,
 }
 
+/// Owns the tracee to prevent that multiple tracees are created for a Hypervisor. The Hypervisor
+/// is used to handle the lock on `Self.tracee` and is used to instantiate `HvMem` and `VmMem`.
 pub struct Hypervisor {
     pub pid: Pid,
     pub vm_fd: RawFd,
     pub vcpus: Vec<VCPU>,
-    pub tracee: Arc<RwLock<Tracee>>,
+    tracee: Arc<RwLock<Tracee>>,
 }
 
 impl Hypervisor {
-    /// Note: use Self.tracee instead of calling this!
     fn _attach(pid: Pid, vm_fd: RawFd) -> Result<Tracee> {
         Ok(Tracee {
             pid: pid,
             vm_fd: vm_fd,
             proc: None,
         })
-    }
-
-    /// Attaches => in detached state
-    /// Note: use Self.tracee instead of calling this!
-    fn attach(&self) -> Result<Tracee> {
-        Hypervisor::_attach(self.pid, self.vm_fd)
     }
 
     /// Note: Aquires a write lock on tracee. The caller **MUST NOT** hold **any lock** on tracee before
@@ -451,7 +438,6 @@ impl Hypervisor {
         self.alloc_mem_padded::<T>(size_of::<T>())
     }
 
-    // TODO add lock warnings
     /// allocate memory for T. Allocate more than necessary to increase allocation size to `size`.
     pub fn alloc_mem_padded<T: Copy>(&self, size: usize) -> Result<HvMem<T>> {
         if size < size_of::<T>() {
@@ -473,6 +459,44 @@ impl Hypervisor {
             tracee: self.tracee.clone(),
             phantom: PhantomData,
         })
+    }
+
+    fn check_extension(&self, cap: c_int) -> Result<c_int> {
+        let tracee = try_with!(
+            self.tracee.read(),
+            "cannot obtain tracee read lock: poinsoned"
+        );
+        tracee.check_extension(cap)
+    }
+
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    pub fn get_sregs(&self, vcpu: &VCPU) -> Result<kvmb::kvm_sregs> {
+        let mut tracee = try_with!(
+            self.tracee.write(),
+            "cannot obtain tracee write lock: poinsoned"
+        );
+        let mem = self.alloc_mem()?;
+        tracee.get_sregs(vcpu, &mem)
+    }
+
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    fn get_regs(&self, vcpu: &VCPU, regs: &HvMem<kvmb::kvm_regs>) -> Result<cpu::Regs> {
+        let mut tracee = try_with!(
+            self.tracee.write(),
+            "cannot obtain tracee write lock: poinsoned"
+        );
+        let mem = self.alloc_mem()?;
+        tracee.get_regs(vcpu, &mem)
+    }
+
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    pub fn get_fpu_regs(&self, vcpu: &VCPU, regs: &HvMem<kvmb::kvm_fpu>) -> Result<cpu::FpuRegs> {
+        let mut tracee = try_with!(
+            self.tracee.write(),
+            "cannot obtain tracee write lock: poinsoned"
+        );
+        let mem = self.alloc_mem()?;
+        tracee.get_fpu_regs(vcpu, &mem)
     }
 }
 
