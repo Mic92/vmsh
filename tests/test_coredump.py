@@ -17,11 +17,12 @@ def test_coredump(helpers: conftest.Helpers) -> None:
             time.sleep(0.01)
 
         vm.send("stop")
+
         qemu_regs = vm.regs()
         time.sleep(0.01)
         # sanity check if we really stopped the vm
         qemu_regs2 = vm.regs()
-        assert regs["rip"] != 0 and qemu_regs2["rip"] == regs["rip"]
+        assert qemu_regs["rip"] != 0 and qemu_regs2["rip"] == qemu_regs["rip"]
         core_path = os.path.join(temp, "core")
         helpers.run_vmsh_command(["coredump", str(vm.pid), core_path])
         with open(core_path, "rb") as fd:
