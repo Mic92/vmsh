@@ -18,17 +18,26 @@ fn inject(pid: Pid) -> Result<()> {
 
     print!("check_extensions");
     for _ in 1..100 {
-        let tracee = vm.attach()?;
+        let tracee = try_with!(
+            vm.tracee.read(),
+            "cannot obtain tracee read lock: poinsoned"
+        );
         try_with!(tracee.check_extension(0), "cannot query kvm extensions");
         print!(".")
     }
     println!(" ok");
 
-    let tracee = vm.attach()?;
+    vm.stop();
+    let mem_regs = vm.alloc_mem()?;
+    let mem_fpu = vm.alloc_mem()?;
+    let tracee = try_with!(
+        vm.tracee.read(),
+        "cannot obtain tracee read lock: poinsoned"
+    );
 
     print!("get_regs");
     for cpu in vm.vcpus.iter() {
-        let regs = tracee.get_regs(cpu)?;
+        let regs = tracee.get_regs(cpu, &mem_regs)?;
         assert_ne!(regs.ip(), 0);
         print!(".")
     }
@@ -36,7 +45,7 @@ fn inject(pid: Pid) -> Result<()> {
 
     print!("get_fpu_regs");
     for cpu in vm.vcpus.iter() {
-        tracee.get_fpu_regs(cpu)?;
+        tracee.get_fpu_regs(cpu, &mem_fpu)?;
         print!(".")
     }
     println!(" ok");
@@ -50,8 +59,7 @@ fn alloc_mem(pid: Pid) -> Result<()> {
         pid
     );
 
-    let tracee = vm.attach()?;
-    let mem = try_with!(tracee.alloc_mem::<u32>(), "mmap failed");
+    let mem = try_with!(vm.alloc_mem::<u32>(), "mmap failed");
     assert_eq!(mem.read()?, 0);
     let val: u32 = 0xdeadbeef;
     mem.write(&val)?;
@@ -69,10 +77,9 @@ fn guest_add_mem(pid: Pid, re_get_slots: bool) -> Result<()> {
             "cannot get vms for process {}",
             pid
         );
-        let tracee = vm.attach()?;
 
         // count memslots
-        let memslots_a = tracee.get_maps()?;
+        let memslots_a = vm.get_maps()?;
         memslots_a_len = memslots_a.len();
         memslots_a.iter().for_each(|map| {
             println!(
@@ -83,11 +90,11 @@ fn guest_add_mem(pid: Pid, re_get_slots: bool) -> Result<()> {
         println!("--");
 
         // add memslot
-        let vm_mem = tracee.vm_add_mem::<u64>()?;
+        let vm_mem = vm.vm_add_mem::<u64>()?;
 
         if re_get_slots {
             // count memslots again
-            let memslots_b = tracee.get_maps()?;
+            let memslots_b = vm.get_maps()?;
             memslots_b.iter().for_each(|map| {
                 println!(
                     "vm mem: 0x{:x} -> 0x{:x} (physical: 0x{:x}, flags: {:?} | {:?})",
@@ -106,10 +113,9 @@ fn guest_add_mem(pid: Pid, re_get_slots: bool) -> Result<()> {
         "cannot get vms for process {}",
         pid
     );
-    let tracee = vm.attach()?;
     if re_get_slots {
         // count memslots again
-        let memslots_c = tracee.get_maps()?;
+        let memslots_c = vm.get_maps()?;
         memslots_c.iter().for_each(|map| {
             println!(
                 "vm mem: 0x{:x} -> 0x{:x} (physical: 0x{:x}, flags: {:?} | {:?})",
@@ -127,12 +133,18 @@ fn guest_ioeventfd(pid: Pid) -> Result<()> {
         "cannot get vms for process {}",
         pid
     );
-    let tracee = vm.attach()?;
+    vm.stop()?;
 
-    let has_cap = try_with!(
-        tracee.check_extension(kvmb::KVM_CAP_IOEVENTFD as i32),
-        "cannot check kvm extension capabilities"
-    );
+    let has_cap = {
+        let tracee = try_with!(
+            vm.tracee.read(),
+            "cannot obtain tracee write lock: poinsoned"
+        );
+        try_with!(
+            tracee.check_extension(kvmb::KVM_CAP_IOEVENTFD as i32),
+            "cannot check kvm extension capabilities"
+        )
+    };
     if has_cap == 0 {
         bail!(
             "This operation requires KVM_CAP_IOEVENTFD which your KVM does not have: {}",
@@ -156,10 +168,18 @@ fn guest_ioeventfd(pid: Pid) -> Result<()> {
         flags: 0,
         ..Default::default()
     };
-    let ret = try_with!(
-        tracee.vm_ioctl_with_ref(ioctls::KVM_IOEVENTFD(), &ioeventfd),
-        "kvm ioeventfd ioctl injection failed"
-    );
+    let mem = vm.alloc_mem()?;
+    mem.write(&ioeventfd)?;
+    let ret = {
+        let tracee = try_with!(
+            vm.tracee.read(),
+            "cannot obtain tracee write lock: poinsoned"
+        );
+        try_with!(
+            tracee.vm_ioctl_with_ref(ioctls::KVM_IOEVENTFD(), &mem),
+            "kvm ioeventfd ioctl injection failed"
+        )
+    };
     if ret != 0 {
         bail!("cannot register KVM_IOEVENTFD via ioctl: {:?}", ret);
     }

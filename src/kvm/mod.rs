@@ -174,8 +174,13 @@ impl Tracee {
     }
 
     /// arg `sregs`: This function requires some memory to work with allocated at the Hypervisor.
+    /// Its contents shall be understood as undefined.
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    pub fn get_sregs(&self, vcpu: &VCPU, sregs: HvMem<kvmb::kvm_sregs>) -> Result<kvmb::kvm_sregs> {
+    pub fn get_sregs(
+        &self,
+        vcpu: &VCPU,
+        sregs: &HvMem<kvmb::kvm_sregs>,
+    ) -> Result<kvmb::kvm_sregs> {
         use crate::kvm::ioctls::KVM_GET_SREGS;
         try_with!(
             self.vcpu_ioctl(vcpu, KVM_GET_SREGS(), sregs.ptr as c_ulong),
@@ -186,8 +191,9 @@ impl Tracee {
     }
 
     /// arg `regs`: This function requires some memory to work with allocated at the Hypervisor.
+    /// Its contents shall be understood as undefined.
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    pub fn get_regs(&self, vcpu: &VCPU, regs: HvMem<kvmb::kvm_regs>) -> Result<cpu::Regs> {
+    pub fn get_regs(&self, vcpu: &VCPU, regs: &HvMem<kvmb::kvm_regs>) -> Result<cpu::Regs> {
         use crate::kvm::ioctls::KVM_GET_REGS;
         try_with!(
             self.vcpu_ioctl(vcpu, KVM_GET_REGS(), regs.ptr as c_ulong),
@@ -226,8 +232,9 @@ impl Tracee {
     }
 
     /// arg `regs`: This function requires some memory to work with allocated at the Hypervisor.
+    /// Its contents shall be understood as undefined.
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    pub fn get_fpu_regs(&self, vcpu: &VCPU, regs: HvMem<kvmb::kvm_fpu>) -> Result<cpu::FpuRegs> {
+    pub fn get_fpu_regs(&self, vcpu: &VCPU, regs: &HvMem<kvmb::kvm_fpu>) -> Result<cpu::FpuRegs> {
         use crate::kvm::ioctls::KVM_GET_FPU;
         try_with!(
             self.vcpu_ioctl(vcpu, KVM_GET_FPU(), regs.ptr as c_ulong),
@@ -444,6 +451,7 @@ impl Hypervisor {
         self.alloc_mem_padded::<T>(size_of::<T>())
     }
 
+    // TODO add lock warnings
     /// allocate memory for T. Allocate more than necessary to increase allocation size to `size`.
     pub fn alloc_mem_padded<T: Copy>(&self, size: usize) -> Result<HvMem<T>> {
         if size < size_of::<T>() {

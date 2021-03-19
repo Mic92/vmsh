@@ -344,11 +344,11 @@ impl VcpuState {
             "cannot obtain tracee read lock: poinsoned"
         );
         let mem = hv.alloc_mem::<kvmb::kvm_regs>()?;
-        let regs = tracee.get_regs(vcpu, mem)?;
+        let regs = tracee.get_regs(vcpu, &mem)?;
         let mem = hv.alloc_mem::<kvmb::kvm_sregs>()?;
-        let sregs = tracee.get_sregs(vcpu, mem)?;
+        let sregs = tracee.get_sregs(vcpu, &mem)?;
         let mem = hv.alloc_mem::<kvmb::kvm_fpu>()?;
-        let fpu_regs = tracee.get_fpu_regs(vcpu, mem)?;
+        let fpu_regs = tracee.get_fpu_regs(vcpu, &mem)?;
         Ok(VcpuState {
             regs,
             sregs,
