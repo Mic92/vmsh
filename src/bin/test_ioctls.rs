@@ -18,16 +18,20 @@ fn inject(pid: Pid) -> Result<()> {
 
     print!("check_extensions");
     for _ in 1..100 {
-        let tracee = try_with!(
-            vm.tracee.read(),
-            "cannot obtain tracee read lock: poinsoned"
-        );
-        try_with!(tracee.check_extension(0), "cannot query kvm extensions");
-        print!(".")
+        vm.stop()?;
+        {
+            let tracee = try_with!(
+                vm.tracee.read(),
+                "cannot obtain tracee read lock: poinsoned"
+            );
+            try_with!(tracee.check_extension(0), "cannot query kvm extensions");
+            print!(".");
+        } // release lock so we can resume
+        vm.resume()?;
     }
     println!(" ok");
 
-    vm.stop();
+    vm.stop()?;
     let mem_regs = vm.alloc_mem()?;
     let mem_fpu = vm.alloc_mem()?;
     let tracee = try_with!(
@@ -59,6 +63,7 @@ fn alloc_mem(pid: Pid) -> Result<()> {
         pid
     );
 
+    vm.stop()?;
     let mem = try_with!(vm.alloc_mem::<u32>(), "mmap failed");
     assert_eq!(mem.read()?, 0);
     let val: u32 = 0xdeadbeef;
@@ -77,6 +82,7 @@ fn guest_add_mem(pid: Pid, re_get_slots: bool) -> Result<()> {
             "cannot get vms for process {}",
             pid
         );
+        vm.stop()?;
 
         // count memslots
         let memslots_a = vm.get_maps()?;
@@ -87,10 +93,10 @@ fn guest_add_mem(pid: Pid, re_get_slots: bool) -> Result<()> {
                 map.start, map.end, map.phys_addr, map.prot_flags, map.map_flags,
             )
         });
-        println!("--");
 
         // add memslot
         let vm_mem = vm.vm_add_mem::<u64>()?;
+        println!("--");
 
         if re_get_slots {
             // count memslots again
@@ -113,6 +119,8 @@ fn guest_add_mem(pid: Pid, re_get_slots: bool) -> Result<()> {
         "cannot get vms for process {}",
         pid
     );
+    vm.stop()?;
+
     if re_get_slots {
         // count memslots again
         let memslots_c = vm.get_maps()?;

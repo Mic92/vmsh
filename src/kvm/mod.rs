@@ -419,10 +419,6 @@ impl Hypervisor {
 
     /// Safety: This function is safe for vmsh and the hypervisor. It is not for the guest.
     pub fn vm_add_mem<T: Sized + Copy>(&self) -> Result<VmMem<T>> {
-        let mut tracee = try_with!(
-            self.tracee.write(),
-            "cannot obtain tracee write lock: poinsoned"
-        );
         // must be a multiple of PAGESIZE
         let slot_len = (size_of::<T>() / page_math::page_size() + 1) * page_math::page_size();
         let hv_memslot = self.alloc_mem_padded::<T>(slot_len)?;
@@ -434,8 +430,12 @@ impl Hypervisor {
             userspace_addr: hv_memslot.ptr as u64,
         };
         let arg_hv = self.alloc_mem()?;
-        arg_hv.write(&arg);
+        arg_hv.write(&arg)?;
 
+        let tracee = try_with!(
+            self.tracee.read(),
+            "cannot obtain tracee write lock: poinsoned"
+        );
         let ret = tracee.vm_ioctl_with_ref(ioctls::KVM_SET_USER_MEMORY_REGION(), &arg_hv)?;
         if ret != 0 {
             bail!("ioctl_with_ref failed: {}", ret)
