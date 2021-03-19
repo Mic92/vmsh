@@ -78,44 +78,8 @@ mod arch {
         pub gs: u64,
     }
 
-    #[repr(C)]
-    #[derive(Clone, Copy, Debug)]
-    pub struct Rip {
-        /// Instruction Pointer
-        pub rip: u64,
-        /// Data Pointer
-        pub rdp: u64,
-    }
-
-    #[repr(C)]
-    #[derive(Clone, Copy, Debug)]
-    pub struct Fip {
-        /// FPU IP Offset
-        pub fip: u32,
-        /// FPU IP Selector
-        pub fcs: u32,
-        /// FPU Operand Offset
-        pub foo: u32,
-        /// FPU Operand Selector
-        pub fos: u32,
-    }
-
-    #[repr(C)]
-    #[derive(Clone, Copy)]
-    pub union FpuPointer {
-        pub ip: Rip,
-        pub fip: Fip,
-    }
-
-    use std::fmt;
-    impl fmt::Debug for FpuPointer {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            write!(f, "{:?}", unsafe { self.ip })
-        }
-    }
-
     // from arch/x86/include/asm/fpu/types.h
-    #[repr(C, align(16))]
+    #[repr(C)]
     #[derive(Clone, Copy, Debug)]
     pub struct FpuRegs {
         /// Control Word
@@ -126,13 +90,16 @@ mod arch {
         pub twd: u16,
         /// Last Instruction Opcode
         pub fop: u16,
-        pub p: FpuPointer,
+        /// Instruction Pointer
+        pub rip: u64,
+        /// Data Pointer
+        pub rdp: u64,
         pub mxcsr: u32,
         pub mxcsr_mask: u32,
         pub st_space: [u32; 32],
         pub xmm_space: [u32; 64],
-        pub padding: [u64; 12],
-        pub padding1: [u64; 12],
+        pub padding: [u32; 12],
+        pub padding1: [u32; 12],
     }
 
     impl Regs {

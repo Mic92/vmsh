@@ -1,29 +1,33 @@
 import os
-import re
-import subprocess
+import time
 from tempfile import TemporaryDirectory
-from typing import Dict
 
 import conftest
-
-
-def parse_regs(qemu_output: str) -> Dict[str, int]:
-    regs = {}
-    for match in re.finditer(r"(\S+)\s*=\s*([0-9a-f ]+)", qemu_output):
-        name = match.group(1)
-        content = match.group(2).replace(" ", "")
-        print(f"{name}={content}")
-        regs[name.lower()] = int(content, 16)
-    return regs
+from coredump import ElfCore
 
 
 def test_coredump(helpers: conftest.Helpers) -> None:
     with TemporaryDirectory() as temp, helpers.spawn_qemu(helpers.notos_image()) as vm:
-        core = os.path.join(temp, "core")
+        while True:
+            regs = vm.regs()
+            # TODO make this arch indepentent
+            if "eip" not in regs:
+                break
+            # wait till CPU is in 32-bit on boot
+            time.sleep(0.01)
+
         vm.send("stop")
-        res = vm.send("human-monitor-command", args={"command-line": "info registers"})
-        regs = parse_regs(res["return"])
-        # TODO make this arch indepentent
-        assert regs["rip"] != 0
-        helpers.run_vmsh_command(["coredump", str(vm.pid), core])
-        subprocess.run(["readelf", "-a", core], check=True)
+
+        qemu_regs = vm.regs()
+        time.sleep(0.01)
+        # sanity check if we really stopped the vm
+        qemu_regs2 = vm.regs()
+        assert qemu_regs["rip"] != 0 and qemu_regs2["rip"] == qemu_regs["rip"]
+        core_path = os.path.join(temp, "core")
+        helpers.run_vmsh_command(["coredump", str(vm.pid), core_path])
+        with open(core_path, "rb") as fd:
+            core = ElfCore(fd)
+            assert len(core.regs) > 0
+            assert len(core.fpu_regs) > 0
+            assert len(core.special_regs) > 0
+            assert core.regs[0].rip == qemu_regs["rip"]
