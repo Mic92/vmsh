@@ -6,6 +6,7 @@ import re
 import socket
 import subprocess
 import time
+from queue import Queue
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -25,23 +26,42 @@ class VmImage:
 class QmpSession:
     def __init__(self, sock: socket.socket) -> None:
         self.sock = sock
+        self.pending_events: Queue[Dict[str, Any]] = Queue()
         self.reader = sock.makefile("r")
         self.writer = sock.makefile("w")
         hello = self._result()
         assert "QMP" in hello, f"Unexpected result: {hello}"
         self.send("qmp_capabilities")
 
+    def _readmsg(self) -> Dict[str, Any]:
+        line = self.reader.readline()
+        return json.loads(line)
+
+    def _raise_unexpected_msg(self, msg: Dict[str, Any]) -> None:
+        m = json.dumps(msg, sort_keys=True, indent=4)
+        raise RuntimeError(f"Got unexpected qmp response: {m}")
+
     def _result(self) -> Dict[str, Any]:
         while True:
-            line = self.reader.readline()
-            res = json.loads(line)
             # QMP is in the handshake
+            res = self._readmsg()
             if "return" in res or "QMP" in res:
                 return res
-            elif "event" in res or "QMP" in res:
+            elif "event" in res:
+                self.pending_events.put(res)
                 continue
             else:
-                raise RuntimeError(f"Got unexpected qmp response: {line}")
+                self._raise_unexpected_msg(res)
+
+    def events(self) -> Iterator[Dict[str, Any]]:
+        while not self.pending_events.empty():
+            yield self.pending_events.get()
+
+        res = self._readmsg()
+
+        if "event" not in res:
+            self._raise_unexpected_msg(res)
+        yield res
 
     def send(self, cmd: str, args: Dict[str, str] = {}) -> Dict[str, str]:
         data: Dict[str, Any] = dict(execute=cmd)
@@ -94,6 +114,9 @@ class QemuVm:
         self.tmux_session = tmux_session
         self.pid = pid
         self.ssh_port = ssh_port
+
+    def events(self) -> Iterator[Dict[str, Any]]:
+        return self.qmp_session.events()
 
     def wait_for_ssh(self) -> None:
         """
