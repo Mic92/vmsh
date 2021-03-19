@@ -93,10 +93,25 @@ pub fn process_write<T: Sized + Copy>(pid: Pid, addr: *mut c_void, val: &T) -> R
     Ok(())
 }
 
-/// Safe wrapper for unsafe inject_syscall::Process operations.
 impl Tracee {
+    /// Attach to pid. The target `proc` will be stopped until `Self.detach` or the end of the
+    /// lifetime of self.
+    pub fn attach(&mut self) -> Result<()> {
+        if let None = self.proc {
+            self.proc = Some(try_with!(
+                inject_syscall::attach(self.pid),
+                "cannot attach to hypervisor"
+            ));
+        }
+        Ok(())
+    }
+
+    pub fn detach(&mut self) {
+        self.proc = None;
+    }
+
     fn try_get_proc(&self) -> Result<&Injectee> {
-        match self.proc {
+        match &self.proc {
             None => Err(simple_error!("Programming error: Tracee is not attached.")),
             Some(proc) => Ok(&proc),
         }
@@ -158,16 +173,19 @@ impl Tracee {
         proc.mmap(addr, length, prot, flags, fd, offset)
     }
 
+    /// arg `sregs`: This function requires some memory to work with allocated at the Hypervisor.
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    pub fn get_sregs(&self, vcpu: &VCPU, sregs: &HvMem<kvmb::kvm_sregs>) -> Result<()> {
+    pub fn get_sregs(&self, vcpu: &VCPU, sregs: HvMem<kvmb::kvm_sregs>) -> Result<kvmb::kvm_sregs> {
         use crate::kvm::ioctls::KVM_GET_SREGS;
         try_with!(
             self.vcpu_ioctl(vcpu, KVM_GET_SREGS(), sregs.ptr as c_ulong),
             "vcpu_ioctl failed"
         );
-        Ok(())
+        let sregs = try_with!(sregs.read(), "cannot read registers");
+        Ok(sregs)
     }
 
+    /// arg `regs`: This function requires some memory to work with allocated at the Hypervisor.
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     pub fn get_regs(&self, vcpu: &VCPU, regs: HvMem<kvmb::kvm_regs>) -> Result<cpu::Regs> {
         use crate::kvm::ioctls::KVM_GET_REGS;
@@ -207,8 +225,9 @@ impl Tracee {
         })
     }
 
+    /// arg `regs`: This function requires some memory to work with allocated at the Hypervisor.
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    pub fn get_fpu_regs(&self, vcpu: &VCPU, regs: &HvMem<kvmb::kvm_fpu>) -> Result<cpu::FpuRegs> {
+    pub fn get_fpu_regs(&self, vcpu: &VCPU, regs: HvMem<kvmb::kvm_fpu>) -> Result<cpu::FpuRegs> {
         use crate::kvm::ioctls::KVM_GET_FPU;
         try_with!(
             self.vcpu_ioctl(vcpu, KVM_GET_FPU(), regs.ptr as c_ulong),
@@ -340,28 +359,53 @@ pub struct Hypervisor {
     pub pid: Pid,
     pub vm_fd: RawFd,
     pub vcpus: Vec<VCPU>,
-    tracee: Arc<RwLock<Tracee>>,
+    pub tracee: Arc<RwLock<Tracee>>,
 }
 
 impl Hypervisor {
+    /// Note: use Self.tracee instead of calling this!
     fn _attach(pid: Pid, vm_fd: RawFd) -> Result<Tracee> {
-        let proc = try_with!(inject_syscall::attach(pid), "cannot attach to hypervisor");
         Ok(Tracee {
             pid: pid,
             vm_fd: vm_fd,
-            proc: Some(proc),
+            proc: None,
         })
     }
 
-    /// Attaches => in attached state
-    pub fn attach(&self) -> Result<Tracee> {
+    /// Attaches => in detached state
+    /// Note: use Self.tracee instead of calling this!
+    fn attach(&self) -> Result<Tracee> {
         Hypervisor::_attach(self.pid, self.vm_fd)
     }
 
-    fn get_maps(&self) -> Result<Vec<Mapping>> {
+    /// Note: Aquires a write lock on tracee. The caller **MUST NOT** hold **any lock** on tracee before
+    /// calling this function.
+    pub fn resume(&self) -> Result<()> {
+        let mut tracee = try_with!(
+            self.tracee.write(),
+            "cannot obtain tracee write lock: poinsoned"
+        );
+        tracee.detach();
+        Ok(())
+    }
+
+    /// Note: Aquires a write lock on tracee. The caller **MUST NOT** hold **any lock** on tracee before
+    /// calling this function.
+    pub fn stop(&self) -> Result<()> {
+        let mut tracee = try_with!(
+            self.tracee.write(),
+            "cannot obtain tracee write lock: poinsoned"
+        );
+        tracee.attach()?;
+        Ok(())
+    }
+
+    /// Note: Aquires a read lock on tracee. The caller **MUST NOT** hold any **write lock** on tracee before
+    /// calling this function.
+    pub fn get_maps(&self) -> Result<Vec<Mapping>> {
         let tracee = try_with!(
             self.tracee.read(),
-            "cannot obtain tracee write lock: poinsoned"
+            "cannot obtain tracee read lock: poinsoned"
         );
         tracee.get_maps()
     }

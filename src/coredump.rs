@@ -1,5 +1,4 @@
 use crate::kvm::VCPU;
-use kvm::Tracee;
 use kvm_bindings as kvmb;
 use libc::{c_void, off_t, timeval, PT_LOAD, PT_NOTE};
 use nix::sys::{
@@ -19,6 +18,7 @@ use crate::elf::{
     Phdr, Shdr, ELFARCH, ELFCLASS, ELFDATA2, ELFMAG0, ELFMAG1, ELFMAG2, ELFMAG3, ELF_NGREG,
     ET_CORE, EV_CURRENT, NT_PRPSINFO, NT_PRSTATUS, NT_PRXREG, PF_W, PF_X, SHN_UNDEF,
 };
+use crate::kvm::Hypervisor;
 use crate::page_math::{page_align, page_size};
 use crate::result::Result;
 use crate::{kvm, proc::Mapping};
@@ -336,11 +336,19 @@ struct VcpuState {
 }
 
 impl VcpuState {
+    /// Requires the hypervisor to be stopped.
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    fn new(vcpu: &VCPU, tracee: &Tracee) -> Result<VcpuState> {
-        let regs = tracee.get_regs(vcpu)?;
-        let sregs = tracee.get_sregs(vcpu)?;
-        let fpu_regs = tracee.get_fpu_regs(vcpu)?;
+    fn new(vcpu: &VCPU, hv: &Hypervisor) -> Result<VcpuState> {
+        let tracee = try_with!(
+            hv.tracee.read(),
+            "cannot obtain tracee read lock: poinsoned"
+        );
+        let mem = hv.alloc_mem::<kvmb::kvm_regs>()?;
+        let regs = tracee.get_regs(vcpu, mem)?;
+        let mem = hv.alloc_mem::<kvmb::kvm_sregs>()?;
+        let sregs = tracee.get_sregs(vcpu, mem)?;
+        let mem = hv.alloc_mem::<kvmb::kvm_fpu>()?;
+        let fpu_regs = tracee.get_fpu_regs(vcpu, mem)?;
         Ok(VcpuState {
             regs,
             sregs,
@@ -365,12 +373,12 @@ pub fn generate_coredump(opts: &CoredumpOptions) -> Result<()> {
         "cannot get vms for process {}",
         opts.pid
     );
-    let tracee = vm.attach()?;
-    let maps = tracee.get_maps()?;
+    vm.stop()?;
+    let maps = vm.get_maps()?;
     let res = vm
         .vcpus
         .iter()
-        .map(|vcpu| VcpuState::new(&vcpu, &tracee))
+        .map(|vcpu| VcpuState::new(&vcpu, &vm))
         .collect::<Result<Vec<VcpuState>>>();
     let vcpu_states = try_with!(res, "fail to dump vcpu registers");
     try_with!(
