@@ -70,8 +70,7 @@ pub struct Device {
 
 impl Device {
     pub fn new(vmm: &Arc<Hypervisor>) -> Result<Device> {
-        let tracee = try_with!(vmm.attach(), "cannot attach");
-        let guest_memory = try_with!(tracee.get_maps(), "cannot get guests memory");
+        let guest_memory = try_with!(vmm.get_maps(), "cannot get guests memory");
         let mem: Arc<GuestMemoryMmap> = Arc::new(try_with!(
             convert(&guest_memory),
             "cannot convert Mapping to GuestMemoryMmap"
