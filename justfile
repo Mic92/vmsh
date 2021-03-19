@@ -15,6 +15,7 @@ lint:
   cargo fmt -- --check
 
 fmt:
+  isort tests
   black tests
   cargo fmt
 

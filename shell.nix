@@ -11,10 +11,13 @@ let
 
   pythonEnv = (pkgs.python3.withPackages (ps: [
     ps.pytest
+    ps.pyelftools
+
+    # linting
     ps.black
     ps.flake8
+    ps.isort
     ps.mypy
-    ps.pyelftools
   ]));
 in
 pkgs.mkShell {

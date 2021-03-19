@@ -1,19 +1,13 @@
+import ctypes as ct
 import os
+import time
 from tempfile import TemporaryDirectory
 from typing import Dict
-import time
-import ctypes as ct
-
-from elftools.elf.elffile import ELFFile
-from elftools.elf.segments import NoteSegment
 
 import conftest
-from coredump import (
-    core_user,
-    elf_fpregset_t,
-    elf_prstatus,
-)
-
+from coredump import core_user, elf_fpregset_t, elf_prstatus
+from elftools.elf.elffile import ELFFile
+from elftools.elf.segments import NoteSegment
 
 NT_PRXFPREG = 1189489535
 

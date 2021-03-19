@@ -11,7 +11,7 @@ from shlex import quote
 from typing import Iterator, List, Type
 
 import pytest
-from qemu import VmImage, spawn_qemu, QemuVm
+from qemu import QemuVm, VmImage, spawn_qemu
 
 TEST_ROOT = Path(__file__).parent.resolve()
 sys.path.append(str(TEST_ROOT.parent))
