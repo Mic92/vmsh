@@ -18,10 +18,8 @@ fn inject(pid: Pid) -> Result<()> {
     print!("check_extensions");
     for _ in 1..100 {
         vm.stop()?;
-        {
-            try_with!(vm.check_extension(0), "cannot query kvm extensions");
-            print!(".");
-        } // release lock so we can resume
+        try_with!(vm.check_extension(0), "cannot query kvm extensions");
+        print!(".");
         vm.resume()?;
     }
     println!(" ok");

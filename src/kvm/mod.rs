@@ -141,16 +141,7 @@ impl Tracee {
         request: c_ulong,
         arg: &HvMem<T>,
     ) -> Result<c_int> {
-        let ioeventfd: kvmb::kvm_ioeventfd = try_with!(process_read(self.pid, arg.ptr), "foobar");
-        println!(
-            "arg {:?}, {:?}, {:?}",
-            ioeventfd.len, ioeventfd.addr, ioeventfd.fd
-        );
-
-        println!("arg_ptr {:?}", arg.ptr);
-        let ret = self.vm_ioctl(request, arg.ptr as c_ulong);
-
-        ret
+        self.vm_ioctl(request, arg.ptr as c_ulong)
     }
 
     fn vcpu_ioctl(&self, vcpu: &VCPU, request: c_ulong, arg: c_ulong) -> Result<c_int> {
@@ -323,9 +314,21 @@ impl<T: Copy> Drop for VmMem<T> {
             }
             Ok(t) => t,
         };
-        let mut ioctl_arg = self.ioctl_arg.read().unwrap();
+        let mut ioctl_arg = match self.ioctl_arg.read() {
+            Err(e) => {
+                warn!("Could not read Hypervisor Memory to drop HvMem: {}", e);
+                return;
+            }
+            Ok(t) => t,
+        };
         ioctl_arg.memory_size = 0; // indicates request for deletion
-        self.ioctl_arg.write(&ioctl_arg).unwrap();
+        match self.ioctl_arg.write(&ioctl_arg) {
+            Err(e) => {
+                warn!("Could not write to Hypervisor Memory to drop HvMem: {}", e);
+                return;
+            }
+            Ok(t) => t,
+        };
         let ret =
             match tracee.vm_ioctl_with_ref(ioctls::KVM_SET_USER_MEMORY_REGION(), &self.ioctl_arg) {
                 Ok(ret) => ret,
@@ -358,7 +361,7 @@ pub struct Hypervisor {
 }
 
 impl Hypervisor {
-    fn _attach(pid: Pid, vm_fd: RawFd) -> Result<Tracee> {
+    fn attach(pid: Pid, vm_fd: RawFd) -> Result<Tracee> {
         Ok(Tracee {
             pid: pid,
             vm_fd: vm_fd,
@@ -366,8 +369,6 @@ impl Hypervisor {
         })
     }
 
-    /// Note: Aquires a write lock on tracee. The caller **MUST NOT** hold **any lock** on tracee before
-    /// calling this function.
     pub fn resume(&self) -> Result<()> {
         let mut tracee = try_with!(
             self.tracee.write(),
@@ -377,8 +378,6 @@ impl Hypervisor {
         Ok(())
     }
 
-    /// Note: Aquires a write lock on tracee. The caller **MUST NOT** hold **any lock** on tracee before
-    /// calling this function.
     pub fn stop(&self) -> Result<()> {
         let mut tracee = try_with!(
             self.tracee.write(),
@@ -388,8 +387,6 @@ impl Hypervisor {
         Ok(())
     }
 
-    /// Note: Aquires a read lock on tracee. The caller **MUST NOT** hold any **write lock** on tracee before
-    /// calling this function.
     pub fn get_maps(&self) -> Result<Vec<Mapping>> {
         let tracee = try_with!(
             self.tracee.read(),
@@ -398,7 +395,8 @@ impl Hypervisor {
         tracee.get_maps()
     }
 
-    /// Safety: This function is safe for vmsh and the hypervisor. It is not for the guest.
+    /// Safety: This function is safe even for the guest because VmMem enforces, that only the
+    /// allocated T is written to.
     pub fn vm_add_mem<T: Sized + Copy>(&self) -> Result<VmMem<T>> {
         // must be a multiple of PAGESIZE
         let slot_len = (size_of::<T>() / page_math::page_size() + 1) * page_math::page_size();
@@ -552,7 +550,7 @@ pub fn get_hypervisor(pid: Pid) -> Result<Hypervisor> {
 
     Ok(Hypervisor {
         pid,
-        tracee: Arc::new(RwLock::new(Hypervisor::_attach(pid, vm_fds[0])?)),
+        tracee: Arc::new(RwLock::new(Hypervisor::attach(pid, vm_fds[0])?)),
         vm_fd: vm_fds[0],
         vcpus,
     })
