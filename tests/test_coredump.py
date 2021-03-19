@@ -31,3 +31,5 @@ def test_coredump(helpers: conftest.Helpers) -> None:
             assert len(core.fpu_regs) > 0
             assert len(core.special_regs) > 0
             assert core.regs[0].rip == qemu_regs["rip"]
+            for name in ["cr0", "cr2", "cr3", "cr4"]:
+                assert getattr(core.special_regs[0], name) == qemu_regs[name]
