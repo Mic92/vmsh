@@ -54,6 +54,18 @@ class QmpSession:
         return self._result()
 
 
+def is_port_open(ip: str, port: int, wait_response: bool = False) -> bool:
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        s.connect((ip, int(port)))
+        if wait_response:
+            s.recv(1)
+        s.shutdown(2)
+        return True
+    except Exception:
+        return False
+
+
 @contextmanager
 def connect_qmp(path: Path) -> Iterator[QmpSession]:
     sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -82,6 +94,14 @@ class QemuVm:
         self.tmux_session = tmux_session
         self.pid = pid
         self.ssh_port = ssh_port
+
+    def wait_for_ssh(self) -> None:
+        """
+        Block until ssh port is accessible
+        """
+        print(f"wait for ssh on {self.ssh_port}")
+        while not is_port_open("127.0.0.1", self.ssh_port, wait_response=True):
+            time.sleep(0.1)
 
     def regs(self) -> Dict[str, int]:
         """
