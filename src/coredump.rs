@@ -339,16 +339,9 @@ impl VcpuState {
     /// Requires the hypervisor to be stopped.
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     fn new(vcpu: &VCPU, hv: &Hypervisor) -> Result<VcpuState> {
-        let mem_regs = hv.alloc_mem::<kvmb::kvm_regs>()?;
-        let mem_sregs = hv.alloc_mem::<kvmb::kvm_sregs>()?;
-        let mem_fpu = hv.alloc_mem::<kvmb::kvm_fpu>()?;
-        let tracee = try_with!(
-            hv.tracee.read(),
-            "cannot obtain tracee read lock: poinsoned"
-        );
-        let regs = tracee.get_regs(vcpu, &mem_regs)?;
-        let sregs = tracee.get_sregs(vcpu, &mem_sregs)?;
-        let fpu_regs = tracee.get_fpu_regs(vcpu, &mem_fpu)?;
+        let regs = hv.get_regs(vcpu)?;
+        let sregs = hv.get_sregs(vcpu)?;
+        let fpu_regs = hv.get_fpu_regs(vcpu)?;
         Ok(VcpuState {
             regs,
             sregs,

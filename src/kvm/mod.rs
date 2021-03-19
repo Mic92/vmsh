@@ -447,7 +447,7 @@ impl Hypervisor {
                 size_of::<T>()
             )
         }
-        let mut tracee = try_with!(
+        let tracee = try_with!(
             self.tracee.write(),
             "cannot obtain tracee write lock: poinsoned"
         );
@@ -461,7 +461,7 @@ impl Hypervisor {
         })
     }
 
-    fn check_extension(&self, cap: c_int) -> Result<c_int> {
+    pub fn check_extension(&self, cap: c_int) -> Result<c_int> {
         let tracee = try_with!(
             self.tracee.read(),
             "cannot obtain tracee read lock: poinsoned"
@@ -471,31 +471,31 @@ impl Hypervisor {
 
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     pub fn get_sregs(&self, vcpu: &VCPU) -> Result<kvmb::kvm_sregs> {
-        let mut tracee = try_with!(
+        let mem = self.alloc_mem()?;
+        let tracee = try_with!(
             self.tracee.write(),
             "cannot obtain tracee write lock: poinsoned"
         );
-        let mem = self.alloc_mem()?;
         tracee.get_sregs(vcpu, &mem)
     }
 
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    fn get_regs(&self, vcpu: &VCPU, regs: &HvMem<kvmb::kvm_regs>) -> Result<cpu::Regs> {
-        let mut tracee = try_with!(
+    pub fn get_regs(&self, vcpu: &VCPU) -> Result<cpu::Regs> {
+        let mem = self.alloc_mem()?;
+        let tracee = try_with!(
             self.tracee.write(),
             "cannot obtain tracee write lock: poinsoned"
         );
-        let mem = self.alloc_mem()?;
         tracee.get_regs(vcpu, &mem)
     }
 
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    pub fn get_fpu_regs(&self, vcpu: &VCPU, regs: &HvMem<kvmb::kvm_fpu>) -> Result<cpu::FpuRegs> {
-        let mut tracee = try_with!(
+    pub fn get_fpu_regs(&self, vcpu: &VCPU) -> Result<cpu::FpuRegs> {
+        let mem = self.alloc_mem()?;
+        let tracee = try_with!(
             self.tracee.write(),
             "cannot obtain tracee write lock: poinsoned"
         );
-        let mem = self.alloc_mem()?;
         tracee.get_fpu_regs(vcpu, &mem)
     }
 }

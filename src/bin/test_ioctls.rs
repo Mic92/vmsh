@@ -4,7 +4,6 @@ use nix::unistd::Pid;
 use simple_error::{bail, try_with};
 use std::os::unix::io::AsRawFd;
 use vmm_sys_util::eventfd::{EventFd, EFD_NONBLOCK};
-use vmsh::kvm::ioctls;
 use vmsh::result::Result;
 
 use vmsh::kvm;
@@ -20,28 +19,17 @@ fn inject(pid: Pid) -> Result<()> {
     for _ in 1..100 {
         vm.stop()?;
         {
-            let tracee = try_with!(
-                vm.tracee.read(),
-                "cannot obtain tracee read lock: poinsoned"
-            );
-            try_with!(tracee.check_extension(0), "cannot query kvm extensions");
+            try_with!(vm.check_extension(0), "cannot query kvm extensions");
             print!(".");
         } // release lock so we can resume
         vm.resume()?;
     }
     println!(" ok");
 
-    vm.stop()?;
-    let mem_regs = vm.alloc_mem()?;
-    let mem_fpu = vm.alloc_mem()?;
-    let tracee = try_with!(
-        vm.tracee.read(),
-        "cannot obtain tracee read lock: poinsoned"
-    );
-
     print!("get_regs");
+    vm.stop()?;
     for cpu in vm.vcpus.iter() {
-        let regs = tracee.get_regs(cpu, &mem_regs)?;
+        let regs = vm.get_regs(cpu)?;
         assert_ne!(regs.ip(), 0);
         print!(".")
     }
@@ -49,7 +37,7 @@ fn inject(pid: Pid) -> Result<()> {
 
     print!("get_fpu_regs");
     for cpu in vm.vcpus.iter() {
-        tracee.get_fpu_regs(cpu, &mem_fpu)?;
+        vm.get_fpu_regs(cpu)?;
         print!(".")
     }
     println!(" ok");
@@ -143,16 +131,10 @@ fn guest_ioeventfd(pid: Pid) -> Result<()> {
     );
     vm.stop()?;
 
-    let has_cap = {
-        let tracee = try_with!(
-            vm.tracee.read(),
-            "cannot obtain tracee write lock: poinsoned"
-        );
-        try_with!(
-            tracee.check_extension(kvmb::KVM_CAP_IOEVENTFD as i32),
-            "cannot check kvm extension capabilities"
-        )
-    };
+    let has_cap = try_with!(
+        vm.check_extension(kvmb::KVM_CAP_IOEVENTFD as i32),
+        "cannot check kvm extension capabilities"
+    );
     if has_cap == 0 {
         bail!(
             "This operation requires KVM_CAP_IOEVENTFD which your KVM does not have: {}",
@@ -178,19 +160,19 @@ fn guest_ioeventfd(pid: Pid) -> Result<()> {
     };
     let mem = vm.alloc_mem()?;
     mem.write(&ioeventfd)?;
-    let ret = {
-        let tracee = try_with!(
-            vm.tracee.read(),
-            "cannot obtain tracee write lock: poinsoned"
-        );
-        try_with!(
-            tracee.vm_ioctl_with_ref(ioctls::KVM_IOEVENTFD(), &mem),
-            "kvm ioeventfd ioctl injection failed"
-        )
-    };
-    if ret != 0 {
-        bail!("cannot register KVM_IOEVENTFD via ioctl: {:?}", ret);
-    }
+    //let ret = {
+    //    let tracee = try_with!(
+    //        vm.tracee.read(),
+    //        "cannot obtain tracee write lock: poinsoned"
+    //    );
+    //    try_with!(
+    //        tracee.vm_ioctl_with_ref(ioctls::KVM_IOEVENTFD(), &mem),
+    //        "kvm ioeventfd ioctl injection failed"
+    //    )
+    //};
+    //if ret != 0 {
+    //    bail!("cannot register KVM_IOEVENTFD via ioctl: {:?}", ret);
+    //}
 
     Ok(())
 }
