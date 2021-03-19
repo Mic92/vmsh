@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 import socket
 import subprocess
 import time
@@ -64,6 +65,15 @@ def connect_qmp(path: Path) -> Iterator[QmpSession]:
         sock.close()
 
 
+def parse_regs(qemu_output: str) -> Dict[str, int]:
+    regs = {}
+    for match in re.finditer(r"(\S+)\s*=\s*([0-9a-f ]+)", qemu_output):
+        name = match.group(1)
+        content = match.group(2).replace(" ", "")
+        regs[name.lower()] = int(content, 16)
+    return regs
+
+
 class QemuVm:
     def __init__(
         self, qmp_session: QmpSession, tmux_session: str, pid: int, ssh_port: int
@@ -72,6 +82,16 @@ class QemuVm:
         self.tmux_session = tmux_session
         self.pid = pid
         self.ssh_port = ssh_port
+
+    def regs(self) -> Dict[str, int]:
+        """
+        Get cpu register:
+        TODO: add support for multiple cpus
+        """
+        res = self.send(
+            "human-monitor-command", args={"command-line": "info registers"}
+        )
+        return parse_regs(res["return"])
 
     def attach(self) -> None:
         """
