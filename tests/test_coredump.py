@@ -1,29 +1,66 @@
+import ctypes as ct
 import os
-import re
-import subprocess
+import time
 from tempfile import TemporaryDirectory
 from typing import Dict
 
 import conftest
+from coredump import core_user, elf_fpregset_t, elf_prstatus
+from elftools.elf.elffile import ELFFile
+from elftools.elf.segments import NoteSegment
+
+NT_PRXFPREG = 1189489535
 
 
-def parse_regs(qemu_output: str) -> Dict[str, int]:
-    regs = {}
-    for match in re.finditer(r"(\S+)\s*=\s*([0-9a-f ]+)", qemu_output):
-        name = match.group(1)
-        content = match.group(2).replace(" ", "")
-        print(f"{name}={content}")
-        regs[name.lower()] = int(content, 16)
-    return regs
+def validate_elf_structure(core: ELFFile, qemu_regs: Dict[str, int]) -> None:
+    note_segment = next(core.iter_segments())
+    assert isinstance(note_segment, NoteSegment)
+    regs = []
+    fpu_regs = []
+    special_regs = []
+    for note in note_segment.iter_notes():
+        if note.n_type == "NT_PRSTATUS":
+            assert note.n_descsz == ct.sizeof(elf_prstatus)
+            regs.append(
+                elf_prstatus.from_buffer_copy(note.n_desc.encode("latin-1")).pr_reg
+            )
+        elif note.n_type == NT_PRXFPREG:
+            assert note.n_descsz == ct.sizeof(elf_fpregset_t)
+            fpu_regs.append(
+                elf_fpregset_t.from_buffer_copy(note.n_desc.encode("latin-1"))
+            )
+        elif note.n_type == "NT_TASKSTRUCT":
+            assert note.n_descsz == ct.sizeof(core_user)
+            special_regs.append(
+                core_user.from_buffer_copy(note.n_desc.encode("latin1")).sregs
+            )
+    assert len(regs) > 0
+    assert len(fpu_regs) > 0
+    assert len(special_regs) > 0
+    assert regs[0].rip == qemu_regs["rip"]
+
+
+def validate_coredump(core: str, regs: Dict[str, int]) -> None:
+    with open(core, "rb") as fd:
+        validate_elf_structure(ELFFile(fd), regs)
 
 
 def test_coredump(helpers: conftest.Helpers) -> None:
     with TemporaryDirectory() as temp, helpers.spawn_qemu(helpers.notos_image()) as vm:
-        core = os.path.join(temp, "core")
+        while True:
+            regs = vm.regs()
+            # TODO make this arch indepentent
+            if "eip" not in regs:
+                break
+            # wait till CPU is in 32-bit on boot
+            time.sleep(0.01)
+
         vm.send("stop")
-        res = vm.send("human-monitor-command", args={"command-line": "info registers"})
-        regs = parse_regs(res["return"])
-        # TODO make this arch indepentent
-        assert regs["rip"] != 0
+        regs = vm.regs()
+        time.sleep(0.01)
+        # sanity check if we really stopped the vm
+        regs2 = vm.regs()
+        assert regs["rip"] != 0 and regs2["rip"] == regs["rip"]
+        core = os.path.join(temp, "core")
         helpers.run_vmsh_command(["coredump", str(vm.pid), core])
-        subprocess.run(["readelf", "-a", core], check=True)
+        validate_coredump(core, regs)

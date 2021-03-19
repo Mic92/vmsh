@@ -1,5 +1,3 @@
-use crate::cpu::FpuPointer;
-use crate::cpu::Rip;
 use kvm_bindings as kvmb;
 use libc::{c_int, c_ulong, c_void};
 use log::warn;
@@ -276,12 +274,8 @@ impl Tracee {
             swd: regs.fsw,
             twd: regs.ftwx as u16,
             fop: regs.last_opcode,
-            p: FpuPointer {
-                ip: Rip {
-                    rip: regs.last_ip,
-                    rdp: regs.last_dp,
-                },
-            },
+            rip: regs.last_ip,
+            rdp: regs.last_dp,
             mxcsr: regs.mxcsr,
             mxcsr_mask: 0,
             st_space: st_space,

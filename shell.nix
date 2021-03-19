@@ -8,6 +8,17 @@ let
   vmsh = pkgs.callPackage ./vmsh.nix {
     inherit naersk;
   };
+
+  pythonEnv = (pkgs.python3.withPackages (ps: [
+    ps.pytest
+    ps.pyelftools
+
+    # linting
+    ps.black
+    ps.flake8
+    ps.isort
+    ps.mypy
+  ]));
 in
 pkgs.mkShell {
   RUST_SRC_PATH = pkgs.rustPlatform.rustLibSrc;
@@ -24,7 +35,7 @@ pkgs.mkShell {
     pkgs.cargo-deny
     pkgs.pre-commit
     pkgs.git # needed for pre-commit install
-    (pkgs.python3.withPackages(ps: [ps.pytest ps.black ps.flake8 ps.mypy]))
+    pythonEnv
 
     pkgs.qemu_kvm
     pkgs.gdb

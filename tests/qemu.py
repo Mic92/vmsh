@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 import socket
 import subprocess
 import time
@@ -53,6 +54,18 @@ class QmpSession:
         return self._result()
 
 
+def is_port_open(ip: str, port: int, wait_response: bool = False) -> bool:
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        s.connect((ip, int(port)))
+        if wait_response:
+            s.recv(1)
+        s.shutdown(2)
+        return True
+    except Exception:
+        return False
+
+
 @contextmanager
 def connect_qmp(path: Path) -> Iterator[QmpSession]:
     sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -64,6 +77,15 @@ def connect_qmp(path: Path) -> Iterator[QmpSession]:
         sock.close()
 
 
+def parse_regs(qemu_output: str) -> Dict[str, int]:
+    regs = {}
+    for match in re.finditer(r"(\S+)\s*=\s*([0-9a-f ]+)", qemu_output):
+        name = match.group(1)
+        content = match.group(2).replace(" ", "")
+        regs[name.lower()] = int(content, 16)
+    return regs
+
+
 class QemuVm:
     def __init__(
         self, qmp_session: QmpSession, tmux_session: str, pid: int, ssh_port: int
@@ -72,6 +94,24 @@ class QemuVm:
         self.tmux_session = tmux_session
         self.pid = pid
         self.ssh_port = ssh_port
+
+    def wait_for_ssh(self) -> None:
+        """
+        Block until ssh port is accessible
+        """
+        print(f"wait for ssh on {self.ssh_port}")
+        while not is_port_open("127.0.0.1", self.ssh_port, wait_response=True):
+            time.sleep(0.1)
+
+    def regs(self) -> Dict[str, int]:
+        """
+        Get cpu register:
+        TODO: add support for multiple cpus
+        """
+        res = self.send(
+            "human-monitor-command", args={"command-line": "info registers"}
+        )
+        return parse_regs(res["return"])
 
     def attach(self) -> None:
         """

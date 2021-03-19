@@ -15,7 +15,10 @@ pkgs.mkShell {
     pkgs.cargo
     pkgs.qemu_kvm
     pkgs.tmux # needed for integration test
-    (pkgs.python3.withPackages(ps: [ ps.pytest ]))
+    (pkgs.python3.withPackages(ps: [
+      ps.pytest
+      ps.pyelftools
+    ]))
   ] ++ vmsh.nativeBuildInputs;
   buildInputs = vmsh.buildInputs;
 }
