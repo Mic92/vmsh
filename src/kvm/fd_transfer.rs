@@ -19,7 +19,7 @@ pub struct Socket {
 impl Socket {
     pub fn new(anon_local_id: u64) -> Result<Socket> {
         println!("new local socket: {}", anon_local_id);
-        // socket 
+        // socket
         let sock = try_with!(
             nix::sys::socket::socket(
                 AddressFamily::Unix,
@@ -37,7 +37,7 @@ impl Socket {
         //sun_family: libc::AF_UNIX as u16,
         //sun_path,
         //};
-        
+
         // bind
         let local = try_with!(
             UnixAddr::new_abstract(&anon_local_id.to_ne_bytes()),
@@ -73,19 +73,21 @@ impl Socket {
         addr_local_mem.write(&local.0)?;
         let addr_len = size_of::<u16>() + local.1;
         println!("bind {}, {:?}, {}", server_fd, addr_local_mem.ptr, addr_len);
-        let ret = proc.bind(server_fd, addr_local_mem.ptr as *const libc::sockaddr, addr_len as u32)?;
+        let ret = proc.bind(
+            server_fd,
+            addr_local_mem.ptr as *const libc::sockaddr,
+            addr_len as u32,
+        )?;
         if ret != 0 {
             let err = (ret * -1) as i32;
             bail!("cannot bind: {} (#{})", nix::errno::from_i32(err), ret);
         }
 
-        std::thread::sleep_ms(5000);
+        std::thread::sleep_ms(1000);
 
-        Ok(Socket {
-            fd: server_fd,
-        })
+        Ok(Socket { fd: server_fd })
     }
-    
+
     pub fn connect(&self, anon_remote_id: u64) -> Result<()> {
         println!("connect local socket to: {}", anon_remote_id);
         //try_with!(listen(sock, 1), "cannot listen on from_fd"); // not supported on this transport
@@ -99,7 +101,10 @@ impl Socket {
         println!("remote addr {:?}", remote);
         println!("remote addr {:?}", remote.0.sun_path);
         let uremote = SockAddr::Unix(remote);
-        try_with!(connect(self.fd, &uremote), "cannot connect to client foobar");
+        try_with!(
+            connect(self.fd, &uremote),
+            "cannot connect to client foobar"
+        );
 
         Ok(())
     }
@@ -109,7 +114,7 @@ impl Socket {
         proc: &inject_syscall::Process,
         anon_id_remote: u64,
         addr_remote_mem: &HvMem<libc::sockaddr_un>,
-        ) -> Result<()> {
+    ) -> Result<()> {
         println!("connect remote socket to: {}", anon_id_remote);
         // connect
         let remote = try_with!(
@@ -119,13 +124,17 @@ impl Socket {
         addr_remote_mem.write(&remote.0)?;
         let addr_len = size_of::<u16>() + remote.1;
         let ret = proc.connect(
-                self.fd,
-                addr_remote_mem.ptr as *const libc::sockaddr,
-                addr_len as u32,
+            self.fd,
+            addr_remote_mem.ptr as *const libc::sockaddr,
+            addr_len as u32,
         )?;
         if ret < 0 {
             let err = (ret * -1) as i32;
-            bail!("new_client_remote connect failed: {} (#{})", nix::errno::from_i32(err), err);
+            bail!(
+                "new_client_remote connect failed: {} (#{})",
+                nix::errno::from_i32(err),
+                err
+            );
         }
 
         Ok(())
@@ -190,7 +199,7 @@ impl Socket {
         iov_mem: &HvMem<libc::iovec>,
         iov_buf_mem: &HvMem<MT>,
         cmsg_mem: &HvMem<CM>,
-    ) -> Result<(Vec<u8>, Vec<RawFd>)> {
+    ) -> Result<(Vec<MT>, Vec<RawFd>)> {
         let message_length = size_of::<MT>();
         let mut msg_buf = vec![0; (message_length) as usize];
         let received;
@@ -199,9 +208,9 @@ impl Socket {
             println!("receive remote fd: {}", self.fd);
             //let cmsgspace = [0u8; Tracee::CMSG_SPACE((size_of::<RawFd>() * 2) as u32) as _];
             //let cmsg_hdr = libc::cmsghdr {
-                //cmsg_len: 0,
-                //cmsg_level: 0,
-                //cmsg_type: 0,
+            //cmsg_len: 0,
+            //cmsg_level: 0,
+            //cmsg_type: 0,
             //};
             //let foo = cmsgspace.as_mut_ptr();
             //*foo = cmsg_hdr;
@@ -237,34 +246,48 @@ impl Socket {
                         Errno::EAGAIN | Errno::EINTR => continue,
                         e => bail!("recvmsg failed: {} (#{})", e, err),
                     }
-                    
                 }
                 println!("done");
+
                 let msg_hdr = msg_hdr_mem.read()?;
                 let mut cmsg = cmsg_mem.read()?;
                 let cmsg_ptr: *mut CM = &mut cmsg;
                 unsafe {
-                let cmsghdr_ptr: *mut libc::cmsghdr = Tracee::__CMSG_FIRSTHDR(cmsg_ptr as *mut libc::c_void, msg_hdr.msg_controllen);
-                let cmsghdr: libc::cmsghdr = *cmsghdr_ptr;
-                println!("cmsghdr.cmsg_type {} =? {}", cmsghdr.cmsg_type, libc::SCM_RIGHTS);
-                println!("cmsghdr.cmsg_len {}", cmsghdr.cmsg_len);
-                if cmsghdr.cmsg_len as u32 != Tracee::CMSG_LEN(size_of::<RawFd>() as u32 * 2) {
-                    bail!("error: cmsghdr.len() == 0");
-                }
-                if cmsghdr.cmsg_type != libc::SCM_RIGHTS {
-                    bail!("cmsghdr not understood");
-                }
+                    let cmsghdr_ptr: *mut libc::cmsghdr = Tracee::__CMSG_FIRSTHDR(
+                        cmsg_ptr as *mut libc::c_void,
+                        msg_hdr.msg_controllen,
+                    );
+                    println!("cmsghdr: {:?}", *cmsghdr_ptr);
+                    let cmsghdr: libc::cmsghdr = *cmsghdr_ptr;
+                    println!(
+                        "cmsghdr.cmsg_type {} =? {}",
+                        cmsghdr.cmsg_type,
+                        libc::SCM_RIGHTS
+                    );
+                    println!("cmsghdr.cmsg_len {}", cmsghdr.cmsg_len);
+                    // TODO operate over cmsgs
+                    let setlen = Tracee::CMSG_LEN(size_of::<RawFd>() as u32 * 1);
+                    if cmsghdr.cmsg_len as u32 != setlen {
+                        bail!("error: cmsghdr.len() == {} != {}", cmsghdr.cmsg_len, setlen);
+                    }
+                    if cmsghdr.cmsg_type != libc::SCM_RIGHTS {
+                        bail!("cmsghdr not understood");
+                    }
 
-                let cmsg_data = Tracee::CMSG_DATA(cmsghdr_ptr) as *mut RawFd;
-                let a: RawFd = *(cmsg_data);
-                let b: RawFd = *cmsg_data.add(1);
-                let vec = vec!(a, b);
-                
-                return Ok((msg_buf, vec));
+                    let cmsg_data = Tracee::CMSG_DATA(cmsghdr_ptr) as *mut RawFd;
+                    let a: RawFd = *(cmsg_data);
+                    let b: RawFd = *cmsg_data.add(1);
+                    let vec = vec![a, b];
+
+                    let msg_buf = vec![iov_buf_mem.read()?];
+                    //let msg_buf = &msg_buf_123 as *mut u32;
+                    //println!("msg: {:?}", &msg_buf);
+                    return Ok((msg_buf, vec));
                 }
             }
         }
         msg_buf.resize(received, 0);
-        Ok((msg_buf, files))
+        //Ok((msg_buf, files))
+        unreachable!();
     }
 }

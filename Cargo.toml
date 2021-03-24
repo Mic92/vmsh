@@ -23,6 +23,7 @@ bcc = "0.0.*"
 simple-error = "0.2.*"
 kvm-bindings = "0.4.*"
 virtio = { path = "src/virtio" }
+rand = "0.8.*"
 
 # src/device/ deps:
 vm-virtio = { git = "https://github.com/rust-vmm/vm-virtio.git", features = ["backend-stdio"] } # does no kvm operations

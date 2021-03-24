@@ -188,9 +188,15 @@ impl Process {
         &self,
         socket: c_int,
         address: *const libc::sockaddr,
-        address_len: libc::socklen_t
+        address_len: libc::socklen_t,
     ) -> Result<c_int> {
-        let args = syscall_args!(self.saved_regs, libc::SYS_bind as c_ulong, socket, address, address_len);
+        let args = syscall_args!(
+            self.saved_regs,
+            libc::SYS_bind as c_ulong,
+            socket,
+            address,
+            address_len
+        );
 
         self.syscall(&args).map(|v| v as c_int)
     }
@@ -223,6 +229,9 @@ impl Process {
 
         self.syscall(&args).map(|v| v as ssize_t)
     }
+
+    //pub fn write(&self, fd: c_int, buf: *const c_void) TODO and add eventfd.write test with
+    //transfered fd
 
     fn syscall(&self, regs: &Regs) -> Result<isize> {
         try_with!(

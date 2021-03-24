@@ -182,18 +182,19 @@ impl Tracee {
         socket: &fd_transfer::Socket,
         anon_id_remote: u64,
         addr_remote_mem: &HvMem<libc::sockaddr_un>,
-        ) -> Result<()> {
+    ) -> Result<()> {
         let proc = self.try_get_proc()?;
         socket.connect_remote(&proc, anon_id_remote, addr_remote_mem)
     }
 
-    fn recvmsg<MT: Sized + Copy, CM: Sized + Copy>(&self, 
-        sock: fd_transfer::Socket, 
+    fn recvmsg<MT: Sized + Copy, CM: Sized + Copy>(
+        &self,
+        sock: fd_transfer::Socket,
         msg_hdr_mem: &HvMem<libc::msghdr>,
         iov_mem: &HvMem<libc::iovec>,
         iov_buf_mem: &HvMem<MT>,
         cmsg_mem: &HvMem<CM>,
-    ) -> Result<(Vec<u8>, Vec<RawFd>)> {
+    ) -> Result<(Vec<MT>, Vec<RawFd>)> {
         let proc = self.try_get_proc()?;
         sock.receive_remote(&proc, msg_hdr_mem, iov_mem, iov_buf_mem, cmsg_mem)
     }
@@ -201,7 +202,7 @@ impl Tracee {
     /// Guarantees not to allocate or follow pointers. Pure pointer calculus.
     const unsafe fn CMSG_SPACE(length: libc::c_uint) -> libc::c_uint {
         //libc::CMSG_SPACE(length) TODO
-        0 
+        0
     }
 
     /// Guarantees not to allocate or follow pointers. Pure pointer calculus.
@@ -590,7 +591,12 @@ impl Hypervisor {
         println!("vmsh  = new_server");
         let vmsh = fd_transfer::Socket::new(vmsh_id)?;
         println!("hypervisor = anon_unix_client_connect");
-        let hypervisor = tracee.anon_unix_client_connect(hypervisor_id, vmsh_id, &addr_local_mem, &addr_remote_mem)?;
+        let hypervisor = tracee.anon_unix_client_connect(
+            hypervisor_id,
+            vmsh_id,
+            &addr_local_mem,
+            &addr_remote_mem,
+        )?;
 
         println!("vmsh connect");
         vmsh.connect(hypervisor_id)?;
@@ -605,11 +611,8 @@ impl Hypervisor {
         println!("vmsh.send");
         vmsh.send(messages.as_slice(), fds)?;
         println!("hypervisor.recvmsg");
-        let (msgs, fds) = tracee.recvmsg(hypervisor, 
-            &msg_hdr_mem,
-            &iov_mem,
-            &iov_buf_mem,
-            &cmsg_mem)?;
+        let (msgs, fds) =
+            tracee.recvmsg(hypervisor, &msg_hdr_mem, &iov_mem, &iov_buf_mem, &cmsg_mem)?;
         println!("done");
         println!("msg: {:?}", msgs[0]);
         println!("fd: {}", fds[0]);
