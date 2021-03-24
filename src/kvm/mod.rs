@@ -13,7 +13,7 @@ use std::os::unix::prelude::RawFd;
 use std::ptr;
 use std::sync::{Arc, RwLock};
 
-mod fd_transfer;
+pub mod fd_transfer;
 pub mod ioctls;
 mod memslots;
 
@@ -168,11 +168,23 @@ impl Tracee {
 
     fn anon_unix_client_connect(
         &self,
-        anon_id: u64,
-        addr_mem: &HvMem<libc::sockaddr_un>,
+        anon_id_local: u64,
+        anon_id_remote: u64,
+        addr_local_mem: &HvMem<libc::sockaddr_un>,
+        addr_remote_mem: &HvMem<libc::sockaddr_un>,
     ) -> Result<fd_transfer::Socket> {
         let proc = self.try_get_proc()?;
-        fd_transfer::Socket::new_client_remote(&proc, anon_id, addr_mem)
+        fd_transfer::Socket::new_remote(&proc, anon_id_local, addr_local_mem)
+    }
+
+    pub fn connect_remote(
+        &self,
+        socket: &fd_transfer::Socket,
+        anon_id_remote: u64,
+        addr_remote_mem: &HvMem<libc::sockaddr_un>,
+        ) -> Result<()> {
+        let proc = self.try_get_proc()?;
+        socket.connect_remote(&proc, anon_id_remote, addr_remote_mem)
     }
 
     fn recvmsg<MT: Sized + Copy, CM: Sized + Copy>(&self, 
@@ -560,7 +572,8 @@ impl Hypervisor {
     }
 
     pub fn transfer(&self, fds: &[RawFd]) -> Result<()> {
-        let mem = self.alloc_mem()?;
+        let addr_local_mem = self.alloc_mem()?;
+        let addr_remote_mem = self.alloc_mem()?;
         let msg_hdr_mem = self.alloc_mem()?;
         let iov_mem = self.alloc_mem()?;
         let iov_buf_mem = self.alloc_mem::<u8>()?;
@@ -570,11 +583,19 @@ impl Hypervisor {
             self.tracee.write(),
             "cannot obtain tracee write lock: poinsoned"
         );
-        let conn_id: u64 = rand::thread_rng().gen::<u64>();
+        let vmsh_id: u64 = rand::thread_rng().gen::<u64>();
+        //let vmsh_id: u64 = 10;
+        println!("vmsh id {}", vmsh_id);
+        let hypervisor_id = vmsh_id + 1;
         println!("vmsh  = new_server");
-        let vmsh = fd_transfer::Socket::new_server(conn_id)?;
+        let vmsh = fd_transfer::Socket::new(vmsh_id)?;
         println!("hypervisor = anon_unix_client_connect");
-        let hypervisor = tracee.anon_unix_client_connect(conn_id, &mem)?;
+        let hypervisor = tracee.anon_unix_client_connect(hypervisor_id, vmsh_id, &addr_local_mem, &addr_remote_mem)?;
+
+        println!("vmsh connect");
+        vmsh.connect(hypervisor_id)?;
+        println!("hypervisor connect");
+        tracee.connect_remote(&hypervisor, vmsh_id, &addr_remote_mem)?;
 
         let message = [1u8; 1];
         let m_slice = &message[0..1];
@@ -584,12 +605,14 @@ impl Hypervisor {
         println!("vmsh.send");
         vmsh.send(messages.as_slice(), fds)?;
         println!("hypervisor.recvmsg");
-        tracee.recvmsg(hypervisor, 
+        let (msgs, fds) = tracee.recvmsg(hypervisor, 
             &msg_hdr_mem,
             &iov_mem,
             &iov_buf_mem,
             &cmsg_mem)?;
         println!("done");
+        println!("msg: {:?}", msgs[0]);
+        println!("fd: {}", fds[0]);
 
         Ok(())
     }

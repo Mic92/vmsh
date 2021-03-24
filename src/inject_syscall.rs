@@ -184,6 +184,17 @@ impl Process {
         self.syscall(&args).map(|v| v as c_int)
     }
 
+    pub fn bind(
+        &self,
+        socket: c_int,
+        address: *const libc::sockaddr,
+        address_len: libc::socklen_t
+    ) -> Result<c_int> {
+        let args = syscall_args!(self.saved_regs, libc::SYS_bind as c_ulong, socket, address, address_len);
+
+        self.syscall(&args).map(|v| v as c_int)
+    }
+
     pub fn connect(
         &self,
         socket: c_int,

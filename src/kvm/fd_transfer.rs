@@ -14,8 +14,12 @@ pub struct Socket {
     fd: RawFd,
 }
 
+// TODO impl drop
+
 impl Socket {
-    pub fn new_server(anon_id: u64) -> Result<Socket> {
+    pub fn new(anon_local_id: u64) -> Result<Socket> {
+        println!("new local socket: {}", anon_local_id);
+        // socket 
         let sock = try_with!(
             nix::sys::socket::socket(
                 AddressFamily::Unix,
@@ -33,57 +37,98 @@ impl Socket {
         //sun_family: libc::AF_UNIX as u16,
         //sun_path,
         //};
-        let addr = try_with!(
-            UnixAddr::new_abstract(&anon_id.to_ne_bytes()),
+        
+        // bind
+        let local = try_with!(
+            UnixAddr::new_abstract(&anon_local_id.to_ne_bytes()),
             "cannot create abstract addr"
         );
-        let uaddr = SockAddr::Unix(addr);
+        let ulocal = SockAddr::Unix(local);
         try_with!(
-            bind(sock, &uaddr),
+            bind(sock, &ulocal),
             "cannot bind to {:?}",
-            addr.as_abstract()
+            local.as_abstract()
         );
-
-        //try_with!(listen(sock, 1), "cannot listen on from_fd"); // not supported on this transport
-
-        // TODO accept? no. connect.
-        try_with!(connect(sock, &uaddr), "cannot connect to client");
 
         Ok(Socket { fd: sock })
     }
 
-    pub fn new_client_remote(
+    pub fn new_remote(
         proc: &inject_syscall::Process,
-        anon_id: u64,
-        addr_mem: &HvMem<libc::sockaddr_un>,
+        anon_id_local: u64,
+        addr_local_mem: &HvMem<libc::sockaddr_un>,
     ) -> Result<Socket> {
+        println!("new remote socket: {}", anon_id_local);
         // socket
         let server_fd = proc.socket(libc::AF_UNIX, libc::SOCK_DGRAM, 0)?;
-        if server_fd < 0 {
+        if server_fd <= 0 {
             bail!("cannot create socket: {}", server_fd);
         }
 
         // bind
-        let addr = try_with!(
-            UnixAddr::new_abstract(&anon_id.to_ne_bytes()),
+        let local = try_with!(
+            UnixAddr::new_abstract(&anon_id_local.to_ne_bytes()),
             "cannot create abstract addr"
         );
-        addr_mem.write(&addr.0)?;
+        addr_local_mem.write(&local.0)?;
+        let addr_len = size_of::<u16>() + local.1;
+        println!("bind {}, {:?}, {}", server_fd, addr_local_mem.ptr, addr_len);
+        let ret = proc.bind(server_fd, addr_local_mem.ptr as *const libc::sockaddr, addr_len as u32)?;
+        if ret != 0 {
+            let err = (ret * -1) as i32;
+            bail!("cannot bind: {} (#{})", nix::errno::from_i32(err), ret);
+        }
 
+        std::thread::sleep_ms(5000);
+
+        Ok(Socket {
+            fd: server_fd,
+        })
+    }
+    
+    pub fn connect(&self, anon_remote_id: u64) -> Result<()> {
+        println!("connect local socket to: {}", anon_remote_id);
+        //try_with!(listen(sock, 1), "cannot listen on from_fd"); // not supported on this transport
+
+        // TODO accept? no. connect.
         // connect
-        let fd = proc.connect(
-                server_fd,
-                addr_mem.ptr as *const libc::sockaddr,
-                addr.1 as u32,
-                )?;
+        let remote = try_with!(
+            UnixAddr::new_abstract(&anon_remote_id.to_ne_bytes()),
+            "cannot create abstract addr"
+        );
+        println!("remote addr {:?}", remote);
+        println!("remote addr {:?}", remote.0.sun_path);
+        let uremote = SockAddr::Unix(remote);
+        try_with!(connect(self.fd, &uremote), "cannot connect to client foobar");
 
-        if fd < 0 {
-            let err = (fd * -1) as i32;
+        Ok(())
+    }
+
+    pub fn connect_remote(
+        &self,
+        proc: &inject_syscall::Process,
+        anon_id_remote: u64,
+        addr_remote_mem: &HvMem<libc::sockaddr_un>,
+        ) -> Result<()> {
+        println!("connect remote socket to: {}", anon_id_remote);
+        // connect
+        let remote = try_with!(
+            UnixAddr::new_abstract(&anon_id_remote.to_ne_bytes()),
+            "cannot create abstract addr"
+        );
+        addr_remote_mem.write(&remote.0)?;
+        let addr_len = size_of::<u16>() + remote.1;
+        let ret = proc.connect(
+                self.fd,
+                addr_remote_mem.ptr as *const libc::sockaddr,
+                addr_len as u32,
+        )?;
+        if ret < 0 {
+            let err = (ret * -1) as i32;
             bail!("new_client_remote connect failed: {} (#{})", nix::errno::from_i32(err), err);
         }
-        Ok(Socket {
-            fd,
-        })
+
+        Ok(())
     }
 
     pub fn send(&self, messages: &[&[u8]], files: &[RawFd]) -> Result<()> {
@@ -181,6 +226,7 @@ impl Socket {
             // CMSG_SPACE, CMSG_FIRSTHDR, CMSG_LEN, CMSG_DATA
             //let iov = [IoVec::from_mut_slice(&mut msg_buf)];
             loop {
+                println!("revcmsg...");
                 let ret = proc.recvmsg(self.fd, msg_hdr_mem.ptr as *mut libc::msghdr, 0)?;
                 if ret == 0 {
                     bail!("received nothing");
@@ -193,6 +239,7 @@ impl Socket {
                     }
                     
                 }
+                println!("done");
                 let msg_hdr = msg_hdr_mem.read()?;
                 let mut cmsg = cmsg_mem.read()?;
                 let cmsg_ptr: *mut CM = &mut cmsg;
@@ -202,7 +249,7 @@ impl Socket {
                 println!("cmsghdr.cmsg_type {} =? {}", cmsghdr.cmsg_type, libc::SCM_RIGHTS);
                 println!("cmsghdr.cmsg_len {}", cmsghdr.cmsg_len);
                 if cmsghdr.cmsg_len as u32 != Tracee::CMSG_LEN(size_of::<RawFd>() as u32 * 2) {
-                    bail!("cmsghdr.len() == 0");
+                    bail!("error: cmsghdr.len() == 0");
                 }
                 if cmsghdr.cmsg_type != libc::SCM_RIGHTS {
                     bail!("cmsghdr not understood");
