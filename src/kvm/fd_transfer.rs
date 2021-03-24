@@ -1,0 +1,223 @@
+use nix::errno::Errno;
+use nix::sys::socket::*;
+use nix::sys::uio::IoVec;
+use simple_error::{bail, simple_error, try_with};
+use std::mem::size_of;
+use std::os::unix::prelude::*;
+
+use crate::inject_syscall;
+use crate::kvm::{HvMem, Tracee};
+use crate::result::Result;
+
+// inspired by https://github.com/Mic92/cntr/blob/492b2d9e9abc9ccd4f01a0134aab73df16393423/src/ipc.rs
+pub struct Socket {
+    fd: RawFd,
+}
+
+impl Socket {
+    pub fn new_server(anon_id: u64) -> Result<Socket> {
+        let sock = try_with!(
+            nix::sys::socket::socket(
+                AddressFamily::Unix,
+                SockType::Datagram,
+                SockFlag::SOCK_CLOEXEC,
+                None,
+            ),
+            "failed to create socket"
+        );
+
+        //let mut sun_path = [0u8; 108]; // first byte 0x0 for anonymous socket
+        //sun_path[1..9].as_mut().copy_from_slice(&anon_id.to_ne_bytes());
+        //let sun_path: [i8; 108] = unsafe { std::mem::transmute::<[u8; 108], [i8; 108]>(sun_path) };
+        //let addr = nix::sys::socket::sockaddr_un {
+        //sun_family: libc::AF_UNIX as u16,
+        //sun_path,
+        //};
+        let addr = try_with!(
+            UnixAddr::new_abstract(&anon_id.to_ne_bytes()),
+            "cannot create abstract addr"
+        );
+        let uaddr = SockAddr::Unix(addr);
+        try_with!(
+            bind(sock, &uaddr),
+            "cannot bind to {:?}",
+            addr.as_abstract()
+        );
+
+        //try_with!(listen(sock, 1), "cannot listen on from_fd"); // not supported on this transport
+
+        // TODO accept? no. connect.
+        try_with!(connect(sock, &uaddr), "cannot connect to client");
+
+        Ok(Socket { fd: sock })
+    }
+
+    pub fn new_client_remote(
+        proc: &inject_syscall::Process,
+        anon_id: u64,
+        addr_mem: &HvMem<libc::sockaddr_un>,
+    ) -> Result<Socket> {
+        // socket
+        let server_fd = proc.socket(libc::AF_UNIX, libc::SOCK_DGRAM, 0)?;
+        if server_fd < 0 {
+            bail!("cannot create socket: {}", server_fd);
+        }
+
+        // bind
+        let addr = try_with!(
+            UnixAddr::new_abstract(&anon_id.to_ne_bytes()),
+            "cannot create abstract addr"
+        );
+        addr_mem.write(&addr.0)?;
+
+        // connect
+        let fd = proc.connect(
+                server_fd,
+                addr_mem.ptr as *const libc::sockaddr,
+                addr.1 as u32,
+                )?;
+
+        if fd < 0 {
+            let err = (fd * -1) as i32;
+            bail!("new_client_remote connect failed: {} (#{})", nix::errno::from_i32(err), err);
+        }
+        Ok(Socket {
+            fd,
+        })
+    }
+
+    pub fn send(&self, messages: &[&[u8]], files: &[RawFd]) -> Result<()> {
+        let iov: Vec<IoVec<&[u8]>> = messages.iter().map(|m| IoVec::from_slice(m)).collect();
+        let fds: Vec<RawFd> = files.iter().map(|f| f.as_raw_fd()).collect();
+        let cmsg = if files.is_empty() {
+            vec![]
+        } else {
+            vec![ControlMessage::ScmRights(&fds)]
+        };
+
+        try_with!(
+            sendmsg(self.fd, &iov, &cmsg, MsgFlags::empty(), None),
+            "sendmsg failed"
+        );
+        Ok(())
+    }
+
+    pub fn receive(
+        &self,
+        message_length: usize,
+        cmsgspace: &mut Vec<u8>,
+    ) -> Result<(Vec<u8>, Vec<RawFd>)> {
+        let mut msg_buf = vec![0; (message_length) as usize];
+        let received;
+        let mut files: Vec<RawFd> = Vec::with_capacity(1);
+        {
+            let iov = [IoVec::from_mut_slice(&mut msg_buf)];
+            loop {
+                match recvmsg(self.fd, &iov, Some(&mut *cmsgspace), MsgFlags::empty()) {
+                    Err(nix::Error::Sys(Errno::EAGAIN)) | Err(nix::Error::Sys(Errno::EINTR)) => {
+                        continue
+                    }
+                    Err(e) => return try_with!(Err(e), "recvmsg failed"),
+                    Ok(msg) => {
+                        for cmsg in msg.cmsgs() {
+                            if let ControlMessageOwned::ScmRights(fds) = cmsg {
+                                for fd in fds {
+                                    files.push(fd)
+                                }
+                            }
+                        }
+                        received = msg.bytes;
+                        break;
+                    }
+                };
+            }
+        }
+        msg_buf.resize(received, 0);
+        Ok((msg_buf, files))
+    }
+
+    /// MT: message type. Example: `[u8; 8]`
+    /// CM: cmsg space type. Example: `[0u8; Tracee::CMSG_SPACE((size_of::<RawFd>() * 2) as u32) as _]`
+    pub fn receive_remote<MT: Sized + Copy, CM: Sized + Copy>(
+        &self,
+        proc: &inject_syscall::Process,
+        msg_hdr_mem: &HvMem<libc::msghdr>,
+        iov_mem: &HvMem<libc::iovec>,
+        iov_buf_mem: &HvMem<MT>,
+        cmsg_mem: &HvMem<CM>,
+    ) -> Result<(Vec<u8>, Vec<RawFd>)> {
+        let message_length = size_of::<MT>();
+        let mut msg_buf = vec![0; (message_length) as usize];
+        let received;
+        let mut files: Vec<RawFd> = Vec::with_capacity(1);
+        {
+            println!("receive remote fd: {}", self.fd);
+            //let cmsgspace = [0u8; Tracee::CMSG_SPACE((size_of::<RawFd>() * 2) as u32) as _];
+            //let cmsg_hdr = libc::cmsghdr {
+                //cmsg_len: 0,
+                //cmsg_level: 0,
+                //cmsg_type: 0,
+            //};
+            //let foo = cmsgspace.as_mut_ptr();
+            //*foo = cmsg_hdr;
+            //let foo: &[u8] = cmsg_hdr
+
+            let iov = libc::iovec {
+                iov_base: iov_buf_mem.ptr,
+                iov_len: message_length,
+            };
+            iov_mem.write(&iov)?;
+            let msg_hdr = libc::msghdr {
+                msg_name: 0 as *mut libc::c_void,
+                msg_namelen: 0,
+                msg_iov: iov_mem.ptr as *mut libc::iovec,
+                msg_iovlen: 1,
+                msg_control: cmsg_mem.ptr as *mut libc::c_void,
+                msg_controllen: size_of::<CM>(),
+                msg_flags: 0, // TODO ?
+            };
+            msg_hdr_mem.write(&msg_hdr)?;
+
+            // CMSG_SPACE, CMSG_FIRSTHDR, CMSG_LEN, CMSG_DATA
+            //let iov = [IoVec::from_mut_slice(&mut msg_buf)];
+            loop {
+                let ret = proc.recvmsg(self.fd, msg_hdr_mem.ptr as *mut libc::msghdr, 0)?;
+                if ret == 0 {
+                    bail!("received nothing");
+                }
+                if ret < 0 {
+                    let err = (ret * -1) as i32;
+                    match nix::errno::from_i32(err) {
+                        Errno::EAGAIN | Errno::EINTR => continue,
+                        e => bail!("recvmsg failed: {} (#{})", e, err),
+                    }
+                    
+                }
+                let msg_hdr = msg_hdr_mem.read()?;
+                let mut cmsg = cmsg_mem.read()?;
+                let cmsg_ptr: *mut CM = &mut cmsg;
+                unsafe {
+                let cmsghdr_ptr: *mut libc::cmsghdr = Tracee::__CMSG_FIRSTHDR(cmsg_ptr as *mut libc::c_void, msg_hdr.msg_controllen);
+                let cmsghdr: libc::cmsghdr = *cmsghdr_ptr;
+                println!("cmsghdr.cmsg_type {} =? {}", cmsghdr.cmsg_type, libc::SCM_RIGHTS);
+                println!("cmsghdr.cmsg_len {}", cmsghdr.cmsg_len);
+                if cmsghdr.cmsg_len as u32 != Tracee::CMSG_LEN(size_of::<RawFd>() as u32 * 2) {
+                    bail!("cmsghdr.len() == 0");
+                }
+                if cmsghdr.cmsg_type != libc::SCM_RIGHTS {
+                    bail!("cmsghdr not understood");
+                }
+
+                let cmsg_data = Tracee::CMSG_DATA(cmsghdr_ptr) as *mut RawFd;
+                let a: RawFd = *(cmsg_data);
+                let b: RawFd = *cmsg_data.add(1);
+                let vec = vec!(a, b);
+                
+                return Ok((msg_buf, vec));
+                }
+            }
+        }
+        msg_buf.resize(received, 0);
+        Ok((msg_buf, files))
+    }
+}

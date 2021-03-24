@@ -144,6 +144,7 @@ fn guest_ioeventfd(pid: Pid) -> Result<()> {
     //let ioeventfd_fd = tracee.open(); TODO
     let ioeventfd_fd = try_with!(EventFd::new(EFD_NONBLOCK), "cannot create event fd");
     println!("{:?}", ioeventfd_fd.as_raw_fd());
+    vm.transfer(vec!(ioeventfd_fd.as_raw_fd()).as_slice())?;
     //let ioeventfd_mmap_fd = tracee.open(); TODO
     //let ioeventfd = tracee.malloc(ioeventfd_mmap_fd); TODO
     //let mmio_mem = try_with!(tracee.mmap(16), "cannot allocate mmio region");

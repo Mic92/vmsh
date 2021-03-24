@@ -3,6 +3,7 @@ use libc::{c_int, c_ulong, c_void};
 use log::warn;
 use nix::sys::uio::{process_vm_readv, process_vm_writev, IoVec, RemoteIoVec};
 use nix::unistd::Pid;
+use rand::Rng;
 use simple_error::{bail, simple_error, try_with};
 use std::ffi::OsStr;
 use std::marker::PhantomData;
@@ -12,6 +13,7 @@ use std::os::unix::prelude::RawFd;
 use std::ptr;
 use std::sync::{Arc, RwLock};
 
+mod fd_transfer;
 pub mod ioctls;
 mod memslots;
 
@@ -164,6 +166,59 @@ impl Tracee {
         proc.mmap(addr, length, prot, flags, fd, offset)
     }
 
+    fn anon_unix_client_connect(
+        &self,
+        anon_id: u64,
+        addr_mem: &HvMem<libc::sockaddr_un>,
+    ) -> Result<fd_transfer::Socket> {
+        let proc = self.try_get_proc()?;
+        fd_transfer::Socket::new_client_remote(&proc, anon_id, addr_mem)
+    }
+
+    fn recvmsg<MT: Sized + Copy, CM: Sized + Copy>(&self, 
+        sock: fd_transfer::Socket, 
+        msg_hdr_mem: &HvMem<libc::msghdr>,
+        iov_mem: &HvMem<libc::iovec>,
+        iov_buf_mem: &HvMem<MT>,
+        cmsg_mem: &HvMem<CM>,
+    ) -> Result<(Vec<u8>, Vec<RawFd>)> {
+        let proc = self.try_get_proc()?;
+        sock.receive_remote(&proc, msg_hdr_mem, iov_mem, iov_buf_mem, cmsg_mem)
+    }
+
+    /// Guarantees not to allocate or follow pointers. Pure pointer calculus.
+    const unsafe fn CMSG_SPACE(length: libc::c_uint) -> libc::c_uint {
+        //libc::CMSG_SPACE(length) TODO
+        0 
+    }
+
+    /// Guarantees not to allocate or follow pointers. Pure pointer calculus.
+    unsafe fn __CMSG_FIRSTHDR(
+        msg_control: *mut libc::c_void,
+        msg_controllen: libc::size_t,
+    ) -> *mut libc::cmsghdr {
+        let msg_hdr = libc::msghdr {
+            msg_name: 0 as *mut libc::c_void,
+            msg_namelen: 0,
+            msg_iov: 0 as *mut libc::iovec,
+            msg_iovlen: 0,
+            msg_control,
+            msg_controllen,
+            msg_flags: 0,
+        };
+        libc::CMSG_FIRSTHDR(&msg_hdr as *const libc::msghdr)
+    }
+
+    /// Guarantees not to allocate or follow pointers. Pure pointer calculus.
+    unsafe fn CMSG_LEN(length: libc::c_uint) -> libc::c_uint {
+        libc::CMSG_LEN(length)
+    }
+
+    /// Guarantees not to allocate or follow pointers. Pure pointer calculus.
+    unsafe fn CMSG_DATA(cmsg: *const libc::cmsghdr) -> *mut libc::c_uchar {
+        libc::CMSG_DATA(cmsg)
+    }
+
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     fn get_sregs(&self, vcpu: &VCPU, sregs: &HvMem<kvmb::kvm_sregs>) -> Result<kvmb::kvm_sregs> {
         use crate::kvm::ioctls::KVM_GET_SREGS;
@@ -287,7 +342,7 @@ pub unsafe fn any_as_bytes<T: Sized>(p: &T) -> &[u8] {
 
 /// Hypervisor Memory
 pub struct HvMem<T: Copy> {
-    pub ptr: *mut c_void,
+    pub ptr: *mut c_void, // TODO replace with T
     pid: Pid,
     tracee: Arc<RwLock<Tracee>>,
     phantom: PhantomData<T>,
@@ -502,6 +557,41 @@ impl Hypervisor {
             tracee: self.tracee.clone(),
             phantom: PhantomData,
         })
+    }
+
+    pub fn transfer(&self, fds: &[RawFd]) -> Result<()> {
+        let mem = self.alloc_mem()?;
+        let msg_hdr_mem = self.alloc_mem()?;
+        let iov_mem = self.alloc_mem()?;
+        let iov_buf_mem = self.alloc_mem::<u8>()?;
+        let cmsg_mem = self.alloc_mem::<[u8; 64]>()?;
+
+        let tracee = try_with!(
+            self.tracee.write(),
+            "cannot obtain tracee write lock: poinsoned"
+        );
+        let conn_id: u64 = rand::thread_rng().gen::<u64>();
+        println!("vmsh  = new_server");
+        let vmsh = fd_transfer::Socket::new_server(conn_id)?;
+        println!("hypervisor = anon_unix_client_connect");
+        let hypervisor = tracee.anon_unix_client_connect(conn_id, &mem)?;
+
+        let message = [1u8; 1];
+        let m_slice = &message[0..1];
+        let mut messages = Vec::with_capacity(fds.len());
+        fds.iter().for_each(|_| messages.push(m_slice));
+
+        println!("vmsh.send");
+        vmsh.send(messages.as_slice(), fds)?;
+        println!("hypervisor.recvmsg");
+        tracee.recvmsg(hypervisor, 
+            &msg_hdr_mem,
+            &iov_mem,
+            &iov_buf_mem,
+            &cmsg_mem)?;
+        println!("done");
+
+        Ok(())
     }
 
     pub fn check_extension(&self, cap: c_int) -> Result<c_int> {
