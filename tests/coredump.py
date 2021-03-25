@@ -17,6 +17,7 @@ class ElfCore:
     regs: List["user_regs_struct"] = []
     fpu_regs: List["user_fpregs_struct"] = []
     special_regs: List["KVMSRegs"] = []
+    msrs: List[List["kvm_msr_entry"]] = []
 
     def __init__(self, fd: IO[bytes]) -> None:
         self.elf = ELFFile(fd)
@@ -33,11 +34,12 @@ class ElfCore:
                 self.fpu_regs.append(
                     elf_fpregset_t.from_buffer_copy(note.n_desc.encode("latin-1"))
                 )
+            # actually not NT_TASKSTRUCT but elftools detect it as such
             elif note.n_type == "NT_TASKSTRUCT":
                 assert note.n_descsz == ct.sizeof(core_user)
-                self.special_regs.append(
-                    core_user.from_buffer_copy(note.n_desc.encode("latin1")).sregs
-                )
+                custom = core_user.from_buffer_copy(note.n_desc.encode("latin1"))
+                self.special_regs.append(custom.sregs)
+                self.msrs.append(custom.msrs)
 
 
 # elf_prstatus related constants.
@@ -504,8 +506,17 @@ class KVMSRegs(ct.Structure):
     ]
 
 
+class kvm_msr_entry(ct.Structure):
+    _fields_ = [
+        ("index", ct.c_uint32),
+        ("reserved", ct.c_uint32),
+        ("data", ct.c_uint64),
+    ]
+
+
 class core_user(ct.Structure):
     _fields_ = [
         ("vpu", ct.c_size_t),
         ("sregs", KVMSRegs),
+        ("msrs", kvm_msr_entry * 1),
     ]

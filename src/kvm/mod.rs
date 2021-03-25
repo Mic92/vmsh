@@ -175,6 +175,7 @@ impl Tracee {
         Ok(sregs)
     }
 
+    /// Get general-purpose pointer registers of VCPU
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     fn get_regs(&self, vcpu: &VCPU, regs: &HvMem<kvmb::kvm_regs>) -> Result<cpu::Regs> {
         use crate::kvm::ioctls::KVM_GET_REGS;
@@ -214,6 +215,7 @@ impl Tracee {
         })
     }
 
+    /// Get floating pointer registers of VCPU
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     fn get_fpu_regs(&self, vcpu: &VCPU, regs: &HvMem<kvmb::kvm_fpu>) -> Result<cpu::FpuRegs> {
         use crate::kvm::ioctls::KVM_GET_FPU;
@@ -240,6 +242,22 @@ impl Tracee {
             padding: [0; 12],
             padding1: [0; 12],
         })
+    }
+
+    /// Get model-specific pointer registers of VCPU
+    /// See https://github.com/rust-vmm/kvm-ioctls/blob/8eee8cd7ffea51c9463220f25e505b57b60cb2c7/src/ioctls/vcpu.rs#L522 for usage
+    ///
+    /// Returns number of successfull read register
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    pub fn get_msr(&self, vcpu: &VCPU, msrs: &HvMem<kvm_msrs>) -> Result<kvmb::kvm_msr_entry> {
+        use crate::kvm::ioctls::KVM_GET_MSRS;
+        // Here we trust the kernel not to read past the end of the kvm_msrs struct.
+        try_with!(
+            self.vcpu_ioctl(vcpu, KVM_GET_MSRS(), msrs.ptr as c_ulong),
+            "vcpu_ioctl failed"
+        );
+        let msrs = try_with!(msrs.read(), "cannot read registers");
+        Ok(msrs.entries[0])
     }
 
     /// Unmap memory in the process
@@ -360,6 +378,16 @@ pub struct Hypervisor {
     tracee: Arc<RwLock<Tracee>>,
 }
 
+/// In theory this is dynamic however for for simplicity we limit it to 1 entry to not have to rewrite our vm allocation stack
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct kvm_msrs {
+    pub nmsrs: u32,
+    pub pad: u32,
+    //
+    pub entries: [kvmb::kvm_msr_entry; 1],
+}
+
 impl Hypervisor {
     fn attach(pid: Pid, vm_fd: RawFd) -> Result<Tracee> {
         Ok(Tracee {
@@ -453,6 +481,29 @@ impl Hypervisor {
         })
     }
 
+    /// allocate memory for T. Allocate more than necessary to increase allocation size to `size`.
+    pub fn alloc_fam<T: Copy>(&self, size: usize) -> Result<HvMem<T>> {
+        if size < size_of::<T>() {
+            bail!(
+                "allocating {}b for item of size {} is not sufficient",
+                size,
+                size_of::<T>()
+            )
+        }
+        let tracee = try_with!(
+            self.tracee.write(),
+            "cannot obtain tracee write lock: poinsoned"
+        );
+        // safe, because TraceeMem enforces to write and read at most `size_of::<T> <= size` bytes.
+        let ptr = unsafe { tracee.mmap(size)? };
+        Ok(HvMem {
+            ptr,
+            pid: self.pid,
+            tracee: self.tracee.clone(),
+            phantom: PhantomData,
+        })
+    }
+
     pub fn check_extension(&self, cap: c_int) -> Result<c_int> {
         let tracee = try_with!(
             self.tracee.read(),
@@ -489,6 +540,24 @@ impl Hypervisor {
             "cannot obtain tracee write lock: poinsoned"
         );
         tracee.get_fpu_regs(vcpu, &mem)
+    }
+
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    pub fn get_msr(&self, vcpu: &VCPU, msr: &kvmb::kvm_msr_entry) -> Result<kvmb::kvm_msr_entry> {
+        let mut mem = self.alloc_mem()?;
+        try_with!(
+            mem.write(&kvm_msrs {
+                nmsrs: 1,
+                pad: 0,
+                entries: [*msr; 1],
+            }),
+            "cannot obtain tracee write lock: poinsoned"
+        );
+        let tracee = try_with!(
+            self.tracee.write(),
+            "cannot obtain tracee write lock: poinsoned"
+        );
+        tracee.get_msr(vcpu, &mut mem)
     }
 }
 
