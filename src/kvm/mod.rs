@@ -572,7 +572,7 @@ impl Hypervisor {
         })
     }
 
-    pub fn transfer(&self, fds: &[RawFd]) -> Result<()> {
+    pub fn transfer(&self, fds: &[RawFd]) -> Result<Vec<RawFd>> {
         let addr_local_mem = self.alloc_mem()?;
         let addr_remote_mem = self.alloc_mem()?;
         let msg_hdr_mem = self.alloc_mem()?;
@@ -617,7 +617,7 @@ impl Hypervisor {
         println!("msg: {:?}", msgs[0]);
         println!("fd: {}", fds[0]);
 
-        Ok(())
+        Ok(fds)
     }
 
     pub fn check_extension(&self, cap: c_int) -> Result<c_int> {
