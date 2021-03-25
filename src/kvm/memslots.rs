@@ -103,7 +103,10 @@ fn bpf_prog(pid: Pid) -> Result<BPF> {
     let builder = try_with!(BPFBuilder::new(BPF_TEXT), "cannot compile bpf program");
     let cflags = &[format!("-DTARGET_PID={}", pid)];
     let builder_with_cflags = try_with!(builder.cflags(cflags), "could not pass cflags");
-    Ok(try_with!(builder_with_cflags.build(), "build failed"))
+    Ok(try_with!(
+        builder_with_cflags.build(),
+        "build failed. This might happen if vmsh was started without root (or cap_sys_admin)"
+    ))
 }
 
 pub fn fetch_mappings(pid: Pid) -> Result<Vec<Mapping>> {
