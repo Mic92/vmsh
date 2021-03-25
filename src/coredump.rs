@@ -32,7 +32,10 @@ pub struct CoredumpOptions {
 #[derive(Clone)]
 pub struct core_user {
     vcpu: usize,
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     sregs: kvmb::kvm_sregs,
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    msrs: [kvmb::kvm_msr_entry; 1],
 }
 
 fn protection_flags(f: &ProtFlags) -> Elf_Word {
@@ -261,7 +264,8 @@ fn write_note_sections(core_file: &mut File, vcpus: &[VcpuState]) -> Result<()> 
                 NT_PRXREG,
                 &core_user {
                     vcpu: i,
-                    sregs: vcpu.sregs
+                    sregs: vcpu.sregs,
+                    msrs: vcpu.msrs
                 }
             ),
             "failed to write NT_PRXREG"
@@ -329,10 +333,14 @@ fn write_corefile(
     )
 }
 
+const MSR_EFER: u32 = 0xc0000080;
 struct VcpuState {
     regs: Regs,
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     sregs: kvmb::kvm_sregs,
     fpu_regs: FpuRegs,
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    msrs: [kvmb::kvm_msr_entry; 1],
 }
 
 impl VcpuState {
@@ -342,10 +350,16 @@ impl VcpuState {
         let regs = hv.get_regs(vcpu)?;
         let sregs = hv.get_sregs(vcpu)?;
         let fpu_regs = hv.get_fpu_regs(vcpu)?;
+        let entry = kvmb::kvm_msr_entry {
+            index: MSR_EFER,
+            ..Default::default()
+        };
+        let msr = hv.get_msr(vcpu, &entry)?;
         Ok(VcpuState {
             regs,
             sregs,
             fpu_regs,
+            msrs: [msr],
         })
     }
 }

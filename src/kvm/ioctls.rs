@@ -144,6 +144,30 @@ macro_rules! ioctl_ior_nr {
 //    };
 //}
 
+/// Declare an ioctl that reads and writes data.
+#[macro_export]
+macro_rules! ioctl_iowr_nr {
+    ($name:ident, $ty:expr, $nr:expr, $size:ty) => {
+        ioctl_ioc_nr!(
+            $name,
+            _IOC_READ | _IOC_WRITE,
+            $ty,
+            $nr,
+            ::std::mem::size_of::<$size>() as u32
+        );
+    };
+    ($name:ident, $ty:expr, $nr:expr, $size:ty, $($v:ident),+) => {
+        ioctl_ioc_nr!(
+            $name,
+            _IOC_READ | _IOC_WRITE,
+            $ty,
+            $nr,
+            ::std::mem::size_of::<$size>() as u32,
+            $($v),+
+        );
+    };
+}
+
 // Define IOC_* constants in a module so that we can allow missing docs on it.
 // There is not much value in documenting these as it is code generated from
 // kernel definitions.
@@ -210,3 +234,5 @@ ioctl_ior_nr!(KVM_GET_SREGS, KVMIO, 0x83, kvmb::kvm_sregs);
 ioctl_ior_nr!(KVM_GET_FPU, KVMIO, 0x8c, kvmb::kvm_fpu);
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 ioctl_iow_nr!(KVM_SET_FPU, KVMIO, 0x8d, kvmb::kvm_fpu);
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+ioctl_iowr_nr!(KVM_GET_MSRS, KVMIO, 0x88, kvmb::kvm_msrs);

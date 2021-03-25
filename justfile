@@ -8,7 +8,7 @@ linux_dir := invocation_directory() + "/../linux"
 kernel_fhs := `nix-build --no-out-link nix/kernel-fhs.nix` + "/bin/linux-kernel-build"
 
 lint:
-  flake8
+  flake8 tests
   black --check tests
   mypy tests
   cargo clippy
@@ -32,16 +32,15 @@ configure-linux: clone-linux
   set -euxo pipefail
   if [[ ! -f {{linux_dir}}/.config ]]; then
     cd {{linux_dir}}
-    {{kernel_fhs}} "make x86_64_defconfig"
-    {{kernel_fhs}} "make kvm_guest.config"
-    {{kernel_fhs}} "yes \n | scripts/config --set-val DEBUG_INFO y"
-    {{kernel_fhs}} "yes \n | scripts/config --set-val DEBUG y"
-    {{kernel_fhs}} "yes \n | scripts/config --set-val GDB_SCRIPTS y"
-    {{kernel_fhs}} "yes \n | scripts/config --set-val DEBUG_DRIVER y"
-    {{kernel_fhs}} "yes \n | scripts/config --set-val KVM y"
-    {{kernel_fhs}} "yes \n | scripts/config --set-val KVM_INTEL y"
-    {{kernel_fhs}} "yes \n | scripts/config --set-val BPF_SYSCALL y"
-    {{kernel_fhs}} "yes \n | scripts/config --set-val IKHEADERS y"
+    {{kernel_fhs}} "make x86_64_defconfig kvm_guest.config"
+    {{kernel_fhs}} "scripts/config --set-val DEBUG_INFO_DWARF5 y"
+    {{kernel_fhs}} "scripts/config --set-val DEBUG y"
+    {{kernel_fhs}} "scripts/config --set-val GDB_SCRIPTS y"
+    {{kernel_fhs}} "scripts/config --set-val DEBUG_DRIVER y"
+    {{kernel_fhs}} "scripts/config --set-val KVM y"
+    {{kernel_fhs}} "scripts/config --set-val KVM_INTEL y"
+    {{kernel_fhs}} "scripts/config --set-val BPF_SYSCALL y"
+    {{kernel_fhs}} "scripts/config --set-val IKHEADERS y"
   fi
 
 sign-drone:

@@ -81,7 +81,7 @@ impl Device {
 
         // TODO is there more we have to do with this mgr?
         let device_manager = Arc::new(Mutex::new(IoManager::new()));
-        let mut guard = device_manager.lock().unwrap();
+        let guard = device_manager.lock().unwrap();
 
         let mut event_manager = try_with!(
             EventManager::<Arc<Mutex<dyn MutEventSubscriber + Send>>>::new(),
