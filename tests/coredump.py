@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import ctypes as ct
-
 from typing import IO, List
+
 from elftools.elf.elffile import ELFFile
 from elftools.elf.segments import NoteSegment
 

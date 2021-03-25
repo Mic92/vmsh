@@ -6,10 +6,10 @@ import re
 import socket
 import subprocess
 import time
-from queue import Queue
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
+from queue import Queue
 from shlex import quote
 from tempfile import TemporaryDirectory
 from typing import Any, Dict, Iterator, List
