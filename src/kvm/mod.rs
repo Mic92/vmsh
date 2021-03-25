@@ -112,7 +112,7 @@ impl Tracee {
         self.proc = None;
     }
 
-    fn try_get_proc(&self) -> Result<&Injectee> {
+    pub fn try_get_proc(&self) -> Result<&Injectee> {
         match &self.proc {
             None => Err(simple_error!("Programming error: Tracee is not attached.")),
             Some(proc) => Ok(&proc),
@@ -166,38 +166,27 @@ impl Tracee {
         proc.mmap(addr, length, prot, flags, fd, offset)
     }
 
-    fn anon_unix_client_connect(
-        &self,
-        anon_id_local: u64,
-        anon_id_remote: u64,
-        addr_local_mem: &HvMem<libc::sockaddr_un>,
-        addr_remote_mem: &HvMem<libc::sockaddr_un>,
-    ) -> Result<fd_transfer::Socket> {
-        let proc = self.try_get_proc()?;
-        fd_transfer::Socket::new_remote(&proc, anon_id_local, addr_local_mem)
-    }
-
-    pub fn connect_remote(
-        &self,
-        socket: &fd_transfer::Socket,
-        anon_id_remote: u64,
-        addr_remote_mem: &HvMem<libc::sockaddr_un>,
-    ) -> Result<()> {
-        let proc = self.try_get_proc()?;
-        socket.connect_remote(&proc, anon_id_remote, addr_remote_mem)
-    }
-
-    fn recvmsg<MT: Sized + Copy, CM: Sized + Copy>(
-        &self,
-        sock: fd_transfer::Socket,
-        msg_hdr_mem: &HvMem<libc::msghdr>,
-        iov_mem: &HvMem<libc::iovec>,
-        iov_buf_mem: &HvMem<MT>,
-        cmsg_mem: &HvMem<CM>,
-    ) -> Result<(MT, Vec<RawFd>)> {
-        let proc = self.try_get_proc()?;
-        sock.receive_remote(&proc, msg_hdr_mem, iov_mem, iov_buf_mem, cmsg_mem)
-    }
+    //    pub fn connect_remote(
+    //        &self,
+    //        socket: &fd_transfer::HvSocket,
+    //        anon_id_remote: u64,
+    //        addr_remote_mem: &HvMem<libc::sockaddr_un>,
+    //    ) -> Result<()> {
+    //        let proc = self.try_get_proc()?;
+    //        socket.connect(&proc, anon_id_remote, addr_remote_mem)
+    //    }
+    //
+    //    fn recvmsg<MT: Sized + Copy, CM: Sized + Copy>(
+    //        &self,
+    //        sock: fd_transfer::HvSocket,
+    //        msg_hdr_mem: &HvMem<libc::msghdr>,
+    //        iov_mem: &HvMem<libc::iovec>,
+    //        iov_buf_mem: &HvMem<MT>,
+    //        cmsg_mem: &HvMem<CM>,
+    //    ) -> Result<(MT, Vec<RawFd>)> {
+    //        let proc = self.try_get_proc()?;
+    //        sock.receive(&proc, msg_hdr_mem, iov_mem, iov_buf_mem, cmsg_mem)
+    //    }
 
     /// Guarantees not to allocate or follow pointers. Pure pointer calculus.
     /// You are free to try to convince the compiler that this is constant. In theory it is.
@@ -580,47 +569,53 @@ impl Hypervisor {
         let iov_buf_mem = self.alloc_mem::<[u8; 1]>()?;
         let cmsg_mem = self.alloc_mem::<[u8; 64]>()?; // should be of size CMSG_SPACE, but thats not possible at compile time
 
-        let tracee = try_with!(
-            self.tracee.write(),
-            "cannot obtain tracee write lock: poinsoned"
-        );
-        let vmsh_id: u64 = rand::thread_rng().gen::<u64>();
-        //let vmsh_id: u64 = 10;
-        println!("vmsh id {}", vmsh_id);
-        let hypervisor_id = vmsh_id + 1;
-        println!("vmsh  = new_server");
-        let vmsh = fd_transfer::Socket::new(vmsh_id)?;
-        println!("hypervisor = anon_unix_client_connect");
-        let hypervisor = tracee.anon_unix_client_connect(
-            hypervisor_id,
-            vmsh_id,
-            &addr_local_mem,
-            &addr_remote_mem,
-        )?;
+        let ret;
+        let hv;
+        {
+            let tracee = try_with!(
+                self.tracee.write(),
+                "cannot obtain tracee write lock: poinsoned"
+            );
+            let vmsh_id: u64 = rand::thread_rng().gen::<u64>();
+            //let vmsh_id: u64 = 10;
+            println!("vmsh id {}", vmsh_id);
+            let hypervisor_id = vmsh_id + 1;
+            println!("vmsh  = new_server");
+            let vmsh = fd_transfer::Socket::new(vmsh_id)?;
+            println!("hypervisor = anon_unix_client_connect");
+            let proc = tracee.try_get_proc()?;
+            hv = fd_transfer::HvSocket::new(
+                self.tracee.clone(),
+                proc,
+                hypervisor_id,
+                &addr_local_mem,
+            )?;
 
-        println!("vmsh connect");
-        vmsh.connect(hypervisor_id)?;
-        println!("hypervisor connect");
-        tracee.connect_remote(&hypervisor, vmsh_id, &addr_remote_mem)?;
+            println!("vmsh connect");
+            vmsh.connect(hypervisor_id)?;
+            println!("hypervisor connect");
+            hv.connect(proc, vmsh_id, &addr_remote_mem)?;
 
-        let message = [1u8; 1];
-        let m_slice = &message[0..1];
-        let mut messages = Vec::with_capacity(fds.len());
-        fds.iter().for_each(|_| messages.push(m_slice));
+            let message = [1u8; 1];
+            let m_slice = &message[0..1];
+            let mut messages = Vec::with_capacity(fds.len());
+            fds.iter().for_each(|_| messages.push(m_slice));
 
-        println!("vmsh.send");
-        vmsh.send(messages.as_slice(), fds)?;
-        println!("hypervisor.recvmsg");
-        let (msg, fds) =
-            tracee.recvmsg(hypervisor, &msg_hdr_mem, &iov_mem, &iov_buf_mem, &cmsg_mem)?;
-        if msg != message {
-            bail!("received message differs from sent one");
-        }
-        println!("done");
-        println!("msg: {:?}", msg);
-        println!("fd: {:?}", fds);
+            println!("vmsh.send");
+            vmsh.send(messages.as_slice(), fds)?;
+            println!("hypervisor.recvmsg");
+            let (msg, fds) = hv.receive(proc, &msg_hdr_mem, &iov_mem, &iov_buf_mem, &cmsg_mem)?;
+            if msg != message {
+                bail!("received message differs from sent one");
+            }
+            println!("done");
+            println!("msg: {:?}", msg);
+            println!("fd: {:?}", fds);
+            ret = fds;
+        } // drop tracee write lock so that `hv: HvSock can obtain lock to drop itself
+          // TODO now that im thinking about it we should probably keep this longer
 
-        Ok(fds)
+        Ok(ret)
     }
 
     pub fn check_extension(&self, cap: c_int) -> Result<c_int> {

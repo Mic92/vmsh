@@ -1,9 +1,11 @@
+use log::warn;
 use nix::errno::Errno;
 use nix::sys::socket::*;
 use nix::sys::uio::IoVec;
 use simple_error::{bail, simple_error, try_with};
 use std::mem::size_of;
 use std::os::unix::prelude::*;
+use std::sync::{Arc, RwLock};
 
 use crate::inject_syscall;
 use crate::kvm::{HvMem, Tracee};
@@ -14,7 +16,13 @@ pub struct Socket {
     fd: RawFd,
 }
 
-// TODO impl drop
+impl Drop for Socket {
+    fn drop(&mut self) {
+        //if let Err(e) = nix::unistd::close(self.fd) {
+        //warn!("cannot close local socket (fd {}): {}", self.fd, e);
+        //}
+    }
+}
 
 impl Socket {
     pub fn new(anon_local_id: u64) -> Result<Socket> {
@@ -53,41 +61,6 @@ impl Socket {
         Ok(Socket { fd: sock })
     }
 
-    pub fn new_remote(
-        proc: &inject_syscall::Process,
-        anon_id_local: u64,
-        addr_local_mem: &HvMem<libc::sockaddr_un>,
-    ) -> Result<Socket> {
-        println!("new remote socket: {}", anon_id_local);
-        // socket
-        let server_fd = proc.socket(libc::AF_UNIX, libc::SOCK_DGRAM, 0)?;
-        if server_fd <= 0 {
-            bail!("cannot create socket: {}", server_fd);
-        }
-
-        // bind
-        let local = try_with!(
-            UnixAddr::new_abstract(&anon_id_local.to_ne_bytes()),
-            "cannot create abstract addr"
-        );
-        addr_local_mem.write(&local.0)?;
-        let addr_len = size_of::<u16>() + local.1;
-        println!("bind {}, {:?}, {}", server_fd, addr_local_mem.ptr, addr_len);
-        let ret = proc.bind(
-            server_fd,
-            addr_local_mem.ptr as *const libc::sockaddr,
-            addr_len as u32,
-        )?;
-        if ret != 0 {
-            let err = (ret * -1) as i32;
-            bail!("cannot bind: {} (#{})", nix::errno::from_i32(err), ret);
-        }
-
-        std::thread::sleep_ms(1000);
-
-        Ok(Socket { fd: server_fd })
-    }
-
     pub fn connect(&self, anon_remote_id: u64) -> Result<()> {
         println!("connect local socket to: {}", anon_remote_id);
         //try_with!(listen(sock, 1), "cannot listen on from_fd"); // not supported on this transport
@@ -105,37 +78,6 @@ impl Socket {
             connect(self.fd, &uremote),
             "cannot connect to client foobar"
         );
-
-        Ok(())
-    }
-
-    pub fn connect_remote(
-        &self,
-        proc: &inject_syscall::Process,
-        anon_id_remote: u64,
-        addr_remote_mem: &HvMem<libc::sockaddr_un>,
-    ) -> Result<()> {
-        println!("connect remote socket to: {}", anon_id_remote);
-        // connect
-        let remote = try_with!(
-            UnixAddr::new_abstract(&anon_id_remote.to_ne_bytes()),
-            "cannot create abstract addr"
-        );
-        addr_remote_mem.write(&remote.0)?;
-        let addr_len = size_of::<u16>() + remote.1;
-        let ret = proc.connect(
-            self.fd,
-            addr_remote_mem.ptr as *const libc::sockaddr,
-            addr_len as u32,
-        )?;
-        if ret < 0 {
-            let err = (ret * -1) as i32;
-            bail!(
-                "new_client_remote connect failed: {} (#{})",
-                nix::errno::from_i32(err),
-                err
-            );
-        }
 
         Ok(())
     }
@@ -189,10 +131,123 @@ impl Socket {
         msg_buf.resize(received, 0);
         Ok((msg_buf, files))
     }
+}
+
+pub struct HvSocket {
+    fd: RawFd,
+    tracee: Arc<RwLock<Tracee>>,
+}
+
+impl Drop for HvSocket {
+    fn drop(&mut self) {
+        let tracee = match self.tracee.write() {
+            Err(e) => {
+                warn!("cannot aquire lock to drop HvMem: {}", e);
+                return;
+            }
+            Ok(t) => t,
+        };
+        let proc = match tracee.try_get_proc() {
+            Err(e) => {
+                warn!("cannot drop HvMem: {}", e);
+                return;
+            }
+            Ok(t) => t,
+        };
+
+        let ret = match proc.close(self.fd) {
+            Err(e) => {
+                warn!(
+                    "cannot execute close socket to drop HvMem (fd {}): {}",
+                    self.fd, e
+                );
+                return;
+            }
+            Ok(t) => t,
+        };
+        if ret != 0 {
+            warn!(
+                "cannot close hypervisor socket to drop HvMem (fd {}): {}",
+                self.fd, ret
+            );
+        }
+    }
+}
+
+impl HvSocket {
+    pub fn new(
+        tracee: Arc<RwLock<Tracee>>,
+        proc: &inject_syscall::Process,
+        anon_id_local: u64,
+        addr_local_mem: &HvMem<libc::sockaddr_un>,
+    ) -> Result<HvSocket> {
+        println!("new remote socket: {}", anon_id_local);
+        // socket
+        let server_fd = proc.socket(libc::AF_UNIX, libc::SOCK_DGRAM, 0)?;
+        if server_fd <= 0 {
+            bail!("cannot create socket: {}", server_fd);
+        }
+
+        // bind
+        let local = try_with!(
+            UnixAddr::new_abstract(&anon_id_local.to_ne_bytes()),
+            "cannot create abstract addr"
+        );
+        addr_local_mem.write(&local.0)?;
+        let addr_len = size_of::<u16>() + local.1;
+        println!("bind {}, {:?}, {}", server_fd, addr_local_mem.ptr, addr_len);
+        let ret = proc.bind(
+            server_fd,
+            addr_local_mem.ptr as *const libc::sockaddr,
+            addr_len as u32,
+        )?;
+        if ret != 0 {
+            let err = (ret * -1) as i32;
+            bail!("cannot bind: {} (#{})", nix::errno::from_i32(err), ret);
+        }
+
+        //std::thread::sleep_ms(1000);
+
+        Ok(HvSocket {
+            fd: server_fd,
+            tracee,
+        })
+    }
+
+    pub fn connect(
+        &self,
+        proc: &inject_syscall::Process,
+        anon_id_remote: u64,
+        addr_remote_mem: &HvMem<libc::sockaddr_un>,
+    ) -> Result<()> {
+        println!("connect remote socket to: {}", anon_id_remote);
+        // connect
+        let remote = try_with!(
+            UnixAddr::new_abstract(&anon_id_remote.to_ne_bytes()),
+            "cannot create abstract addr"
+        );
+        addr_remote_mem.write(&remote.0)?;
+        let addr_len = size_of::<u16>() + remote.1;
+        let ret = proc.connect(
+            self.fd,
+            addr_remote_mem.ptr as *const libc::sockaddr,
+            addr_len as u32,
+        )?;
+        if ret < 0 {
+            let err = (ret * -1) as i32;
+            bail!(
+                "new_client_remote connect failed: {} (#{})",
+                nix::errno::from_i32(err),
+                err
+            );
+        }
+
+        Ok(())
+    }
 
     /// MT: A single message of this type is received. Example: `[u8; 8]`
     /// CM: Control message (cmsg) space. Example: `[0u8; Tracee::CMSG_SPACE((size_of::<RawFd>() * 2) as u32) as _]`
-    pub fn receive_remote<MT: Sized + Copy, CM: Sized + Copy>(
+    pub fn receive<MT: Sized + Copy, CM: Sized + Copy>(
         &self,
         proc: &inject_syscall::Process,
         msg_hdr_mem: &HvMem<libc::msghdr>,
