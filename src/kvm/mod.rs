@@ -99,7 +99,7 @@ impl Tracee {
     /// Attach to pid. The target `proc` will be stopped until `Self.detach` or the end of the
     /// lifetime of self.
     fn attach(&mut self) -> Result<()> {
-        if let None = self.proc {
+        if self.proc.is_none() {
             self.proc = Some(try_with!(
                 inject_syscall::attach(self.pid),
                 "cannot attach to hypervisor"
@@ -161,48 +161,28 @@ impl Tracee {
         let addr = libc::AT_NULL as *mut c_void; // make kernel choose location for us
         let prot = libc::PROT_READ | libc::PROT_WRITE;
         let flags = libc::MAP_SHARED | libc::MAP_ANONYMOUS;
-        let fd = -1 as RawFd; // ignored because of MAP_ANONYMOUS => should be -1
-        let offset = 0 as libc::off_t; // MAP_ANON => should be 0
+        let fd = -1; // ignored because of MAP_ANONYMOUS => should be -1
+        let offset = 0; // MAP_ANON => should be 0
         proc.mmap(addr, length, prot, flags, fd, offset)
     }
 
-    //    pub fn connect_remote(
-    //        &self,
-    //        socket: &fd_transfer::HvSocket,
-    //        anon_id_remote: u64,
-    //        addr_remote_mem: &HvMem<libc::sockaddr_un>,
-    //    ) -> Result<()> {
-    //        let proc = self.try_get_proc()?;
-    //        socket.connect(&proc, anon_id_remote, addr_remote_mem)
-    //    }
-    //
-    //    fn recvmsg<MT: Sized + Copy, CM: Sized + Copy>(
-    //        &self,
-    //        sock: fd_transfer::HvSocket,
-    //        msg_hdr_mem: &HvMem<libc::msghdr>,
-    //        iov_mem: &HvMem<libc::iovec>,
-    //        iov_buf_mem: &HvMem<MT>,
-    //        cmsg_mem: &HvMem<CM>,
-    //    ) -> Result<(MT, Vec<RawFd>)> {
-    //        let proc = self.try_get_proc()?;
-    //        sock.receive(&proc, msg_hdr_mem, iov_mem, iov_buf_mem, cmsg_mem)
-    //    }
-
     /// Guarantees not to allocate or follow pointers. Pure pointer calculus.
     /// You are free to try to convince the compiler that this is constant. In theory it is.
-    unsafe fn CMSG_SPACE(length: libc::c_uint) -> libc::c_uint {
+    #[allow(non_snake_case)]
+    pub unsafe fn CMSG_SPACE(length: libc::c_uint) -> libc::c_uint {
         libc::CMSG_SPACE(length)
     }
 
     /// Guarantees not to allocate or follow pointers. Pure pointer calculus.
-    unsafe fn __CMSG_FIRSTHDR(
+    #[allow(non_snake_case)]
+    pub unsafe fn __CMSG_FIRSTHDR(
         msg_control: *mut libc::c_void,
         msg_controllen: libc::size_t,
     ) -> *mut libc::cmsghdr {
         let msg_hdr = libc::msghdr {
-            msg_name: 0 as *mut libc::c_void,
+            msg_name: std::ptr::null_mut::<libc::c_void>(),
             msg_namelen: 0,
-            msg_iov: 0 as *mut libc::iovec,
+            msg_iov: std::ptr::null_mut::<libc::iovec>(),
             msg_iovlen: 0,
             msg_control,
             msg_controllen,
@@ -212,12 +192,14 @@ impl Tracee {
     }
 
     /// Guarantees not to allocate or follow pointers. Pure pointer calculus.
-    unsafe fn CMSG_LEN(length: libc::c_uint) -> libc::c_uint {
+    #[allow(non_snake_case)]
+    pub unsafe fn CMSG_LEN(length: libc::c_uint) -> libc::c_uint {
         libc::CMSG_LEN(length)
     }
 
     /// Guarantees not to allocate or follow pointers. Pure pointer calculus.
-    unsafe fn CMSG_DATA(cmsg: *const libc::cmsghdr) -> *mut libc::c_uchar {
+    #[allow(non_snake_case)]
+    pub unsafe fn CMSG_DATA(cmsg: *const libc::cmsghdr) -> *mut libc::c_uchar {
         libc::CMSG_DATA(cmsg)
     }
 
@@ -344,7 +326,7 @@ pub unsafe fn any_as_bytes<T: Sized>(p: &T) -> &[u8] {
 
 /// Hypervisor Memory
 pub struct HvMem<T: Copy> {
-    pub ptr: *mut c_void, // TODO replace with T
+    pub ptr: *mut c_void,
     pid: Pid,
     tracee: Arc<RwLock<Tracee>>,
     phantom: PhantomData<T>,
@@ -446,12 +428,12 @@ pub struct kvm_msrs {
 }
 
 impl Hypervisor {
-    fn attach(pid: Pid, vm_fd: RawFd) -> Result<Tracee> {
-        Ok(Tracee {
-            pid: pid,
-            vm_fd: vm_fd,
+    fn attach(pid: Pid, vm_fd: RawFd) -> Tracee {
+        Tracee {
+            pid,
+            vm_fd,
             proc: None,
-        })
+        }
     }
 
     pub fn resume(&self) -> Result<()> {
@@ -577,12 +559,8 @@ impl Hypervisor {
                 "cannot obtain tracee write lock: poinsoned"
             );
             let vmsh_id: u64 = rand::thread_rng().gen::<u64>();
-            //let vmsh_id: u64 = 10;
-            println!("vmsh id {}", vmsh_id);
             let hypervisor_id = vmsh_id + 1;
-            println!("vmsh  = new_server");
             let vmsh = fd_transfer::Socket::new(vmsh_id)?;
-            println!("hypervisor = anon_unix_client_connect");
             let proc = tracee.try_get_proc()?;
             hv = fd_transfer::HvSocket::new(
                 self.tracee.clone(),
@@ -591,9 +569,7 @@ impl Hypervisor {
                 &addr_local_mem,
             )?;
 
-            println!("vmsh connect");
             vmsh.connect(hypervisor_id)?;
-            println!("hypervisor connect");
             hv.connect(proc, vmsh_id, &addr_remote_mem)?;
 
             let message = [1u8; 1];
@@ -601,19 +577,13 @@ impl Hypervisor {
             let mut messages = Vec::with_capacity(fds.len());
             fds.iter().for_each(|_| messages.push(m_slice));
 
-            println!("vmsh.send");
             vmsh.send(messages.as_slice(), fds)?;
-            println!("hypervisor.recvmsg");
             let (msg, fds) = hv.receive(proc, &msg_hdr_mem, &iov_mem, &iov_buf_mem, &cmsg_mem)?;
             if msg != message {
                 bail!("received message differs from sent one");
             }
-            println!("done");
-            println!("msg: {:?}", msg);
-            println!("fd: {:?}", fds);
             ret = fds;
         } // drop tracee write lock so that `hv: HvSock can obtain lock to drop itself
-          // TODO now that im thinking about it we should probably keep this longer
 
         Ok(ret)
     }
@@ -733,7 +703,7 @@ pub fn get_hypervisor(pid: Pid) -> Result<Hypervisor> {
 
     Ok(Hypervisor {
         pid,
-        tracee: Arc::new(RwLock::new(Hypervisor::attach(pid, vm_fds[0])?)),
+        tracee: Arc::new(RwLock::new(Hypervisor::attach(pid, vm_fds[0]))),
         vm_fd: vm_fds[0],
         vcpus,
     })
