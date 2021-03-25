@@ -8,7 +8,7 @@ linux_dir := invocation_directory() + "/../linux"
 kernel_fhs := `nix-build --no-out-link nix/kernel-fhs.nix` + "/bin/linux-kernel-build"
 
 lint:
-  flake8
+  flake8 tests
   black --check tests
   mypy tests
   cargo clippy
