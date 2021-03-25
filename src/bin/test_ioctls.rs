@@ -132,7 +132,7 @@ fn fd_transfer(pid: Pid, nr_fds: u32) -> Result<()> {
     vm.stop()?;
 
     let mut fds = vec![];
-    for i in 0..nr_fds {
+    for _ in 0..nr_fds {
         let fd = try_with!(EventFd::new(EFD_NONBLOCK), "cannot create event fd").as_raw_fd();
         fds.push(fd);
     }

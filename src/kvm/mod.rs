@@ -194,15 +194,15 @@ impl Tracee {
         iov_mem: &HvMem<libc::iovec>,
         iov_buf_mem: &HvMem<MT>,
         cmsg_mem: &HvMem<CM>,
-    ) -> Result<(Vec<MT>, Vec<RawFd>)> {
+    ) -> Result<(MT, Vec<RawFd>)> {
         let proc = self.try_get_proc()?;
         sock.receive_remote(&proc, msg_hdr_mem, iov_mem, iov_buf_mem, cmsg_mem)
     }
 
     /// Guarantees not to allocate or follow pointers. Pure pointer calculus.
-    const unsafe fn CMSG_SPACE(length: libc::c_uint) -> libc::c_uint {
-        //libc::CMSG_SPACE(length) TODO
-        0
+    /// You are free to try to convince the compiler that this is constant. In theory it is.
+    unsafe fn CMSG_SPACE(length: libc::c_uint) -> libc::c_uint {
+        libc::CMSG_SPACE(length)
     }
 
     /// Guarantees not to allocate or follow pointers. Pure pointer calculus.
@@ -577,8 +577,8 @@ impl Hypervisor {
         let addr_remote_mem = self.alloc_mem()?;
         let msg_hdr_mem = self.alloc_mem()?;
         let iov_mem = self.alloc_mem()?;
-        let iov_buf_mem = self.alloc_mem::<u8>()?;
-        let cmsg_mem = self.alloc_mem::<[u8; 64]>()?;
+        let iov_buf_mem = self.alloc_mem::<[u8; 1]>()?;
+        let cmsg_mem = self.alloc_mem::<[u8; 64]>()?; // should be of size CMSG_SPACE, but thats not possible at compile time
 
         let tracee = try_with!(
             self.tracee.write(),
@@ -611,11 +611,14 @@ impl Hypervisor {
         println!("vmsh.send");
         vmsh.send(messages.as_slice(), fds)?;
         println!("hypervisor.recvmsg");
-        let (msgs, fds) =
+        let (msg, fds) =
             tracee.recvmsg(hypervisor, &msg_hdr_mem, &iov_mem, &iov_buf_mem, &cmsg_mem)?;
+        if msg != message {
+            bail!("received message differs from sent one");
+        }
         println!("done");
-        println!("msg: {:?}", msgs[0]);
-        println!("fd: {}", fds[0]);
+        println!("msg: {:?}", msg);
+        println!("fd: {:?}", fds);
 
         Ok(fds)
     }

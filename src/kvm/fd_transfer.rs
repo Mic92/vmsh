@@ -190,8 +190,8 @@ impl Socket {
         Ok((msg_buf, files))
     }
 
-    /// MT: message type. Example: `[u8; 8]`
-    /// CM: cmsg space type. Example: `[0u8; Tracee::CMSG_SPACE((size_of::<RawFd>() * 2) as u32) as _]`
+    /// MT: A single message of this type is received. Example: `[u8; 8]`
+    /// CM: Control message (cmsg) space. Example: `[0u8; Tracee::CMSG_SPACE((size_of::<RawFd>() * 2) as u32) as _]`
     pub fn receive_remote<MT: Sized + Copy, CM: Sized + Copy>(
         &self,
         proc: &inject_syscall::Process,
@@ -199,95 +199,77 @@ impl Socket {
         iov_mem: &HvMem<libc::iovec>,
         iov_buf_mem: &HvMem<MT>,
         cmsg_mem: &HvMem<CM>,
-    ) -> Result<(Vec<MT>, Vec<RawFd>)> {
-        let message_length = size_of::<MT>();
-        let mut msg_buf = vec![0; (message_length) as usize];
-        let received;
-        let mut files: Vec<RawFd> = Vec::with_capacity(1);
-        {
-            println!("receive remote fd: {}", self.fd);
-            //let cmsgspace = [0u8; Tracee::CMSG_SPACE((size_of::<RawFd>() * 2) as u32) as _];
-            //let cmsg_hdr = libc::cmsghdr {
-            //cmsg_len: 0,
-            //cmsg_level: 0,
-            //cmsg_type: 0,
-            //};
-            //let foo = cmsgspace.as_mut_ptr();
-            //*foo = cmsg_hdr;
-            //let foo: &[u8] = cmsg_hdr
+    ) -> Result<(MT, Vec<RawFd>)> {
+        println!("receive remote fd: {}", self.fd);
 
-            let iov = libc::iovec {
-                iov_base: iov_buf_mem.ptr,
-                iov_len: message_length,
-            };
-            iov_mem.write(&iov)?;
-            let msg_hdr = libc::msghdr {
-                msg_name: 0 as *mut libc::c_void,
-                msg_namelen: 0,
-                msg_iov: iov_mem.ptr as *mut libc::iovec,
-                msg_iovlen: 1,
-                msg_control: cmsg_mem.ptr as *mut libc::c_void,
-                msg_controllen: size_of::<CM>(),
-                msg_flags: 0, // TODO ?
-            };
-            msg_hdr_mem.write(&msg_hdr)?;
+        // init msghdr
+        let iov = libc::iovec {
+            iov_base: iov_buf_mem.ptr,
+            iov_len: size_of::<MT>(),
+        };
+        iov_mem.write(&iov)?;
+        let msg_hdr = libc::msghdr {
+            msg_name: 0 as *mut libc::c_void,
+            msg_namelen: 0,
+            msg_iov: iov_mem.ptr as *mut libc::iovec,
+            msg_iovlen: 1,
+            msg_control: cmsg_mem.ptr as *mut libc::c_void,
+            msg_controllen: size_of::<CM>(),
+            msg_flags: 0,
+        };
+        msg_hdr_mem.write(&msg_hdr)?;
 
-            // CMSG_SPACE, CMSG_FIRSTHDR, CMSG_LEN, CMSG_DATA
-            //let iov = [IoVec::from_mut_slice(&mut msg_buf)];
-            loop {
-                println!("revcmsg...");
-                let ret = proc.recvmsg(self.fd, msg_hdr_mem.ptr as *mut libc::msghdr, 0)?;
-                if ret == 0 {
-                    bail!("received nothing");
-                }
-                if ret < 0 {
-                    let err = (ret * -1) as i32;
-                    match nix::errno::from_i32(err) {
-                        Errno::EAGAIN | Errno::EINTR => continue,
-                        e => bail!("recvmsg failed: {} (#{})", e, err),
-                    }
-                }
-                println!("done");
-
-                let msg_hdr = msg_hdr_mem.read()?;
-                let mut cmsg = cmsg_mem.read()?;
-                let cmsg_ptr: *mut CM = &mut cmsg;
-                unsafe {
-                    let cmsghdr_ptr: *mut libc::cmsghdr = Tracee::__CMSG_FIRSTHDR(
-                        cmsg_ptr as *mut libc::c_void,
-                        msg_hdr.msg_controllen,
-                    );
-                    println!("cmsghdr: {:?}", *cmsghdr_ptr);
-                    let cmsghdr: libc::cmsghdr = *cmsghdr_ptr;
-                    println!(
-                        "cmsghdr.cmsg_type {} =? {}",
-                        cmsghdr.cmsg_type,
-                        libc::SCM_RIGHTS
-                    );
-                    println!("cmsghdr.cmsg_len {}", cmsghdr.cmsg_len);
-                    // TODO operate over cmsgs
-                    let setlen = Tracee::CMSG_LEN(size_of::<RawFd>() as u32 * 1);
-                    if cmsghdr.cmsg_len as u32 != setlen {
-                        bail!("error: cmsghdr.len() == {} != {}", cmsghdr.cmsg_len, setlen);
-                    }
-                    if cmsghdr.cmsg_type != libc::SCM_RIGHTS {
-                        bail!("cmsghdr not understood");
-                    }
-
-                    let cmsg_data = Tracee::CMSG_DATA(cmsghdr_ptr) as *mut RawFd;
-                    let a: RawFd = *(cmsg_data);
-                    let b: RawFd = *cmsg_data.add(1);
-                    let vec = vec![a, b];
-
-                    let msg_buf = vec![iov_buf_mem.read()?];
-                    //let msg_buf = &msg_buf_123 as *mut u32;
-                    //println!("msg: {:?}", &msg_buf);
-                    return Ok((msg_buf, vec));
+        // recvmsg
+        loop {
+            println!("revcmsg...");
+            let ret = proc.recvmsg(self.fd, msg_hdr_mem.ptr as *mut libc::msghdr, 0)?;
+            if ret == 0 {
+                bail!("received empty message");
+            }
+            if ret < 0 {
+                let err = (ret * -1) as i32;
+                match nix::errno::from_i32(err) {
+                    Errno::EAGAIN | Errno::EINTR => continue,
+                    e => bail!("recvmsg failed: {} (#{})", e, err),
                 }
             }
+            println!("done");
+            break;
         }
-        msg_buf.resize(received, 0);
-        //Ok((msg_buf, files))
-        unreachable!();
+
+        // read message
+        let msg_buf = iov_buf_mem.read()?;
+
+        // parse first control message
+        let msg_hdr = msg_hdr_mem.read()?;
+        let mut cmsg = cmsg_mem.read()?;
+        let cmsg_ptr: *mut CM = &mut cmsg;
+        let mut result: Vec<RawFd> = vec![];
+        unsafe {
+            let cmsghdr_ptr: *mut libc::cmsghdr =
+                Tracee::__CMSG_FIRSTHDR(cmsg_ptr as *mut libc::c_void, msg_hdr.msg_controllen);
+            println!("cmsghdr: {:?}", *cmsghdr_ptr);
+            let cmsghdr: libc::cmsghdr = *cmsghdr_ptr;
+
+            // parse SCM_RIGHTS message
+            println!(
+                "cmsghdr.cmsg_type {} =? {}",
+                cmsghdr.cmsg_type,
+                libc::SCM_RIGHTS
+            );
+            if cmsghdr.cmsg_type != libc::SCM_RIGHTS {
+                bail!("cmsghdr not understood");
+            }
+            println!("cmsghdr.cmsg_len {}", cmsghdr.cmsg_len);
+
+            // iterate over SCM_RIGHTS message data
+            let cmsg_data: *mut RawFd = Tracee::CMSG_DATA(cmsghdr_ptr) as *mut RawFd;
+            let cmsg_data_len = cmsghdr.cmsg_len - (cmsg_data as usize - cmsghdr_ptr as usize); // cmsg_size - cmsg_hdr_size
+            for offset in 0..(cmsg_data_len / size_of::<RawFd>()) {
+                result.push(*(cmsg_data.add(offset)));
+            }
+        }
+
+        Ok((msg_buf, result))
     }
 }
