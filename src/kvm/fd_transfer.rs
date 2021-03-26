@@ -25,7 +25,7 @@ impl Drop for Socket {
 }
 
 impl Socket {
-    pub fn new(anon_local_id: u64) -> Result<Socket> {
+    pub fn new(anon_name: &str) -> Result<Socket> {
         // socket
         let sock = try_with!(
             nix::sys::socket::socket(
@@ -39,7 +39,7 @@ impl Socket {
 
         // bind
         let local = try_with!(
-            UnixAddr::new_abstract(&anon_local_id.to_ne_bytes()),
+            UnixAddr::new_abstract(anon_name.as_bytes()),
             "cannot create abstract addr"
         );
         let ulocal = SockAddr::Unix(local);
@@ -52,9 +52,9 @@ impl Socket {
         Ok(Socket { fd: sock })
     }
 
-    pub fn connect(&self, anon_remote_id: u64) -> Result<()> {
+    pub fn connect(&self, anon_name: &str) -> Result<()> {
         let remote = try_with!(
-            UnixAddr::new_abstract(&anon_remote_id.to_ne_bytes()),
+            UnixAddr::new_abstract(anon_name.as_bytes()),
             "cannot create abstract addr"
         );
         let uremote = SockAddr::Unix(remote);
@@ -162,7 +162,7 @@ impl HvSocket {
     pub fn new(
         tracee: Arc<RwLock<Tracee>>,
         proc: &inject_syscall::Process,
-        anon_id_local: u64,
+        anon_name: &str,
         addr_local_mem: &HvMem<libc::sockaddr_un>,
     ) -> Result<HvSocket> {
         // socket
@@ -173,7 +173,7 @@ impl HvSocket {
 
         // bind
         let local = try_with!(
-            UnixAddr::new_abstract(&anon_id_local.to_ne_bytes()),
+            UnixAddr::new_abstract(anon_name.as_bytes()),
             "cannot create abstract addr"
         );
         addr_local_mem.write(&local.0)?;
@@ -197,11 +197,11 @@ impl HvSocket {
     pub fn connect(
         &self,
         proc: &inject_syscall::Process,
-        anon_id_remote: u64,
+        anon_name: &str,
         addr_remote_mem: &HvMem<libc::sockaddr_un>,
     ) -> Result<()> {
         let remote = try_with!(
-            UnixAddr::new_abstract(&anon_id_remote.to_ne_bytes()),
+            UnixAddr::new_abstract(anon_name.as_bytes()),
             "cannot create abstract addr"
         );
         addr_remote_mem.write(&remote.0)?;

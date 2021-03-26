@@ -558,19 +558,20 @@ impl Hypervisor {
                 self.tracee.write(),
                 "cannot obtain tracee write lock: poinsoned"
             );
-            let vmsh_id: u64 = rand::thread_rng().gen::<u64>();
-            let hypervisor_id = vmsh_id + 1;
-            let vmsh = fd_transfer::Socket::new(vmsh_id)?;
+
+            let vmsh_id = format!("vmsh_fd_transfer_{}", nix::unistd::getpid());
+            let hypervisor_id = format!("vmsh_fd_transfer_{}", self.pid);
+            let vmsh = fd_transfer::Socket::new(&vmsh_id)?;
             let proc = tracee.try_get_proc()?;
             hv = fd_transfer::HvSocket::new(
                 self.tracee.clone(),
                 proc,
-                hypervisor_id,
+                &hypervisor_id,
                 &addr_local_mem,
             )?;
 
-            vmsh.connect(hypervisor_id)?;
-            hv.connect(proc, vmsh_id, &addr_remote_mem)?;
+            vmsh.connect(&hypervisor_id)?;
+            hv.connect(proc, &vmsh_id, &addr_remote_mem)?;
 
             let message = [1u8; 1];
             let m_slice = &message[0..1];
