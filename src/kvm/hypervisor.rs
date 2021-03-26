@@ -260,29 +260,6 @@ impl Hypervisor {
         })
     }
 
-    /// allocate memory for T. Allocate more than necessary to increase allocation size to `size`.
-    pub fn alloc_fam<T: Copy>(&self, size: usize) -> Result<HvMem<T>> {
-        if size < size_of::<T>() {
-            bail!(
-                "allocating {}b for item of size {} is not sufficient",
-                size,
-                size_of::<T>()
-            )
-        }
-        let tracee = try_with!(
-            self.tracee.write(),
-            "cannot obtain tracee write lock: poinsoned"
-        );
-        // safe, because TraceeMem enforces to write and read at most `size_of::<T> <= size` bytes.
-        let ptr = unsafe { tracee.mmap(size)? };
-        Ok(HvMem {
-            ptr,
-            pid: self.pid,
-            tracee: self.tracee.clone(),
-            phantom: PhantomData,
-        })
-    }
-
     pub fn transfer(&self, fds: &[RawFd]) -> Result<Vec<RawFd>> {
         let addr_local_mem = self.alloc_mem()?;
         let addr_remote_mem = self.alloc_mem()?;
