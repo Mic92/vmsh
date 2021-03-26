@@ -12,7 +12,7 @@ use std::{fmt, ptr};
 
 use crate::proc::{self, Mapping};
 use crate::result::Result;
-use crate::{kvm::Tracee, page_math::page_size};
+use crate::{kvm::tracee::Tracee, page_math::page_size};
 
 #[derive(Clone, Debug)]
 #[repr(C)]

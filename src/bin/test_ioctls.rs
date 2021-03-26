@@ -4,16 +4,11 @@ use nix::unistd::Pid;
 use simple_error::{bail, try_with};
 use std::os::unix::io::AsRawFd;
 use vmm_sys_util::eventfd::{EventFd, EFD_NONBLOCK};
+use vmsh::kvm::hypervisor::get_hypervisor;
 use vmsh::result::Result;
 
-use vmsh::kvm;
-
 fn inject(pid: Pid) -> Result<()> {
-    let vm = try_with!(
-        kvm::get_hypervisor(pid),
-        "cannot get vms for process {}",
-        pid
-    );
+    let vm = try_with!(get_hypervisor(pid), "cannot get vms for process {}", pid);
 
     print!("check_extensions");
     for _ in 1..100 {
@@ -43,11 +38,7 @@ fn inject(pid: Pid) -> Result<()> {
 }
 
 fn alloc_mem(pid: Pid) -> Result<()> {
-    let vm = try_with!(
-        kvm::get_hypervisor(pid),
-        "cannot get vms for process {}",
-        pid
-    );
+    let vm = try_with!(get_hypervisor(pid), "cannot get vms for process {}", pid);
 
     vm.stop()?;
     let mem = try_with!(vm.alloc_mem::<u32>(), "mmap failed");
@@ -63,11 +54,7 @@ fn guest_add_mem(pid: Pid, re_get_slots: bool) -> Result<()> {
     let memslots_a_len;
 
     {
-        let vm = try_with!(
-            kvm::get_hypervisor(pid),
-            "cannot get vms for process {}",
-            pid
-        );
+        let vm = try_with!(get_hypervisor(pid), "cannot get vms for process {}", pid);
         vm.stop()?;
 
         // count memslots
@@ -100,11 +87,7 @@ fn guest_add_mem(pid: Pid, re_get_slots: bool) -> Result<()> {
     }
 
     // VmMem is out of scope and should thus have removed the memory again.
-    let vm = try_with!(
-        kvm::get_hypervisor(pid),
-        "cannot get vms for process {}",
-        pid
-    );
+    let vm = try_with!(get_hypervisor(pid), "cannot get vms for process {}", pid);
     vm.stop()?;
 
     if re_get_slots {
@@ -124,11 +107,7 @@ fn guest_add_mem(pid: Pid, re_get_slots: bool) -> Result<()> {
 fn fd_transfer(pid: Pid, nr_fds: u32) -> Result<()> {
     use std::path::Path;
 
-    let vm = try_with!(
-        kvm::get_hypervisor(pid),
-        "cannot get vms for process {}",
-        pid
-    );
+    let vm = try_with!(get_hypervisor(pid), "cannot get vms for process {}", pid);
     vm.stop()?;
 
     let mut fds = vec![];
@@ -150,11 +129,7 @@ fn fd_transfer(pid: Pid, nr_fds: u32) -> Result<()> {
 }
 
 fn guest_ioeventfd(pid: Pid) -> Result<()> {
-    let vm = try_with!(
-        kvm::get_hypervisor(pid),
-        "cannot get vms for process {}",
-        pid
-    );
+    let vm = try_with!(get_hypervisor(pid), "cannot get vms for process {}", pid);
     vm.stop()?;
 
     let has_cap = try_with!(

@@ -1,4 +1,4 @@
-use crate::kvm::VCPU;
+use crate::kvm::hypervisor::VCPU;
 use kvm_bindings as kvmb;
 use libc::{c_void, off_t, timeval, PT_LOAD, PT_NOTE};
 use nix::sys::{
@@ -18,7 +18,7 @@ use crate::elf::{
     Phdr, Shdr, ELFARCH, ELFCLASS, ELFDATA2, ELFMAG0, ELFMAG1, ELFMAG2, ELFMAG3, ELF_NGREG,
     ET_CORE, EV_CURRENT, NT_PRPSINFO, NT_PRSTATUS, NT_PRXREG, PF_W, PF_X, SHN_UNDEF,
 };
-use crate::kvm::Hypervisor;
+use crate::kvm::hypervisor::Hypervisor;
 use crate::page_math::{page_align, page_size};
 use crate::result::Result;
 use crate::{kvm, proc::Mapping};
@@ -376,7 +376,7 @@ pub fn generate_coredump(opts: &CoredumpOptions) -> Result<()> {
         opts.path.display()
     );
     let vm = try_with!(
-        kvm::get_hypervisor(opts.pid),
+        kvm::hypervisor::get_hypervisor(opts.pid),
         "cannot get vms for process {}",
         opts.pid
     );
