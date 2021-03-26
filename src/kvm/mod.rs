@@ -12,6 +12,7 @@ use std::os::unix::prelude::RawFd;
 use std::ptr;
 use std::sync::{Arc, RwLock};
 
+pub mod fd_transfer;
 pub mod ioctls;
 mod memslots;
 
@@ -97,7 +98,7 @@ impl Tracee {
     /// Attach to pid. The target `proc` will be stopped until `Self.detach` or the end of the
     /// lifetime of self.
     fn attach(&mut self) -> Result<()> {
-        if let None = self.proc {
+        if self.proc.is_none() {
             self.proc = Some(try_with!(
                 inject_syscall::attach(self.pid),
                 "cannot attach to hypervisor"
@@ -110,7 +111,7 @@ impl Tracee {
         self.proc = None;
     }
 
-    fn try_get_proc(&self) -> Result<&Injectee> {
+    pub fn try_get_proc(&self) -> Result<&Injectee> {
         match &self.proc {
             None => Err(simple_error!("Programming error: Tracee is not attached.")),
             Some(proc) => Ok(&proc),
@@ -159,9 +160,46 @@ impl Tracee {
         let addr = libc::AT_NULL as *mut c_void; // make kernel choose location for us
         let prot = libc::PROT_READ | libc::PROT_WRITE;
         let flags = libc::MAP_SHARED | libc::MAP_ANONYMOUS;
-        let fd = -1 as RawFd; // ignored because of MAP_ANONYMOUS => should be -1
-        let offset = 0 as libc::off_t; // MAP_ANON => should be 0
+        let fd = -1; // ignored because of MAP_ANONYMOUS => should be -1
+        let offset = 0; // MAP_ANON => should be 0
         proc.mmap(addr, length, prot, flags, fd, offset)
+    }
+
+    /// Guarantees not to allocate or follow pointers. Pure pointer calculus.
+    /// You are free to try to convince the compiler that this is constant. In theory it is.
+    #[allow(non_snake_case)]
+    pub unsafe fn CMSG_SPACE(length: libc::c_uint) -> libc::c_uint {
+        libc::CMSG_SPACE(length)
+    }
+
+    /// Guarantees not to allocate or follow pointers. Pure pointer calculus.
+    #[allow(non_snake_case)]
+    pub unsafe fn __CMSG_FIRSTHDR(
+        msg_control: *mut libc::c_void,
+        msg_controllen: libc::size_t,
+    ) -> *mut libc::cmsghdr {
+        let msg_hdr = libc::msghdr {
+            msg_name: std::ptr::null_mut::<libc::c_void>(),
+            msg_namelen: 0,
+            msg_iov: std::ptr::null_mut::<libc::iovec>(),
+            msg_iovlen: 0,
+            msg_control,
+            msg_controllen,
+            msg_flags: 0,
+        };
+        libc::CMSG_FIRSTHDR(&msg_hdr as *const libc::msghdr)
+    }
+
+    /// Guarantees not to allocate or follow pointers. Pure pointer calculus.
+    #[allow(non_snake_case)]
+    pub unsafe fn CMSG_LEN(length: libc::c_uint) -> libc::c_uint {
+        libc::CMSG_LEN(length)
+    }
+
+    /// Guarantees not to allocate or follow pointers. Pure pointer calculus.
+    #[allow(non_snake_case)]
+    pub unsafe fn CMSG_DATA(cmsg: *const libc::cmsghdr) -> *mut libc::c_uchar {
+        libc::CMSG_DATA(cmsg)
     }
 
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -389,12 +427,12 @@ pub struct kvm_msrs {
 }
 
 impl Hypervisor {
-    fn attach(pid: Pid, vm_fd: RawFd) -> Result<Tracee> {
-        Ok(Tracee {
-            pid: pid,
-            vm_fd: vm_fd,
+    fn attach(pid: Pid, vm_fd: RawFd) -> Tracee {
+        Tracee {
+            pid,
+            vm_fd,
             proc: None,
-        })
+        }
     }
 
     pub fn resume(&self) -> Result<()> {
@@ -502,6 +540,52 @@ impl Hypervisor {
             tracee: self.tracee.clone(),
             phantom: PhantomData,
         })
+    }
+
+    pub fn transfer(&self, fds: &[RawFd]) -> Result<Vec<RawFd>> {
+        let addr_local_mem = self.alloc_mem()?;
+        let addr_remote_mem = self.alloc_mem()?;
+        let msg_hdr_mem = self.alloc_mem()?;
+        let iov_mem = self.alloc_mem()?;
+        let iov_buf_mem = self.alloc_mem::<[u8; 1]>()?;
+        let cmsg_mem = self.alloc_mem::<[u8; 64]>()?; // should be of size CMSG_SPACE, but thats not possible at compile time
+
+        let ret;
+        let hv;
+        {
+            let tracee = try_with!(
+                self.tracee.write(),
+                "cannot obtain tracee write lock: poinsoned"
+            );
+
+            let vmsh_id = format!("vmsh_fd_transfer_{}", nix::unistd::getpid());
+            let hypervisor_id = format!("vmsh_fd_transfer_{}", self.pid);
+            let vmsh = fd_transfer::Socket::new(&vmsh_id)?;
+            let proc = tracee.try_get_proc()?;
+            hv = fd_transfer::HvSocket::new(
+                self.tracee.clone(),
+                proc,
+                &hypervisor_id,
+                &addr_local_mem,
+            )?;
+
+            vmsh.connect(&hypervisor_id)?;
+            hv.connect(proc, &vmsh_id, &addr_remote_mem)?;
+
+            let message = [1u8; 1];
+            let m_slice = &message[0..1];
+            let mut messages = Vec::with_capacity(fds.len());
+            fds.iter().for_each(|_| messages.push(m_slice));
+
+            vmsh.send(messages.as_slice(), fds)?;
+            let (msg, fds) = hv.receive(proc, &msg_hdr_mem, &iov_mem, &iov_buf_mem, &cmsg_mem)?;
+            if msg != message {
+                bail!("received message differs from sent one");
+            }
+            ret = fds;
+        } // drop tracee write lock so that `hv: HvSock can obtain lock to drop itself
+
+        Ok(ret)
     }
 
     pub fn check_extension(&self, cap: c_int) -> Result<c_int> {
@@ -619,7 +703,7 @@ pub fn get_hypervisor(pid: Pid) -> Result<Hypervisor> {
 
     Ok(Hypervisor {
         pid,
-        tracee: Arc::new(RwLock::new(Hypervisor::attach(pid, vm_fds[0])?)),
+        tracee: Arc::new(RwLock::new(Hypervisor::attach(pid, vm_fds[0]))),
         vm_fd: vm_fds[0],
         vcpus,
     })

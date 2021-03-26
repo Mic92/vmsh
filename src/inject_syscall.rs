@@ -1,4 +1,4 @@
-use libc::{c_int, c_long, c_ulong, c_void, off_t, pid_t, size_t, SYS_munmap};
+use libc::{c_int, c_long, c_ulong, c_void, off_t, pid_t, size_t, ssize_t, SYS_munmap};
 use libc::{SYS_getpid, SYS_ioctl, SYS_mmap};
 use nix::sys::wait::{waitpid, WaitStatus};
 use nix::sys::{signal::Signal, wait::WaitPidFlag};
@@ -172,12 +172,68 @@ impl Process {
         self.syscall(&args).map(drop)
     }
 
-    pub fn open(&self) -> Result<c_int> {
-        unimplemented!();
+    pub fn socket(&self, domain: c_int, ty: c_int, protocol: c_int) -> Result<c_int> {
+        let args = syscall_args!(
+            self.saved_regs,
+            libc::SYS_socket as c_ulong,
+            domain,
+            ty,
+            protocol
+        );
+
+        self.syscall(&args).map(|v| v as c_int)
     }
 
-    pub fn write(&self) -> Result<()> {
-        unimplemented!();
+    pub fn close(&self, fd: c_int) -> Result<c_int> {
+        let args = syscall_args!(self.saved_regs, libc::SYS_close as c_ulong, fd);
+
+        self.syscall(&args).map(|v| v as c_int)
+    }
+
+    pub fn bind(
+        &self,
+        socket: c_int,
+        address: *const libc::sockaddr,
+        address_len: libc::socklen_t,
+    ) -> Result<c_int> {
+        let args = syscall_args!(
+            self.saved_regs,
+            libc::SYS_bind as c_ulong,
+            socket,
+            address,
+            address_len
+        );
+
+        self.syscall(&args).map(|v| v as c_int)
+    }
+
+    pub fn connect(
+        &self,
+        socket: c_int,
+        address: *const libc::sockaddr,
+        len: libc::socklen_t,
+    ) -> Result<c_int> {
+        let args = syscall_args!(
+            self.saved_regs,
+            libc::SYS_connect as c_ulong,
+            socket,
+            address,
+            len
+        );
+
+        self.syscall(&args).map(|v| v as c_int)
+    }
+
+    pub fn recvmsg(&self, fd: c_int, msg: *mut libc::msghdr, flags: c_int) -> Result<ssize_t> {
+        let args = syscall_args!(
+            self.saved_regs,
+            libc::SYS_recvmsg as c_ulong,
+            fd,
+            msg,
+            flags
+        );
+
+        self.syscall(&args).map(|v| v as ssize_t)
     }
 
     fn syscall(&self, regs: &Regs) -> Result<isize> {

@@ -121,6 +121,34 @@ fn guest_add_mem(pid: Pid, re_get_slots: bool) -> Result<()> {
     Ok(())
 }
 
+fn fd_transfer(pid: Pid, nr_fds: u32) -> Result<()> {
+    use std::path::Path;
+
+    let vm = try_with!(
+        kvm::get_hypervisor(pid),
+        "cannot get vms for process {}",
+        pid
+    );
+    vm.stop()?;
+
+    let mut fds = vec![];
+    for _ in 0..nr_fds {
+        let fd = try_with!(EventFd::new(EFD_NONBLOCK), "cannot create event fd").as_raw_fd();
+        fds.push(fd);
+    }
+
+    let remote_fds = vm.transfer(fds.as_slice())?;
+    assert_eq!(remote_fds.len(), fds.len());
+
+    for fd in remote_fds {
+        let pathname = format!("/proc/{}/fd/{}", pid, fd);
+        let path = Path::new(&pathname);
+        assert_eq!(path.exists(), true);
+    }
+
+    Ok(())
+}
+
 fn guest_ioeventfd(pid: Pid) -> Result<()> {
     let vm = try_with!(
         kvm::get_hypervisor(pid),
@@ -144,6 +172,7 @@ fn guest_ioeventfd(pid: Pid) -> Result<()> {
     //let ioeventfd_fd = tracee.open(); TODO
     let ioeventfd_fd = try_with!(EventFd::new(EFD_NONBLOCK), "cannot create event fd");
     println!("{:?}", ioeventfd_fd.as_raw_fd());
+    vm.transfer(vec![ioeventfd_fd.as_raw_fd()].as_slice())?;
     //let ioeventfd_mmap_fd = tracee.open(); TODO
     //let ioeventfd = tracee.malloc(ioeventfd_mmap_fd); TODO
     //let mmio_mem = try_with!(tracee.mmap(16), "cannot allocate mmio region");
@@ -186,6 +215,8 @@ fn main() {
         .subcommand(subtest("inject"))
         .subcommand(subtest("guest_add_mem"))
         .subcommand(subtest("guest_add_mem_get_maps"))
+        .subcommand(subtest("fd_transfer1"))
+        .subcommand(subtest("fd_transfer2"))
         .subcommand(subtest("guest_ioeventfd"));
 
     let matches = app.get_matches();
@@ -199,6 +230,8 @@ fn main() {
         "inject" => inject(pid),
         "guest_add_mem" => guest_add_mem(pid, false),
         "guest_add_mem_get_maps" => guest_add_mem(pid, true),
+        "fd_transfer1" => fd_transfer(pid, 1),
+        "fd_transfer2" => fd_transfer(pid, 2),
         "guest_ioeventfd" => guest_ioeventfd(pid),
         _ => std::process::exit(2),
     };
