@@ -3,7 +3,6 @@ use libc::{c_int, c_ulong, c_void};
 use log::warn;
 use nix::sys::uio::{process_vm_readv, process_vm_writev, IoVec, RemoteIoVec};
 use nix::unistd::Pid;
-use rand::Rng;
 use simple_error::{bail, simple_error, try_with};
 use std::ffi::OsStr;
 use std::marker::PhantomData;

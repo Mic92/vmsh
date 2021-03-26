@@ -417,7 +417,6 @@ dependencies = [
  "libc",
  "log",
  "nix",
- "rand",
  "simple-error",
  "tempfile",
  "virtio",
