@@ -2,7 +2,7 @@ mod virtio;
 
 use crate::device::virtio::block::{self, BlockArgs};
 use crate::device::virtio::{CommonArgs, MmioConfig};
-use crate::kvm::Hypervisor;
+use crate::kvm::hypervisor::Hypervisor;
 use crate::proc::Mapping;
 use crate::result::Result;
 use event_manager::{EventManager, MutEventSubscriber};

@@ -12,7 +12,7 @@ pub fn attach(opts: &InspectOptions) -> Result<()> {
     println!("attaching");
 
     let vm = try_with!(
-        kvm::get_hypervisor(opts.pid),
+        kvm::hypervisor::get_hypervisor(opts.pid),
         "cannot get vms for process {}",
         opts.pid
     );

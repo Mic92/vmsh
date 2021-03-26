@@ -12,7 +12,7 @@ use std::sync::{Arc, Mutex};
 use event_manager::{EventManager, MutEventSubscriber};
 use log::error;
 //use kvm_ioctls::VmFd; FIXME remove
-use crate::kvm::Hypervisor;
+use crate::kvm::hypervisor::Hypervisor;
 
 //use linux_loader::cmdline::Cmdline; FIXME remove
 use vm_device::bus::MmioRange;

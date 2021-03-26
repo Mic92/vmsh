@@ -8,7 +8,8 @@ use std::os::unix::prelude::*;
 use std::sync::{Arc, RwLock};
 
 use crate::inject_syscall;
-use crate::kvm::{HvMem, Tracee};
+use crate::kvm::hypervisor::HvMem;
+use crate::kvm::tracee::Tracee;
 use crate::result::Result;
 
 // inspired by https://github.com/Mic92/cntr/blob/492b2d9e9abc9ccd4f01a0134aab73df16393423/src/ipc.rs
