@@ -33,7 +33,13 @@ in import (pkgs.path + "/nixos/lib/make-disk-image.nix") {
         and `quit` to stop the VM.
       '';
       documentation.doc.enable = false;
-      environment.systemPackages = [ pkgs.kmod pkgs.qemu pkgs.gcc pkgs.linuxPackages.bcc ];
+      environment.systemPackages = [ 
+        pkgs.kmod
+        pkgs.qemu
+        pkgs.gcc
+        pkgs.linuxPackages.bcc
+        pkgs.busybox
+      ];
     })];
   }).config;
   partitionTableType = "none";

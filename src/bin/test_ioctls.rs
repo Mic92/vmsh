@@ -68,7 +68,7 @@ fn guest_add_mem(pid: Pid, re_get_slots: bool) -> Result<()> {
         });
 
         // add memslot
-        let vm_mem = vm.vm_add_mem::<u64>()?;
+        let vm_mem = vm.vm_add_mem::<u64>(0xd0000000)?;
         println!("--");
 
         if re_get_slots {
@@ -144,37 +144,29 @@ fn guest_ioeventfd(pid: Pid) -> Result<()> {
     }
     println!("caps good");
 
-    //let ioeventfd_fd = tracee.open(); TODO
-    let ioeventfd_fd = try_with!(EventFd::new(EFD_NONBLOCK), "cannot create event fd");
-    println!("{:?}", ioeventfd_fd.as_raw_fd());
-    vm.transfer(vec![ioeventfd_fd.as_raw_fd()].as_slice())?;
-    //let ioeventfd_mmap_fd = tracee.open(); TODO
-    //let ioeventfd = tracee.malloc(ioeventfd_mmap_fd); TODO
-    //let mmio_mem = try_with!(tracee.mmap(16), "cannot allocate mmio region");
+    //let vm_mem = vm.vm_add_mem::<u32>(0xd0000000)?;
+    //vm_mem.mem.write(&0xbeef)?;
+    let ioeventfd = vm.ioeventfd(0xd0000000)?;
+    vm.resume()?;
 
-    let ioeventfd = kvmb::kvm_ioeventfd {
-        datamatch: 0,
-        len: 8,
-        addr: 0xfffffff0,
-        fd: ioeventfd_fd.as_raw_fd(), // thats why we get -22 EINVAL
-        flags: 0,
-        ..Default::default()
-    };
-    let mem = vm.alloc_mem()?;
-    mem.write(&ioeventfd)?;
-    //let ret = {
-    //    let tracee = try_with!(
-    //        vm.tracee.read(),
-    //        "cannot obtain tracee write lock: poinsoned"
-    //    );
-    //    try_with!(
-    //        tracee.vm_ioctl_with_ref(ioctls::KVM_IOEVENTFD(), &mem),
-    //        "kvm ioeventfd ioctl injection failed"
-    //    )
-    //};
-    //if ret != 0 {
-    //    bail!("cannot register KVM_IOEVENTFD via ioctl: {:?}", ret);
-    //}
+    use std::io::prelude::*;
+    loop {
+        match ioeventfd.read() {
+            Err(e) => {
+                if e.kind() == std::io::ErrorKind::WouldBlock {
+                    print!(".");
+                    std::io::stdout().lock().flush();
+                    std::thread::sleep_ms(100);
+                } else {
+                    bail!("read error {}", e);
+                }
+            }
+            Ok(v) => {
+                println!("event: {}", v);
+                break;
+            }
+        }
+    }
 
     Ok(())
 }
