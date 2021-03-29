@@ -299,6 +299,7 @@ fn write_corefile(
             * (note_size::<core_user>() + note_size::<elf_prstatus>() + note_size::<FpuRegs>());
     let mut section_headers = vec![pt_note_header(core_size as Elf_Off, pt_note_size as u64)];
     core_size += pt_note_size;
+    core_size = page_align(core_size);
 
     for m in maps {
         let phdr = pt_load_header(m, core_size as Elf_Off);

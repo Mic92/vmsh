@@ -1,70 +1,48 @@
 #!/usr/bin/env python3
 
-import sys
 import os
+import sys
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "tests"))
 
-from elftools.elf.segments import Segment
-import sys
-from typing import Optional, Tuple, IO
-from enum import IntEnum
 import ctypes as ct
+import sys
+from enum import IntEnum
+from typing import IO, Optional, Tuple
 
-from coredump import ElfCore
+from coredump import ElfCore, Memory
 from cpu_flags import (
-    X86_CR3_PWT,
-    X86_CR3_PCD,
+    _PAGE_ACCESSED,
+    _PAGE_NX,
+    _PAGE_PCD,
+    _PAGE_PRESENT,
+    _PAGE_PSE,
+    _PAGE_PWT,
+    _PAGE_RW,
+    _PAGE_USER,
+    EFER_LME,
+    EFER_NX,
     X86_CR0_PG,
+    X86_CR3_PCD,
+    X86_CR3_PWT,
     X86_CR4_PAE,
     X86_CR4_PCIDE,
     X86_CR4_PKE,
-    EFER_NX,
-    EFER_LME,
-    _PAGE_PRESENT,
-    _PAGE_PSE,
-    _PAGE_RW,
-    _PAGE_USER,
-    _PAGE_PWT,
-    _PAGE_PCD,
-    _PAGE_ACCESSED,
-    _PAGE_NX,
 )
-
-
-def find_vm_segment(core: ElfCore) -> Optional[Segment]:
-    for seg in core.elf.iter_segments():
-        if seg.header["p_type"] != "PT_LOAD":
-            continue
-        # x86_64-specific
-        if seg.header.p_vaddr == 0x100000:
-            return seg
-    return None
-
-
-def find_page_table(core: ElfCore, cr3: int) -> Optional[Segment]:
-    for seg in core.elf.iter_segments():
-        if seg.header["p_type"] != "PT_LOAD":
-            continue
-        start = seg.header.p_paddr
-        # x86_64-specific
-        if cr3 >= start and cr3 < (start + seg.header.p_memsz):
-            return seg
-    return None
 
 
 def is_printable(byte: int) -> bool:
     return 0x20 < byte < 0x7E
 
 
-def find_ksymtab_strings(data: bytes) -> Tuple[int, int]:
+def find_ksymtab_strings(mem: Memory) -> Tuple[int, int]:
     try:
-        idx = data.index(b"init_task")
+        idx = mem.index(b"init_task")
     except ValueError:
         raise RuntimeError("could not find ksymtab_strings")
 
     unprintable = 0
-    for start_offset, byte in enumerate(reversed(data[0:idx])):
+    for start_offset, byte in enumerate(reversed(mem[mem.offset : idx])):
         if is_printable(byte):
             unprintable = 0
         else:
@@ -73,7 +51,7 @@ def find_ksymtab_strings(data: bytes) -> Tuple[int, int]:
             break
     start = idx - start_offset + 1
 
-    for end_offset, byte in enumerate(data[idx:-1]):
+    for end_offset, byte in enumerate(mem[idx : len(mem)]):
         if is_printable(byte):
             unprintable = 0
         else:
@@ -120,12 +98,11 @@ PageTableEntries = ct.c_uint64 * PAGE_TABLE_SIZE
 
 
 class PageTable:
-    def __init__(self, mem: bytes, baddr: int) -> None:
-        breakpoint()
-        self.entries = PageTableEntries.from_buffer_copy(mem)
+    def __init__(self, mem: Memory) -> None:
+        self.entries = PageTableEntries.from_buffer_copy(mem.data)
         # current index into the pagetable
         self._i = 0
-        self.baddr = baddr
+        self.baddr = mem.offset
 
     @property
     def i(self) -> int:
@@ -136,14 +113,13 @@ class PageTable:
 
     @i.setter
     def i(self, val: int) -> None:
-        assert val > 0 and val < 512
+        assert val >= 0 and val < 512
         self._i = val
 
 
 class State:
-    def __init__(self, mem: bytes, mem_offset: int, cr3: int) -> None:
+    def __init__(self, mem: Memory, cr3: int) -> None:
         self.mem = mem
-        self.mem_offset = mem_offset
         self.pml4 = self.page_table(cr3)
         self.pdpt: Optional[PageTable] = None
         self.pd: Optional[PageTable] = None
@@ -154,12 +130,10 @@ class State:
         self.last_flags: int = 0
         self.skipped: int = 0
 
-    def page_table(self, offset: int) -> PageTable:
-        start = offset - self.mem_offset
-        assert start > 0
-        end = start + ct.sizeof(PageTableEntries)
-        breakpoint()
-        return PageTable(self.mem[start:end], start)
+    def page_table(self, addr: int) -> PageTable:
+        assert addr > 0
+        end = addr + ct.sizeof(PageTableEntries)
+        return PageTable(self.mem[addr:end])
 
     def next_page_table(self, pagetbl_entry: int) -> PageTable:
         # pagetble_entry bits 51:12 contains the physical address of the next page
@@ -331,7 +305,7 @@ def dump_entry(state: State, bitpos: pt_addr_bit) -> bool:
     return ret
 
 
-def dump_page_table(core: ElfCore, memory: bytes, memory_offset: int) -> None:
+def dump_page_table(core: ElfCore, memory: Memory, memory_offset: int) -> None:
     sregs = core.special_regs[0]
     # https://software.intel.com/sites/default/files/managed/39/c5/325462-sdm-vol-1-2abcd-3abcd.pdf pp.2783 March 2017, version 062
 
@@ -364,14 +338,14 @@ def dump_page_table(core: ElfCore, memory: bytes, memory_offset: int) -> None:
     if not (cr4 & X86_CR4_PKE):
         print("No protection keys enabled (this is normal)")
 
-    state = State(memory, memory_offset, cr3)
-    breakpoint()
+    state = State(memory, cr3)
     print(f"page table in virtual memory at 0x{state.pml4.baddr:x}")
     if is_page_aligned(cr3):  # TODO ?
         raise RuntimeError("invalid addr!")
 
     #  4 nested for loops to walk 4 levels of pages walk the outermost page table
     for i in range(0, PAGE_TABLE_SIZE):
+        state.pml4.i = i
         if dump_entry(state, pt_addr_bit.PML4):
             # walk next level
             state.pdpt = state.next_page_table(state.pml4.entries[state.pml4.i])
@@ -400,24 +374,24 @@ def dump_page_table(core: ElfCore, memory: bytes, memory_offset: int) -> None:
             state.pdpt = None
 
 
+# TODO: x86_64 specific
+PHYS_LOAD_ADDR = 0x100000
+
+
 def inspect_coredump(fd: IO[bytes]) -> None:
     core = ElfCore(fd)
-    vm_segment = find_vm_segment(core)
+    vm_segment = core.find_segment_by_addr(PHYS_LOAD_ADDR)
     assert vm_segment is not None, "cannot find physical memory of VM in coredump"
-    data = core.map_segment(vm_segment)
-    start_off, end_off = find_ksymtab_strings(data)
-    start_addr = start_off + vm_segment.header.p_paddr
-    end_addr = end_off + vm_segment.header.p_paddr
-    print(f"found ksymtab at {start_addr:x}:{end_addr}")
+    mem = core.map_segment(vm_segment)
+    start_addr, end_addr = find_ksymtab_strings(mem)
+    print(f"found ksymtab at 0x{start_addr:x}:0x{end_addr:x}")
     sregs = core.special_regs[0]
     cr3 = sregs.cr3
-    page_table_segment = find_page_table(core, cr3)
+    page_table_segment = core.find_segment_by_addr(cr3)
+    assert page_table_segment is not None
     # for simplicity we assume that the page table is also in this main vm allocation
-    assert (
-        page_table_segment is not None
-        and vm_segment.header == page_table_segment.header
-    )
-    dump_page_table(core, data, vm_segment.header.p_paddr)
+    assert vm_segment.header == page_table_segment.header
+    dump_page_table(core, mem, vm_segment.header.p_paddr)
 
 
 def main() -> None:
