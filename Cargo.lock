@@ -372,7 +372,7 @@ dependencies = [
 [[package]]
 name = "vm-device"
 version = "0.1.0"
-source = "git+https://github.com/rust-vmm/vm-device#5847f1286492b7191f1400e6647fb220f8941f89"
+source = "git+https://github.com/rust-vmm/vm-device#989c315712b80a538331fe05716323f2f64abf2e"
 
 [[package]]
 name = "vm-memory"
