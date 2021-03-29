@@ -345,6 +345,7 @@ def dump_page_table(core: ElfCore, memory: Memory, memory_offset: int) -> None:
 
     #  4 nested for loops to walk 4 levels of pages walk the outermost page table
     for i in range(0, PAGE_TABLE_SIZE):
+        state.pml4.i = i
         if dump_entry(state, pt_addr_bit.PML4):
             # walk next level
             state.pdpt = state.next_page_table(state.pml4.entries[state.pml4.i])
