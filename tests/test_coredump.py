@@ -1,12 +1,11 @@
 import os
 import time
 from tempfile import TemporaryDirectory
-from typing import Dict, IO
+from typing import IO, Dict
 
 import conftest
 from coredump import ElfCore
 from qemu import QemuVm
-
 
 MSR_EFER = 0xC0000080
 
@@ -25,9 +24,8 @@ def check_coredump(fd: IO[bytes], qemu_regs: Dict[str, int], vm: QemuVm) -> None
     page_table_segment = core.find_segment_by_addr(cr3)
     assert page_table_segment
     data = core.map_segment(page_table_segment)
-    res = vm.send("human-monitor-command", args={"command-line": f"xp 0x{cr3:x}"})
-    value = int(res["return"].split(": ")[1].strip(), 16)
-    assert data[cr3] == value
+    values = vm.dump_physical_memory(cr3, 8)
+    assert bytes(data[cr3 : (cr3 + 8)]) == values
 
 
 def test_coredump(helpers: conftest.Helpers) -> None:

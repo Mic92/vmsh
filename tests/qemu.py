@@ -136,6 +136,16 @@ class QemuVm:
         )
         return parse_regs(res["return"])
 
+    def dump_physical_memory(self, addr: int, num_bytes: int) -> bytes:
+        res = self.send(
+            "human-monitor-command",
+            args={"command-line": f"xp/{num_bytes}bx 0x{addr:x}"},
+        )
+        hexval = "".join(
+            m.group(1) for m in re.finditer("0x([0-9a-f]{2})", res["return"])
+        )
+        return bytes.fromhex(hexval)
+
     def attach(self) -> None:
         """
         Attach to qemu session via tmux. This is useful for debugging
