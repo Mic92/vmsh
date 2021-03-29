@@ -35,14 +35,14 @@ def is_printable(byte: int) -> bool:
     return 0x20 < byte < 0x7E
 
 
-def find_ksymtab_strings(data: Memory) -> Tuple[int, int]:
+def find_ksymtab_strings(mem: Memory) -> Tuple[int, int]:
     try:
-        idx = data.index(b"init_task")
+        idx = mem.index(b"init_task")
     except ValueError:
         raise RuntimeError("could not find ksymtab_strings")
 
     unprintable = 0
-    for start_offset, byte in enumerate(reversed(data[0:idx])):
+    for start_offset, byte in enumerate(reversed(mem[mem.offset : idx])):
         if is_printable(byte):
             unprintable = 0
         else:
@@ -51,7 +51,7 @@ def find_ksymtab_strings(data: Memory) -> Tuple[int, int]:
             break
     start = idx - start_offset + 1
 
-    for end_offset, byte in enumerate(data[idx:-1]):
+    for end_offset, byte in enumerate(mem[idx : len(mem)]):
         if is_printable(byte):
             unprintable = 0
         else:
@@ -113,7 +113,7 @@ class PageTable:
 
     @i.setter
     def i(self, val: int) -> None:
-        assert val > 0 and val < 512
+        assert val >= 0 and val < 512
         self._i = val
 
 
@@ -382,10 +382,8 @@ def inspect_coredump(fd: IO[bytes]) -> None:
     vm_segment = core.find_segment_by_addr(PHYS_LOAD_ADDR)
     assert vm_segment is not None, "cannot find physical memory of VM in coredump"
     mem = core.map_segment(vm_segment)
-    start_off, end_off = find_ksymtab_strings(mem)
-    start_addr = start_off + vm_segment.header.p_paddr
-    end_addr = end_off + vm_segment.header.p_paddr
-    print(f"found ksymtab at {start_addr:x}:{end_addr}")
+    start_addr, end_addr = find_ksymtab_strings(mem)
+    print(f"found ksymtab at 0x{start_addr:x}:0x{end_addr:x}")
     sregs = core.special_regs[0]
     cr3 = sregs.cr3
     page_table_segment = core.find_segment_by_addr(cr3)
