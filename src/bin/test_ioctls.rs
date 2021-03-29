@@ -68,7 +68,7 @@ fn guest_add_mem(pid: Pid, re_get_slots: bool) -> Result<()> {
         });
 
         // add memslot
-        let vm_mem = vm.vm_add_mem::<u64>(0xd0000000)?;
+        let vm_mem = vm.vm_add_mem::<u64>(0xd0000000, false)?;
         println!("--");
 
         if re_get_slots {
@@ -144,8 +144,8 @@ fn guest_ioeventfd(pid: Pid) -> Result<()> {
     }
     println!("caps good");
 
-    //let vm_mem = vm.vm_add_mem::<u32>(0xd0000000)?;
-    //vm_mem.mem.write(&0xbeef)?;
+    let vm_mem = vm.vm_add_mem::<u32>(0xd0000000, true)?;
+    vm_mem.mem.write(&0xbeef)?;
     let ioeventfd = vm.ioeventfd(0xd0000000)?;
     vm.resume()?;
 

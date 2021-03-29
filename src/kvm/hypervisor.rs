@@ -204,16 +204,20 @@ impl Hypervisor {
         tracee.get_maps()
     }
 
+    /// `readonly`: If true, a guest writing to it leads to KVM_EXIT_MMIO.
+    ///
     /// Safety: This function is safe even for the guest because VmMem enforces, that only the
     /// allocated T is written to.
-    pub fn vm_add_mem<T: Sized + Copy>(&self, guest_addr: u64) -> Result<VmMem<T>> {
+    pub fn vm_add_mem<T: Sized + Copy>(&self, guest_addr: u64, readonly: bool) -> Result<VmMem<T>> {
         // must be a multiple of PAGESIZE
         let slot_len = (size_of::<T>() / page_math::page_size() + 1) * page_math::page_size();
         let hv_memslot = self.alloc_mem_padded::<T>(slot_len)?;
+        let mut flags = 0;
+        flags |= if readonly { kvmb::KVM_MEM_READONLY } else { 0 };
         let arg = kvmb::kvm_userspace_memory_region {
             slot: self.get_maps()?.len() as u32, // guess a hopfully available slot id
-            flags: 0x00,                         // maybe KVM_MEM_READONLY
-            guest_phys_addr: guest_addr,         // must be page aligned
+            flags,
+            guest_phys_addr: guest_addr, // must be page aligned
             memory_size: slot_len as u64,
             userspace_addr: hv_memslot.ptr as u64,
         };
@@ -319,7 +323,7 @@ impl Hypervisor {
 
         let ioeventfd = kvmb::kvm_ioeventfd {
             datamatch: 0,
-            len: 1,
+            len: 0,
             addr: guest_addr,
             fd: hv_eventfd.as_raw_fd(), // thats why we get -22 EINVAL
             flags: 0,
