@@ -1,33 +1,33 @@
 #!/usr/bin/env python3
 
-import sys
 import os
+import sys
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "tests"))
 
-import sys
-from typing import Optional, Tuple, IO
-from enum import IntEnum
 import ctypes as ct
+import sys
+from enum import IntEnum
+from typing import IO, Optional, Tuple
 
 from coredump import ElfCore, Memory
 from cpu_flags import (
-    X86_CR3_PWT,
-    X86_CR3_PCD,
+    _PAGE_ACCESSED,
+    _PAGE_NX,
+    _PAGE_PCD,
+    _PAGE_PRESENT,
+    _PAGE_PSE,
+    _PAGE_PWT,
+    _PAGE_RW,
+    _PAGE_USER,
+    EFER_LME,
+    EFER_NX,
     X86_CR0_PG,
+    X86_CR3_PCD,
+    X86_CR3_PWT,
     X86_CR4_PAE,
     X86_CR4_PCIDE,
     X86_CR4_PKE,
-    EFER_NX,
-    EFER_LME,
-    _PAGE_PRESENT,
-    _PAGE_PSE,
-    _PAGE_RW,
-    _PAGE_USER,
-    _PAGE_PWT,
-    _PAGE_PCD,
-    _PAGE_ACCESSED,
-    _PAGE_NX,
 )
 
 

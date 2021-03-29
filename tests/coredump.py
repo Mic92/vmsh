@@ -1,21 +1,20 @@
 #!/usr/bin/env python3
 import ctypes as ct
-from typing import IO, List, Optional, Union, overload, Iterator, Iterable
-
 import mmap
 import resource
-from elftools.elf.elffile import ELFFile
-from elftools.elf.segments import NoteSegment, Segment
+from typing import IO, Iterable, Iterator, List, Optional, Union, overload
 
 from coredump_structs import (
-    elf_prstatus,
-    elf_fpregset_t,
-    core_user,
-    user_regs_struct,
-    user_fpregs_struct,
-    kvm_msr_entry,
     KVMSRegs,
+    core_user,
+    elf_fpregset_t,
+    elf_prstatus,
+    kvm_msr_entry,
+    user_fpregs_struct,
+    user_regs_struct,
 )
+from elftools.elf.elffile import ELFFile
+from elftools.elf.segments import NoteSegment, Segment
 
 NT_PRXFPREG = 1189489535
 
