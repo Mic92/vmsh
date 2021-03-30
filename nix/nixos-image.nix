@@ -34,9 +34,7 @@ in import (pkgs.path + "/nixos/lib/make-disk-image.nix") {
       '';
       documentation.doc.enable = false;
       environment.systemPackages = [ 
-        pkgs.kmod
         pkgs.qemu
-        pkgs.gcc
         pkgs.linuxPackages.bcc
         pkgs.busybox
       ];
