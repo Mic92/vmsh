@@ -76,15 +76,18 @@ qemu: build-linux nixos-image
     -m 512M \
     -cpu host \
     -virtfs local,path={{invocation_directory()}}/..,security_model=none,mount_tag=home \
-    -virtfs local,path=/scratch,security_model=none,mount_tag=scratch \
+    -virtfs local,path={{linux_dir}},security_model=none,mount_tag=linux \
     -nographic -enable-kvm \
     -s
 
 vm_mounts:
   ssh vm mkdir -p /mnt
-  ssh vm mount -t 9p -o trans=virtio home /mnt
-  ssh vm mkdir -p /scratch
-  ssh vm mount -t 9p -o trans=virtio scratch /scratch
+  ssh vm mount -t 9p -o trans=virtio home /mnt || echo ignore mount error
+  ssh vm mkdir -p /linux
+  ssh vm mount -t 9p -o trans=virtio linux /linux || echo ignore mount error
+
+nested_qemu: vm_mounts nested-nixos-image
+  ssh vm /mnt/vmsh/qemu_nested.sh
 
 inspect-qemu:
   cargo run -- inspect "$(pidof qemu-system-x86_64)"

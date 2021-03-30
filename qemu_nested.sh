@@ -2,7 +2,7 @@
 #mkdir /mnt
 #mount -t 9p -o trans=virtio home /mnt
 
-linux_dir=../linux
+linux_dir=/linux
 
 qemu-system-x86_64 \
   -kernel $linux_dir/arch/x86/boot/bzImage \
