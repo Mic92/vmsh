@@ -315,7 +315,7 @@ impl Hypervisor {
     pub fn ioeventfd(&self, guest_addr: u64) -> Result<EventFd> {
         let eventfd = try_with!(EventFd::new(EFD_NONBLOCK), "cannot create event fd");
         println!(
-            "eventfd {:?}, guest phys addr {:?}",
+            "ioeventfd {:?}, guest phys addr {:?}",
             eventfd.as_raw_fd(),
             guest_addr
         );
@@ -343,6 +343,38 @@ impl Hypervisor {
         };
         if ret != 0 {
             bail!("cannot register KVM_IOEVENTFD via ioctl: {:?}", ret);
+        }
+
+        Ok(eventfd)
+    }
+
+    /// param `gsi`: pin on the irqchip to be toggled by fd events
+    pub fn irqfd(&self, gsi: u32) -> Result<EventFd> {
+        let eventfd = try_with!(EventFd::new(EFD_NONBLOCK), "cannot create event fd");
+        println!("irqfd {:?}, interupt gsi/nr {:?}", eventfd.as_raw_fd(), gsi);
+        let hv_eventfd = self.transfer(vec![eventfd.as_raw_fd()].as_slice())?[0];
+
+        let irqfd = kvmb::kvm_irqfd {
+            fd: hv_eventfd.as_raw_fd() as u32,
+            gsi,
+            flags: 0,
+            resamplefd: 0,
+            ..Default::default()
+        };
+        let mem = self.alloc_mem()?;
+        mem.write(&irqfd)?;
+        let ret = {
+            let tracee = try_with!(
+                self.tracee.read(),
+                "cannot obtain tracee read lock: poinsoned"
+            );
+            try_with!(
+                tracee.vm_ioctl_with_ref(ioctls::KVM_IRQFD(), &mem),
+                "kvm irqfd ioctl injection failed"
+            )
+        };
+        if ret != 0 {
+            bail!("cannot register KVM_IRQFD via ioctl: {:?}", ret);
         }
 
         Ok(eventfd)
