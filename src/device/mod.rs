@@ -1,3 +1,4 @@
+mod mmio;
 mod virtio;
 
 use crate::device::virtio::block::{self, BlockArgs};
