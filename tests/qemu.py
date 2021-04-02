@@ -12,7 +12,9 @@ from pathlib import Path
 from queue import Queue
 from shlex import quote
 from tempfile import TemporaryDirectory
-from typing import Any, Dict, Iterator, List
+from typing import Any, Dict, Iterator, List, Optional
+
+from root import TEST_ROOT
 
 
 @dataclass
@@ -134,8 +136,48 @@ class QemuVm:
         Block until ssh port is accessible
         """
         print(f"wait for ssh on {self.ssh_port}")
-        while not is_port_open("127.0.0.1", self.ssh_port, wait_response=True):
+        while True:
+            try:
+                self.ssh_cmd(["echo", "ok"], stderr=subprocess.DEVNULL)
+                return
+            except subprocess.CalledProcessError:
+                pass
             time.sleep(0.1)
+
+    def ssh_cmd(
+        self,
+        argv: List[str],
+        check: bool = True,
+        stdout: Optional[int] = subprocess.PIPE,
+        stderr: Optional[int] = None,
+        text: bool = True,
+    ) -> subprocess.CompletedProcess:
+        """
+        @return: CompletedProcess.stderr/stdout contains output of `cmd` which
+        is run in the vm via ssh.
+        """
+        cmd = " ".join(map(quote, argv))
+        key_path = TEST_ROOT.joinpath("..", "nix", "ssh_key")
+        key_path.chmod(0o400)
+        return subprocess.run(
+            [
+                "ssh",
+                "-i",
+                str(key_path),
+                "-p",
+                str(self.ssh_port),
+                "-oBatchMode=yes",
+                "-oStrictHostKeyChecking=no",
+                "-oConnectTimeout=5",
+                "-oUserKnownHostsFile=/dev/null",
+                "root@127.0.1",
+                cmd,
+            ],
+            stdout=stdout,
+            stderr=stderr,
+            check=check,
+            text=text,
+        )
 
     def regs(self) -> Dict[str, int]:
         """

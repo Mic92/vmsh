@@ -39,6 +39,10 @@ let
           127.0.0.1 nixos
           ::1 nixos
         '';
+        "ssh/authorized_keys.d/root" = {
+          source = ./ssh_key.pub;
+          mode = "444";
+        };
         "service/shell/run".source = pkgs.writeScript "shell" ''
           #!/bin/sh
           export USER=root
