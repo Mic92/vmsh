@@ -251,7 +251,7 @@ fn write_note_sections(core_file: &mut File, vcpus: &[VcpuState]) -> Result<()> 
                     pr_stime: zero,
                     pr_cutime: zero,
                     pr_cstime: zero,
-                    pr_reg: pr_reg,
+                    pr_reg,
                     pr_fpvalid: 1,
                 }
             ),

@@ -227,8 +227,8 @@ impl Tracee {
             rdp: regs.last_dp,
             mxcsr: regs.mxcsr,
             mxcsr_mask: 0,
-            st_space: st_space,
-            xmm_space: xmm_space,
+            st_space,
+            xmm_space,
             padding: [0; 12],
             padding1: [0; 12],
         })
