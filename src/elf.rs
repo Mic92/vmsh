@@ -8,7 +8,7 @@ const ELFCLASS64: u8 = 2;
 
 // e_type
 /// No file type
-pub const ET_NONE: Elf_Half = 0;
+   pub const ET_NONE: Elf_Half = 0;
 /// Relocatable file (object file)
 pub const ET_REL: Elf_Half = 1;
 /// Executable file
@@ -113,25 +113,32 @@ pub type elf_gregset_t = [u64; ELF_NGREG];
 #[cfg(target_arch = "powerpc")]
 mod arch {
     pub const ELF_NGREG: usize = 48;
-    pub const ELFARCH: ::Elf_Half = super::EM_PPC;
+    pub const ELFARCH: super::Elf_Half = super::EM_PPC;
 }
 
 #[cfg(target_arch = "powerpc64")]
 mod arch {
     pub const ELF_NGREG: usize = 48;
-    pub const ELFARCH: ::Elf_Half = super::EM_PPC64;
+    pub const ELFARCH: super::Elf_Half = super::EM_PPC64;
 }
 
 #[cfg(target_arch = "arm")]
 mod arch {
     pub const ELF_NGREG: usize = 18;
-    pub const ELFARCH: ::Elf_Half = super::EM_ARM;
+    pub const ELFARCH: super::Elf_Half = super::EM_ARM;
 }
+
+#[cfg(target_arch = "aarch64")]
+mod arch {
+    pub const ELF_NGREG: usize = 34;
+    pub const ELFARCH: super::Elf_Half = super::EM_AARCH64;
+}
+
 
 #[cfg(target_arch = "mips")]
 mod arch {
     pub const ELF_NGREG: usize = 45;
-    pub const ELFARCH: ::Elf_Half = super::EM_MIPS;
+    pub const ELFARCH: super::Elf_Half = super::EM_MIPS;
 }
 
 #[cfg(target_arch = "riscv")]
