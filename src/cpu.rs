@@ -108,7 +108,7 @@ mod arch {
         }
 
         pub fn prepare_syscall(&self, args: &[u64; 7]) -> Regs {
-            let mut copy = self.clone();
+            let mut copy = *self;
             copy.rax = args[0];
             copy.rdi = args[1];
             copy.rsi = args[2];

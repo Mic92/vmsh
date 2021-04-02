@@ -388,7 +388,7 @@ impl Hypervisor {
 
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     pub fn get_msr(&self, vcpu: &VCPU, msr: &kvmb::kvm_msr_entry) -> Result<kvmb::kvm_msr_entry> {
-        let mut mem = self.alloc_mem()?;
+        let mem = self.alloc_mem()?;
         try_with!(
             mem.write(&kvm_msrs {
                 nmsrs: 1,
@@ -401,7 +401,7 @@ impl Hypervisor {
             self.tracee.write(),
             "cannot obtain tracee write lock: poinsoned"
         );
-        tracee.get_msr(vcpu, &mut mem)
+        tracee.get_msr(vcpu, &mem)
     }
 }
 

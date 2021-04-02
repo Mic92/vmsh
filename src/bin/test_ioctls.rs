@@ -156,7 +156,10 @@ fn guest_ioeventfd(pid: Pid) -> Result<()> {
             Err(e) => {
                 if e.kind() == std::io::ErrorKind::WouldBlock {
                     print!(".");
-                    std::io::stdout().lock().flush();
+                    std::io::stdout()
+                        .lock()
+                        .flush()
+                        .expect("cannot flush stdout");
                     std::thread::sleep(Duration::from_millis(100));
                 } else {
                     bail!("read error {}", e);
