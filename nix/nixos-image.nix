@@ -29,13 +29,15 @@ in import (pkgs.path + "/nixos/lib/make-disk-image.nix") {
       fileSystems."/mnt" = {
         device = "home";
         fsType = "9p";
-        options = [ "trans=virtio" ];
+        # skip mount in nested qemu
+        options = [ "trans=virtio" "nofail" ];
       };
 
       fileSystems."/linux" = {
         device = "linux";
         fsType = "9p";
-        options = [ "trans=virtio" ];
+        # skip mount in nested qemu
+        options = [ "trans=virtio" "nofail" ];
       };
 
       users.users.root.openssh.authorizedKeys.keys = [

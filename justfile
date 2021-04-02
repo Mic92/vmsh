@@ -61,9 +61,9 @@ nixos-image:
 
 # built image for qemu_nested.sh
 nested-nixos-image:
-  [[ {{linux_dir}}/nixos_nested.qcow2 -nt nix/nixos-image.nix ]] || \
-  [[ {{linux_dir}}/nixos_nested.qcow2 -nt nix/sources.json ]] || \
-  install -m600 "$(nix-build --no-out-link nix/nixos-image.nix)/nixos.qcow2" {{linux_dir}}/nixos_nested.qcow2
+  [[ {{linux_dir}}/nixos-nested.qcow2 -nt nix/nixos-image.nix ]] || \
+  [[ {{linux_dir}}/nixos-nested.qcow2 -nt nix/sources.json ]] || \
+  install -m600 "$(nix-build --no-out-link nix/nixos-image.nix)/nixos.qcow2" {{linux_dir}}/nixos-nested.qcow2
 
 # in qemu mount home via: mkdir /mnt && mount -t 9p -o trans=virtio home /mnt
 qemu: build-linux nixos-image
