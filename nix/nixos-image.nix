@@ -57,7 +57,7 @@ in import (pkgs.path + "/nixos/lib/make-disk-image.nix") {
         (pkgs.writeShellScriptBin "qemu-nested" ''
           exec ${pkgs.qemu_kvm}/bin/qemu-system-x86_64 \
             -kernel /linux/arch/x86/boot/bzImage \
-            -hda /linux/nixos_nested.qcow2 \
+            -hda /linux/nixos-nested.qcow2 \
             -append "root=/dev/sda console=ttyS0 nokaslr" \
             -m 256M \
             -nographic -enable-kvm \
