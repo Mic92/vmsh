@@ -3,6 +3,7 @@ use kvm_bindings as kvmb;
 use nix::unistd::Pid;
 use simple_error::{bail, try_with};
 use std::os::unix::io::AsRawFd;
+use std::time::Duration;
 use vmm_sys_util::eventfd::{EventFd, EFD_NONBLOCK};
 use vmsh::kvm::hypervisor::get_hypervisor;
 use vmsh::result::Result;
@@ -156,7 +157,7 @@ fn guest_ioeventfd(pid: Pid) -> Result<()> {
                 if e.kind() == std::io::ErrorKind::WouldBlock {
                     print!(".");
                     std::io::stdout().lock().flush();
-                    std::thread::sleep_ms(100);
+                    std::thread::sleep(Duration::from_millis(100));
                 } else {
                     bail!("read error {}", e);
                 }
