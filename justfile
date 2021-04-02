@@ -60,10 +60,8 @@ nixos-image:
   install -m600 "$(nix-build --no-out-link nix/nixos-image.nix)/nixos.qcow2" {{linux_dir}}/nixos.qcow2
 
 # built image for qemu_nested.sh
-nested-nixos-image:
-  [[ {{linux_dir}}/nixos_nested.qcow2 -nt nix/nixos-image.nix ]] || \
-  [[ {{linux_dir}}/nixos_nested.qcow2 -nt nix/sources.json ]] || \
-  install -m600 "$(nix-build --no-out-link nix/nixos-image.nix)/nixos.qcow2" {{linux_dir}}/nixos_nested.qcow2
+nested-nixos-image: nixos-image
+  ln -f "{{linux_dir}}/nixos.qcow2" {{linux_dir}}/nixos-nested.qcow2
 
 # in qemu mount home via: mkdir /mnt && mount -t 9p -o trans=virtio home /mnt
 qemu: build-linux nixos-image
@@ -80,14 +78,8 @@ qemu: build-linux nixos-image
     -nographic -enable-kvm \
     -s
 
-vm_mounts:
-  ssh vm mkdir -p /mnt
-  ssh vm mount -t 9p -o trans=virtio home /mnt || echo ignore mount error
-  ssh vm mkdir -p /linux
-  ssh vm mount -t 9p -o trans=virtio linux /linux || echo ignore mount error
-
-nested_qemu: vm_mounts nested-nixos-image
-  ssh vm /mnt/vmsh/qemu_nested.sh
+nested-qemu: nested-nixos-image
+  ssh -i {{invocation_directory()}}/nix/ssh_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/nulll root@localhost -p 2222 qemu-nested
 
 inspect-qemu:
   cargo run -- inspect "$(pidof qemu-system-x86_64)"

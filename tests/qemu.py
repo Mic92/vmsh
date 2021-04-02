@@ -106,14 +106,25 @@ def parse_regs(qemu_output: str) -> Dict[str, int]:
     return regs
 
 
+def get_ssh_port(session: QmpSession) -> int:
+    usernet_info = session.send(
+        "human-monitor-command", args={"command-line": "info usernet"}
+    )
+    ssh_port = None
+    for l in usernet_info["return"].splitlines():
+        fields = l.split()
+        if "TCP[HOST_FORWARD]" in fields and "22" in fields:
+            ssh_port = int(l.split()[3])
+    assert ssh_port is not None
+    return ssh_port
+
+
 class QemuVm:
-    def __init__(
-        self, qmp_session: QmpSession, tmux_session: str, pid: int, ssh_port: int
-    ) -> None:
+    def __init__(self, qmp_session: QmpSession, tmux_session: str, pid: int) -> None:
         self.qmp_session = qmp_session
         self.tmux_session = tmux_session
         self.pid = pid
-        self.ssh_port = ssh_port
+        self.ssh_port = get_ssh_port(qmp_session)
 
     def events(self) -> Iterator[Dict[str, Any]]:
         return self.qmp_session.events()
@@ -227,15 +238,6 @@ def spawn_qemu(image: VmImage) -> Iterator[QemuVm]:
                 except ProcessLookupError:
                     raise Exception("qemu vm was terminated")
             with connect_qmp(qmp_socket) as session:
-                usernet_info = session.send(
-                    "human-monitor-command", args={"command-line": "info usernet"}
-                )
-                ssh_port = None
-                for l in usernet_info["return"].splitlines():
-                    fields = l.split()
-                    if "TCP[HOST_FORWARD]" in fields and "22" in fields:
-                        ssh_port = int(l.split()[3])
-                assert ssh_port is not None
-                yield QemuVm(session, tmux_session, qemu_pid, ssh_port)
+                yield QemuVm(session, tmux_session, qemu_pid)
         finally:
             subprocess.run(["tmux", "-L", tmux_session, "kill-server"])
