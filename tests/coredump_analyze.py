@@ -250,6 +250,7 @@ def dump_entry(state: State, bitpos: pt_addr_bit) -> bool:
         outer_baddr = state.pd.baddr
 
     e = table.entries[table.i]
+    print(e)
 
     assert check_entry(e)
 
@@ -305,7 +306,7 @@ def dump_entry(state: State, bitpos: pt_addr_bit) -> bool:
     return ret
 
 
-def dump_page_table(core: ElfCore, memory: Memory, memory_offset: int) -> None:
+def dump_page_table(core: ElfCore, memory: Memory) -> None:
     sregs = core.special_regs[0]
     # https://software.intel.com/sites/default/files/managed/39/c5/325462-sdm-vol-1-2abcd-3abcd.pdf pp.2783 March 2017, version 062
 
@@ -391,7 +392,7 @@ def inspect_coredump(fd: IO[bytes]) -> None:
     assert page_table_segment is not None
     # for simplicity we assume that the page table is also in this main vm allocation
     assert vm_segment.header == page_table_segment.header
-    dump_page_table(core, mem, vm_segment.header.p_paddr)
+    dump_page_table(core, mem)
 
 
 def main() -> None:
