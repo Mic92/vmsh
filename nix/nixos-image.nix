@@ -26,6 +26,18 @@ in import (pkgs.path + "/nixos/lib/make-disk-image.nix") {
       users.users.root.openssh.authorizedKeys.keyFiles = lib.filter builtins.pathExists keys;
       networking.firewall.enable = false;
 
+      fileSystems."/mnt" = {
+        device = "home";
+        fsType = "9p";
+        options = [ "trans=virtio" ];
+      };
+
+      fileSystems."/linux" = {
+        device = "linux";
+        fsType = "9p";
+        options = [ "trans=virtio" ];
+      };
+
       services.getty.helpLine = ''
         Log in as "root" with an empty password.
         If you are connect via serial console:
@@ -34,9 +46,17 @@ in import (pkgs.path + "/nixos/lib/make-disk-image.nix") {
       '';
       documentation.doc.enable = false;
       environment.systemPackages = [ 
-        pkgs.qemu
         pkgs.linuxPackages.bcc
         pkgs.busybox
+        (pkgs.writeShellScriptBin "qemu-nested" ''
+          exec ${pkgs.qemu_kvm}/bin/qemu-system-x86_64 \
+            -kernel /linux/arch/x86/boot/bzImage \
+            -hda /linux/nixos_nested.qcow2 \
+            -append "root=/dev/sda console=ttyS0 nokaslr" \
+            -m 256M \
+            -nographic -enable-kvm \
+            "$@"
+        '')
       ];
     })];
   }).config;

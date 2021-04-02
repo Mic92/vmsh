@@ -80,14 +80,8 @@ qemu: build-linux nixos-image
     -nographic -enable-kvm \
     -s
 
-vm_mounts:
-  ssh vm mkdir -p /mnt
-  ssh vm mount -t 9p -o trans=virtio home /mnt || echo ignore mount error
-  ssh vm mkdir -p /linux
-  ssh vm mount -t 9p -o trans=virtio linux /linux || echo ignore mount error
-
-nested_qemu: vm_mounts nested-nixos-image
-  ssh vm /mnt/vmsh/qemu_nested.sh
+nested_qemu: nested-nixos-image
+  ssh vm qemu-nested
 
 inspect-qemu:
   cargo run -- inspect "$(pidof qemu-system-x86_64)"
