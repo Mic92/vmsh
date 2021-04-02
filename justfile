@@ -80,8 +80,8 @@ qemu: build-linux nixos-image
     -nographic -enable-kvm \
     -s
 
-nested_qemu: nested-nixos-image
-  ssh vm qemu-nested
+nested-qemu: nested-nixos-image
+  ssh -i {{invocation_directory()}}/nix/ssh_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/nulll root@localhost -p 2222 qemu-nested
 
 inspect-qemu:
   cargo run -- inspect "$(pidof qemu-system-x86_64)"

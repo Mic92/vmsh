@@ -38,6 +38,10 @@ in import (pkgs.path + "/nixos/lib/make-disk-image.nix") {
         options = [ "trans=virtio" ];
       };
 
+      users.users.root.openssh.authorizedKeys.keys = [
+        (builtins.readFile ./ssh_key.pub)
+      ];
+
       services.getty.helpLine = ''
         Log in as "root" with an empty password.
         If you are connect via serial console:
