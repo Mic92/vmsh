@@ -1,9 +1,10 @@
 mod mmio;
 mod virtio;
 
+use crate::device::mmio::MmioDeviceSpace;
 use crate::device::virtio::block::{self, BlockArgs};
 use crate::device::virtio::{CommonArgs, MmioConfig};
-use crate::kvm::hypervisor::Hypervisor;
+use crate::kvm::hypervisor::{Hypervisor, VmMem};
 use crate::proc::Mapping;
 use crate::result::Result;
 use event_manager::{EventManager, MutEventSubscriber};
@@ -67,6 +68,7 @@ fn convert(mappings: &[Mapping]) -> Result<GuestMemoryMmap> {
 pub struct Device {
     vmm: Arc<Hypervisor>,
     blkdev: Arc<Mutex<Block>>,
+    mmio_device_mem: VmMem<MmioDeviceSpace>,
 }
 
 impl Device {
@@ -77,6 +79,7 @@ impl Device {
             "cannot convert Mapping to GuestMemoryMmap"
         ));
 
+        println!("mmio range start {:x}", MMIO_MEM_START);
         let range = MmioRange::new(MmioAddress(MMIO_MEM_START), 0x1000).unwrap();
         let mmio_cfg = MmioConfig { range, gsi: 5 };
 
@@ -111,10 +114,20 @@ impl Device {
             Err(e) => bail!("cannot create block device: {:?}", e),
         };
 
-        Ok(Device {
+        let mmio_device_mem = vmm.vm_add_mem(MMIO_MEM_START, false)?;
+        {
+            let blkdev = blkdev.clone();
+            let blkdev = blkdev.lock().unwrap();
+            let mmio_dev_space = MmioDeviceSpace::new(&blkdev);
+            mmio_device_mem.mem.write(&mmio_dev_space)?;
+        }
+
+        let device = Device {
             vmm: vmm.clone(),
             blkdev,
-        })
+            mmio_device_mem,
+        };
+        Ok(device)
     }
 
     pub fn create(&self) {

@@ -11,6 +11,7 @@ const MMIO_VERSION: u32 = 2;
 const VENDOR_ID: u32 = 0;
 
 /// padX fields are reserved for future use.
+#[derive(Copy, Clone, Debug)]
 #[repr(C)] // actually we want packed. Because that has undefined behaviour in rust 2018 we hope that C is effectively the same.
 pub struct MmioDeviceSpace {
     magic_value: u32,
@@ -60,7 +61,7 @@ use vm_virtio::Queue;
 type Block = block::Block<Arc<GuestMemoryMmap>>;
 
 impl MmioDeviceSpace {
-    fn new(device: Block) -> MmioDeviceSpace {
+    pub fn new(device: &Block) -> MmioDeviceSpace {
         let space = MmioDeviceSpace {
             magic_value: MMIO_MAGIC_VALUE,
             version: MMIO_VERSION,
