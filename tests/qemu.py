@@ -138,11 +138,11 @@ class QemuVm:
         print(f"wait for ssh on {self.ssh_port}")
         while True:
             try:
-                self.ssh_cmd(["echo", "ok"], stderr=subprocess.DEVNULL)
+                self.ssh_cmd(["echo", "ok"])
                 return
             except subprocess.CalledProcessError:
                 pass
-            time.sleep(0.1)
+            time.sleep(1)
 
     def ssh_cmd(
         self,
