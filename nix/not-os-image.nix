@@ -22,6 +22,8 @@ let
         inherit system parsed;
       };
 
+      networking.timeServers = [];
+
       not-os.nix = true;
       not-os.simpleStaticIp = true;
       not-os.preMount = ''
