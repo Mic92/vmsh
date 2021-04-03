@@ -5,6 +5,13 @@ let
   inherit (pkgs) stdenv lib;
   inherit (pkgs.pkgsMusl.hostPlatform) system parsed;
   useMusl = false;
+# TODO remove
+#  foobars = pkgs.makeModulesClosure {
+#    rootModules = config.boot.initrd.availableKernelModules ++ config.boot.initrd.kernelModules ++ [ "virtio_mmio" ];
+#    allowMissing = true;
+#    kernel = config.system.build.kernel;
+#    firmware = config.hardware.firmware;
+#  };
 
   config = (import not-os {
     nixpkgs = pkgs.path;
@@ -17,7 +24,12 @@ let
         pkgs.utillinux
         pkgs.gnugrep
         pkgs.kmod
+        pkgs.findutils
       ];
+      # boot.initrd.availableKernelModules = [ "ext3" "virtio_mmio" ];
+      # lib.modules.rootModules = [ "ext3" "virtio_mmio" ];
+      #lib.modules.allowMissing = false;
+
       nixpkgs.localSystem = lib.mkIf useMusl {
         inherit system parsed;
       };
@@ -27,12 +39,15 @@ let
       not-os.nix = true;
       not-os.simpleStaticIp = true;
       not-os.preMount = ''
-        echo 'nixos' > /proc/sys/kernel/hostname
+        echo 'nixos2' > /proc/sys/kernel/hostname
         ip addr add 127.0.0.1/8 dev lo
         ip addr add ::1/128 dev lo
         ip link dev lo up
         ip addr add 10.0.2.15/24 dev eth0
       '';
+
+      boot.initrd.availableKernelModules = [ "virtio_console" "virtio_mmio" ];
+      boot.initrd.kernelModules = [ "virtio_mmio" ];
 
       environment.etc = {
         "hosts".text = ''
@@ -63,7 +78,6 @@ let
       environment.etc.profile.text = ''
         export PS1="\e[0;32m[\u@\h \w]\$ \e[0m"
       '';
-      boot.initrd.availableKernelModules = [ "virtio_console" ];
     };
   }).config;
 in
