@@ -21,6 +21,9 @@ use crate::page_math;
 use crate::proc::{openpid, Mapping, PidHandle};
 use crate::result::Result;
 
+/// # Safety
+///
+/// None. See safety chapter of `std::slice::from_raw_parts`.
 pub unsafe fn any_as_bytes<T: Sized>(p: &T) -> &[u8] {
     std::slice::from_raw_parts((p as *const T) as *const u8, size_of::<T>())
 }
@@ -256,8 +259,9 @@ impl Hypervisor {
             self.tracee.write(),
             "cannot obtain tracee write lock: poinsoned"
         );
-        // safe, because TraceeMem enforces to write and read at most `size_of::<T> <= size` bytes.
-        let ptr = unsafe { tracee.mmap(size)? };
+        // safe, event for the tracee, because HvMem enforces to write and read at mose
+        // `size_of::<T> <= size` bytes.
+        let ptr = tracee.mmap(size)?;
         Ok(HvMem {
             ptr,
             pid: self.pid,

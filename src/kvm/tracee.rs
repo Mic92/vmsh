@@ -103,7 +103,12 @@ impl Tracee {
     ///
     /// length in bytes.
     /// returns void pointer to the allocated virtual memory address of the hypervisor.
-    pub unsafe fn mmap(&self, length: libc::size_t) -> Result<*mut c_void> {
+    ///
+    /// # Safety
+    ///
+    /// Safe for this crate, not so for the remote process being manipulated. Ensure that to write
+    /// and read at most `size_of::<T> <= size` bytes.
+    pub fn mmap(&self, length: libc::size_t) -> Result<*mut c_void> {
         let proc = self.try_get_proc()?;
         let addr = libc::AT_NULL as *mut c_void; // make kernel choose location for us
         let prot = libc::PROT_READ | libc::PROT_WRITE;
@@ -115,12 +120,20 @@ impl Tracee {
 
     /// Guarantees not to allocate or follow pointers. Pure pointer calculus.
     /// You are free to try to convince the compiler that this is constant. In theory it is.
+    ///
+    /// # Safety
+    ///
+    /// This is pointer calculus.
     #[allow(non_snake_case)]
     pub unsafe fn CMSG_SPACE(length: libc::c_uint) -> libc::c_uint {
         libc::CMSG_SPACE(length)
     }
 
     /// Guarantees not to allocate or follow pointers. Pure pointer calculus.
+    ///
+    /// # Safety
+    ///
+    /// This is pointer calculus.
     #[allow(non_snake_case)]
     pub unsafe fn __CMSG_FIRSTHDR(
         msg_control: *mut libc::c_void,
@@ -139,12 +152,20 @@ impl Tracee {
     }
 
     /// Guarantees not to allocate or follow pointers. Pure pointer calculus.
+    ///
+    /// # Safety
+    ///
+    /// This is pointer calculus.
     #[allow(non_snake_case)]
     pub unsafe fn CMSG_LEN(length: libc::c_uint) -> libc::c_uint {
         libc::CMSG_LEN(length)
     }
 
     /// Guarantees not to allocate or follow pointers. Pure pointer calculus.
+    ///
+    /// # Safety
+    ///
+    /// This is pointer calculus.
     #[allow(non_snake_case)]
     pub unsafe fn CMSG_DATA(cmsg: *const libc::cmsghdr) -> *mut libc::c_uchar {
         libc::CMSG_DATA(cmsg)
