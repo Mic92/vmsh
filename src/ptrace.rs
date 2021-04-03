@@ -76,6 +76,9 @@ impl Thread {
         ))
     }
 
+    /// # Safety
+    ///
+    /// The `data` argument is passed directly to `ptrace(2)`. Read that man page for guidance.
     pub unsafe fn write(&self, addr: AddressType, data: *mut c_void) -> Result<()> {
         try_with!(
             ptrace::write(self.tid, addr, data),
