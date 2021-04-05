@@ -31,9 +31,9 @@ dependencies = [
 
 [[package]]
 name = "bcc"
-version = "0.0.30"
+version = "0.0.31"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e5dbbe5cc2887bc0bc8506b26dcd4c41d1b54bdf4ff1de8e12d404deee60e4ec"
+checksum = "bebab955e4baaae9f8e6f21a3bd8f49d36e8344758431ce82585d885a2b2f363"
 dependencies = [
  "bcc-sys",
  "bitflags",
@@ -45,9 +45,9 @@ dependencies = [
 
 [[package]]
 name = "bcc-sys"
-version = "0.17.0"
+version = "0.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "42d3c07869b846ba3306739375e9ed2f8055a8759fcf7f72ab7bf3bc4df38b9b"
+checksum = "ce1c5b91450a45f6a536b4e657c698ef2dd3c636739450350a58582b47e8fa0c"
 
 [[package]]
 name = "bitflags"
