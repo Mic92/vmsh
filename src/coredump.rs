@@ -190,11 +190,7 @@ fn write_fpu_registers(core_file: &mut File, regs: &FpuRegs) -> Result<()> {
 fn write_fpu_registers(core_file: &mut File, regs: &FpuRegs) -> Result<()> {
     use crate::elf::NT_PRFPREG;
     try_with!(
-        write_note_section(
-            core_file,
-            NT_PRFPREG
-            regs
-        ),
+        write_note_section(core_file, NT_PRFPREG, regs),
         "failed to write NT_PRFPREG"
     );
     Ok(())
