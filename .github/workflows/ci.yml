@@ -14,7 +14,7 @@ jobs:
           - x86_64-unknown-linux-gnu
           # we need a static libbcc for that
           #- x86_64-unknown-linux-musl
-        rust: [ 1.50.0 ]
+        rust: [ stable ]
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -57,7 +57,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        rust: [ 1.50.0 ]
+        rust: [ stable ]
     steps:
       - name: Install rust
         uses: actions-rs/toolchain@v1

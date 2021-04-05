@@ -82,7 +82,7 @@ def entry_extract_flags(entry: int) -> int:
 
 
 # Might be wrong, kernel uses cpuid to figure this out
-x86_phys_bits = 36
+x86_phys_bits = 36  # my kvm had 28 max phys bits?
 pte_reserved_flags = bitmask_numbits(
     51 - x86_phys_bits + 1
 )  # bitmap with up to 51 bit set
@@ -129,6 +129,7 @@ class State:
         self.last_addr: int = 0
         self.last_flags: int = 0
         self.skipped: int = 0
+        self.entries: int = 0
 
     def page_table(self, addr: int) -> PageTable:
         assert addr > 0
@@ -143,7 +144,7 @@ class State:
         paddr = pagetbl_entry & bm
         # Actually, 51:.. is too generous, there are some reserved bits which must be
         # zero
-        assert (pagetbl_entry & pte_reserved_flags) == 0
+        # assert (pagetbl_entry & pte_reserved_flags) == 0
 
         if is_page_aligned(paddr):
             raise RuntimeError("CRITICAL: invalid addr {paddr}\n")
@@ -181,15 +182,17 @@ def pte_addr_part(index: int, bitpos: pt_addr_bit) -> int:
 
 def check_entry(e: int) -> bool:
     # 51:M reserved, must be 0
-    if e & pte_reserved_flags:
-        print("invalid entry!\n")
-        return False
+    # if e & pte_reserved_flags:
+    #    print("invalid entry!\n")
+    #    breakpoint()
+    #    return False
     if e & _PAGE_PSE:
         # TODO references a page directly, probably sanity check address?
         pass
     if not (e & _PAGE_PRESENT) and e:
-        print("strange entry!\n")
-        return False
+        pass
+        # print("strange entry!\n")
+        # return False
 
     return True
 
@@ -250,7 +253,6 @@ def dump_entry(state: State, bitpos: pt_addr_bit) -> bool:
         outer_baddr = state.pd.baddr
 
     e = table.entries[table.i]
-    print(e)
 
     assert check_entry(e)
 
@@ -260,13 +262,13 @@ def dump_entry(state: State, bitpos: pt_addr_bit) -> bool:
 
     table.baddr = outer_baddr | pte_addr_part(table.i, bitpos)
     assert outer_baddr & pte_addr_part(table.i, bitpos) == 0  # no overlapping bits
-    assert (
-        state.pdpt is not None
-        and (state.pml4.baddr | state.pdpt.baddr) & state.pml4.baddr == state.pml4.baddr
-    )  # no overlapping bits
+    # assert (
+    #    state.pdpt is not None
+    #    and (state.pml4.baddr | state.pdpt.baddr) & state.pml4.baddr == state.pml4.baddr
+    # )  # no overlapping bits
     addr_max = bitmask_numbits(bitpos)
-    assert (state.pml4.baddr & addr_max) == 0  # no overlapping bits
-    assert (state.pdpt.baddr & addr_max) == 0  # no overlapping bits
+    # assert (state.pml4.baddr & addr_max) == 0  # no overlapping bits
+    # assert (state.pdpt.baddr & addr_max) == 0  # no overlapping bits
     addr_max |= table.baddr
 
     if (e & _PAGE_PSE) or bitpos == pt_addr_bit.PT:
@@ -283,7 +285,7 @@ def dump_entry(state: State, bitpos: pt_addr_bit) -> bool:
     else:
         if state.skipped:
             print(
-                "{str_level} skipped {state.skipped} following entries (til {state.last_addr})"
+                f"{str_level} skipped {state.skipped} following entries (til {state.last_addr:x})"
             )
         state.skipped = 0
         rw = "W" if (e & _PAGE_RW) else "R"
@@ -293,12 +295,13 @@ def dump_entry(state: State, bitpos: pt_addr_bit) -> bool:
         accessed = "A" if (e & _PAGE_ACCESSED) else ""
         nx = "NX" if (e & _PAGE_NX) else ""
         print(
-            f"{str_level} {baddr} {addr_max} {rw} {user} {pwt} {pcd} {accessed} {nx}",
+            f"{str_level} {baddr} {addr_max:x} {rw} {user} {pwt} {pcd} {accessed} {nx}",
             end="",
         )
         if _direct_mapping:
-            print(" -> {string_page_size(bitpos)} page", end="")
+            print(f" -> {string_page_size(bitpos)} page", end="")
         print()
+    state.entries += 1
 
     state.last_addr = addr_max
     state.last_flags = entry_extract_flags(e)
@@ -373,6 +376,7 @@ def dump_page_table(core: ElfCore, memory: Memory) -> None:
                     state.pd = None
             # reset pdpt entries in state for assertions
             state.pdpt = None
+    print(f"entries: {state.entries}")
 
 
 # TODO: x86_64 specific
