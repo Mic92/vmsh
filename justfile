@@ -21,7 +21,7 @@ fmt:
 
 test:
   cargo test
-  pytest -s tests
+  pytest -n $(nproc --ignore=2) -s tests
 
 clone-linux:
   [[ -d {{linux_dir}} ]] || \
