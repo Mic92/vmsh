@@ -8,7 +8,7 @@ const ELFCLASS64: u8 = 2;
 
 // e_type
 /// No file type
-   pub const ET_NONE: Elf_Half = 0;
+pub const ET_NONE: Elf_Half = 0;
 /// Relocatable file (object file)
 pub const ET_REL: Elf_Half = 1;
 /// Executable file
@@ -133,7 +133,6 @@ mod arch {
     pub const ELF_NGREG: usize = 34;
     pub const ELFARCH: super::Elf_Half = super::EM_AARCH64;
 }
-
 
 #[cfg(target_arch = "mips")]
 mod arch {
