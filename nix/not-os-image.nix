@@ -23,12 +23,7 @@ let
         pkgs.utillinux
         pkgs.gnugrep
         pkgs.kmod
-        pkgs.findutils
       ];
-      # boot.initrd.availableKernelModules = [ "ext3" "virtio_mmio" ];
-      # lib.modules.rootModules = [ "ext3" "virtio_mmio" ];
-      #lib.modules.allowMissing = false;
-
       nixpkgs.localSystem = lib.mkIf useMusl {
         inherit system parsed;
       };
@@ -38,7 +33,7 @@ let
       not-os.nix = true;
       not-os.simpleStaticIp = true;
       not-os.preMount = ''
-        echo 'nixos2' > /proc/sys/kernel/hostname
+        echo 'nixos' > /proc/sys/kernel/hostname
         ip addr add 127.0.0.1/8 dev lo
         ip addr add ::1/128 dev lo
         ip link dev lo up
@@ -47,6 +42,14 @@ let
 
       boot.initrd.availableKernelModules = [ "virtio_console" "virtio_mmio" ];
       # to activate at boot time: boot.initrd.kernelModules = [ "virtio_mmio" ];
+      boot.kernelPatches = [ {
+        name = "virtio-mmio-cmdline";
+        patch = null;
+        extraConfig = ''
+                VIRTIO_MMIO_CMDLINE_DEVICES y
+              '';
+        } ];
+
 
       environment.etc = {
         "hosts".text = ''
