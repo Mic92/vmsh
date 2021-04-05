@@ -5,6 +5,12 @@ let
   inherit (pkgs) stdenv lib;
   inherit (pkgs.pkgsMusl.hostPlatform) system parsed;
   useMusl = false;
+  modules = pkgs.makeModulesClosure {
+    rootModules = config.boot.initrd.availableKernelModules ++ config.boot.initrd.kernelModules ++ [ "virtio_mmio" ];
+    allowMissing = true;
+    kernel = config.system.build.kernel;
+    firmware = config.hardware.firmware;
+  };
 
   config = (import not-os {
     nixpkgs = pkgs.path;
@@ -34,6 +40,17 @@ let
         ip addr add 10.0.2.15/24 dev eth0
       '';
 
+      boot.initrd.availableKernelModules = [ "virtio_console" "virtio_mmio" ];
+      # to activate at boot time: boot.initrd.kernelModules = [ "virtio_mmio" ];
+      boot.kernelPatches = [ {
+        name = "virtio-mmio-cmdline";
+        patch = null;
+        extraConfig = ''
+                VIRTIO_MMIO_CMDLINE_DEVICES y
+              '';
+        } ];
+
+
       environment.etc = {
         "hosts".text = ''
           127.0.0.1 localhost
@@ -62,8 +79,8 @@ let
       };
       environment.etc.profile.text = ''
         export PS1="\e[0;32m[\u@\h \w]\$ \e[0m"
+        export MODULE_DRIVERS_DIR="${modules}/lib/modules/$(uname -r)/kernel/drivers"
       '';
-      boot.initrd.availableKernelModules = [ "virtio_console" ];
     };
   }).config;
 in

@@ -41,6 +41,8 @@ configure-linux: clone-linux
     {{kernel_fhs}} "scripts/config --set-val KVM_INTEL y"
     {{kernel_fhs}} "scripts/config --set-val BPF_SYSCALL y"
     {{kernel_fhs}} "scripts/config --set-val IKHEADERS y"
+    {{kernel_fhs}} "scripts/config --set-val VIRTIO_MMIO m"
+    {{kernel_fhs}} "scripts/config --set-val VIRTIO_MMIO_CMDLINE_DEVICES y"
   fi
 
 sign-drone:

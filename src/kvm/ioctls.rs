@@ -202,6 +202,9 @@ ioctl_io_nr!(KVM_CHECK_EXTENSION, KVMIO, 0x03);
 // Available with KVM_CAP_IOEVENTFD
 ioctl_iow_nr!(KVM_IOEVENTFD, KVMIO, 0x79, kvmb::kvm_ioeventfd);
 
+// Available with KVM_CAP_IRQFD
+ioctl_iow_nr!(KVM_IRQFD, KVMIO, 0x76, kvmb::kvm_irqfd);
+
 // Avaulable with KVM_CAP_USER_MEMORY
 ioctl_iow_nr!(
     KVM_SET_USER_MEMORY_REGION,
