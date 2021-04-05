@@ -54,7 +54,7 @@ pub struct MmioDeviceSpace {
 
 use crate::device::virtio::block;
 use std::sync::Arc;
-use vm_memory::{GuestMemoryMmap, GuestRegionMmap};
+use vm_memory::GuestMemoryMmap;
 use vm_virtio::device::{VirtioDevice, WithDriverSelect};
 use vm_virtio::Queue;
 
