@@ -62,7 +62,7 @@ type Block = block::Block<Arc<GuestMemoryMmap>>;
 
 impl MmioDeviceSpace {
     pub fn new(device: &Block) -> MmioDeviceSpace {
-        let space = MmioDeviceSpace {
+        MmioDeviceSpace {
             magic_value: MMIO_MAGIC_VALUE,
             version: MMIO_VERSION,
             device_id: device.device_type(),
@@ -100,9 +100,7 @@ impl MmioDeviceSpace {
             queue_device_high: 0,
             pad10: [0u32; 21],
             config_generation: device.config_generation().into(),
-        };
-
-        space
+        }
     }
 }
 

@@ -3,6 +3,7 @@
 use crate::result::Result;
 use simple_error::try_with;
 use std::sync::Arc;
+use std::time::Duration;
 
 use crate::device::Device;
 use crate::inspect::InspectOptions;
@@ -23,6 +24,6 @@ pub fn attach(opts: &InspectOptions) -> Result<()> {
     device.create();
     device.create();
     println!("pause");
-    std::thread::sleep_ms(999999999);
+    std::thread::sleep(Duration::from_secs(99999));
     Ok(())
 }
