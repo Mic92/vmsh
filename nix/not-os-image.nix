@@ -5,13 +5,12 @@ let
   inherit (pkgs) stdenv lib;
   inherit (pkgs.pkgsMusl.hostPlatform) system parsed;
   useMusl = false;
-# TODO remove
-#  foobars = pkgs.makeModulesClosure {
-#    rootModules = config.boot.initrd.availableKernelModules ++ config.boot.initrd.kernelModules ++ [ "virtio_mmio" ];
-#    allowMissing = true;
-#    kernel = config.system.build.kernel;
-#    firmware = config.hardware.firmware;
-#  };
+  modules = pkgs.makeModulesClosure {
+    rootModules = config.boot.initrd.availableKernelModules ++ config.boot.initrd.kernelModules ++ [ "virtio_mmio" ];
+    allowMissing = true;
+    kernel = config.system.build.kernel;
+    firmware = config.hardware.firmware;
+  };
 
   config = (import not-os {
     nixpkgs = pkgs.path;
@@ -47,7 +46,7 @@ let
       '';
 
       boot.initrd.availableKernelModules = [ "virtio_console" "virtio_mmio" ];
-      boot.initrd.kernelModules = [ "virtio_mmio" ];
+      # to activate at boot time: boot.initrd.kernelModules = [ "virtio_mmio" ];
 
       environment.etc = {
         "hosts".text = ''
@@ -77,6 +76,7 @@ let
       };
       environment.etc.profile.text = ''
         export PS1="\e[0;32m[\u@\h \w]\$ \e[0m"
+        export MODULE_DRIVERS_DIR="${modules}/lib/modules/$(uname -r)/kernel/drivers"
       '';
     };
   }).config;

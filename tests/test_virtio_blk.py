@@ -6,6 +6,9 @@ def test_this_test(helpers: conftest.Helpers) -> None:
         print("wait for ssh")
         vm.wait_for_ssh()
         print("ssh available")
+        res = vm.ssh_cmd_sh("insmod $MODULE_DRIVERS_DIR/virtio/virtio_mmio.ko.xz")
+        assert res.returncode == 0
+        # assert that vritio_mmio is now loaded
         res = vm.ssh_cmd(["lsmod"])
         assert res.stdout
         assert res.stdout.find("virtio_mmio") >= 0

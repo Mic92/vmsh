@@ -144,6 +144,14 @@ class QemuVm:
                 pass
             time.sleep(1)
 
+    def ssh_cmd_sh(self, sh_cmd: str) -> subprocess.CompletedProcess:
+        """
+        can be used for shell commands which require environment variables from
+        the VMs /etc/profile
+        """
+        sh_cmd = f"source /etc/profile && {sh_cmd}"
+        return self.ssh_cmd(["sh", "-c", sh_cmd])
+
     def ssh_cmd(
         self,
         argv: List[str],
