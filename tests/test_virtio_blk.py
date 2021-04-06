@@ -1,5 +1,6 @@
 import conftest
 from multiprocessing import Process
+import subprocess
 
 
 def test_loading_virtio_mmio(helpers: conftest.Helpers) -> None:
@@ -37,9 +38,29 @@ def test_virtio_device_space(helpers: conftest.Helpers) -> None:
         res = vm.ssh_cmd(["dmesg"])
         print("stdout:\n", res.stdout)
 
-        vmsh.kill()
+        print("multiprocessing pid: ", vmsh.pid)
+
+        # python sucks
+        print(
+            "kill children: ",
+            # The following runs do not kill children (daemonization?) but lead
+            # to tests appearing to terminate in a shell - but build CI will
+            # never terminate because it sees not all processes have
+            # terminated. See yourself how `ps aux | grep vmsh | wc -l`
+            # measures increasing numbers of vmsh processes before and after
+            # running test_virtio_blk.py when using on of the following:
+            #
+            # subprocess.run(["sudo", "pkill", "-P", f"{vmsh.pid}"], check=True),
+            # subprocess.run(["su", "-c", f"pkill -P {vmsh.pid}"], check=True),
+            # (vmsh.kill() doesn't work either)
+            #
+            # The following magically removes all children though.
+            subprocess.run(["sudo", "su", "-c", f"pkill -P {vmsh.pid}"], check=True),
+        )
+        print("kill: ", subprocess.run(["kill", f"{vmsh.pid}"]))
         vmsh.join(10)
         if vmsh.exitcode is None:
-            vmsh.terminate()
+            print("termination needed ERROR")
+            # vmsh.terminate()
 
         assert res.stdout.find("virtio_mmio: unknown parameter 'device' ignored") < 0
