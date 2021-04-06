@@ -8,17 +8,18 @@
     getopt
     flex
     bison
-    elfutils
     binutils
-    ncurses.dev
-    openssl.dev
-    zlib.dev
     gcc
     gnumake
     bc
     perl
     hostname
     cpio
+  ] ++ map lib.getDev [
+    elfutils
+    ncurses
+    openssl
+    zlib
   ]);
   inherit runScript;
 })
