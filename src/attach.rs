@@ -18,7 +18,7 @@ pub fn attach(opts: &InspectOptions) -> Result<()> {
     ));
     vm.stop()?;
 
-    let device = try_with!(Device::new(&vm.clone()), "cannot create vm");
+    let device = try_with!(Device::new(&vm), "cannot create vm");
     vm.resume()?;
     device.create();
     device.create();
