@@ -12,9 +12,16 @@ from typing import Iterator, List, Type
 
 import pytest
 from qemu import QemuVm, VmImage, spawn_qemu
-from root import TEST_ROOT
+from root import TEST_ROOT, PROJECT_ROOT
 
 sys.path.append(str(TEST_ROOT.parent))
+
+build_artifacts = Path("/dev/null")  # folder with cargo-built executables
+
+
+def cargo_build() -> Path:
+    subprocess.run(["cargo", "build"], cwd=PROJECT_ROOT)
+    return PROJECT_ROOT.joinpath("target", "debug")
 
 
 def rootfs_image(image: Path) -> VmImage:
@@ -49,23 +56,16 @@ def ensure_debugfs_access() -> Iterator[None]:
         yield
 
 
-# cargo_options: additional args to pass to cargo. Example: "--bin test_ioctls"
-# to run a non-default binary
-def run_vmsh_command(args: List[str], cargo_options: List[str] = []) -> None:
+def run_vmsh_command(args: List[str], cargo_executable: str = "vmsh") -> None:
     if not os.path.isdir("/sys/module/kheaders"):
         subprocess.run(["sudo", "modprobe", "kheaders"])
     uid = os.getuid()
     gid = os.getuid()
     groups = ",".join(map(str, os.getgroups()))
     with ensure_debugfs_access():
-        cargoArgs = [
-            "cargo",
-            "run",
-        ]
-        cargoArgs += cargo_options
-        cargoArgs += ["--"]
-        cargoArgs += args
-        cargoCmd = " ".join(map(quote, cargoArgs))
+        cmd = [str(os.path.join(build_artifacts, cargo_executable))]
+        cmd += args
+        cmd_quoted = " ".join(map(quote, cmd))
 
         cmd = [
             "sudo",
@@ -81,7 +81,7 @@ def run_vmsh_command(args: List[str], cargo_options: List[str] = []) -> None:
             "--addamb=cap_sys_ptrace",
             "--",
             "-c",
-            cargoCmd,
+            cmd_quoted,
         ]
         print("$ " + " ".join(map(quote, cmd)))
         subprocess.run(cmd, check=True)
@@ -97,8 +97,8 @@ class Helpers:
         return rootfs_image(TEST_ROOT.joinpath("../nix/not-os-image.nix"))
 
     @staticmethod
-    def run_vmsh_command(args: List[str], cargo_options: List[str] = []) -> None:
-        return run_vmsh_command(args, cargo_options)
+    def run_vmsh_command(args: List[str], cargo_executable: str = "vmsh") -> None:
+        return run_vmsh_command(args, cargo_executable=cargo_executable)
 
     @staticmethod
     def spawn_qemu(image: VmImage) -> "contextlib._GeneratorContextManager[QemuVm]":
@@ -108,3 +108,6 @@ class Helpers:
 @pytest.fixture
 def helpers() -> Type[Helpers]:
     return Helpers
+
+
+build_artifacts = cargo_build()
