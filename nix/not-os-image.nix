@@ -4,13 +4,12 @@
 let
   inherit (pkgs) stdenv lib;
   inherit (pkgs.pkgsMusl.hostPlatform) system parsed;
-  useMusl = false;
-  modules = pkgs.makeModulesClosure {
-    rootModules = config.boot.initrd.availableKernelModules ++ config.boot.initrd.kernelModules ++ [ "virtio_mmio" ];
-    allowMissing = true;
-    kernel = config.system.build.kernel;
-    firmware = config.hardware.firmware;
+
+  virtio_mmio = pkgs.callPackage ./virtio_mmio.nix {
+    inherit (config.system.build) kernel;
   };
+
+  useMusl = false;
 
   config = (import not-os {
     nixpkgs = pkgs.path;
@@ -23,7 +22,10 @@ let
         pkgs.utillinux
         pkgs.gnugrep
         pkgs.kmod
+        virtio_mmio
       ];
+      environment.pathsToLink = [ "/lib/modules" ];
+
       nixpkgs.localSystem = lib.mkIf useMusl {
         inherit system parsed;
       };
@@ -42,14 +44,6 @@ let
 
       boot.initrd.availableKernelModules = [ "virtio_console" "virtio_mmio" ];
       # to activate at boot time: boot.initrd.kernelModules = [ "virtio_mmio" ];
-      boot.kernelPatches = [ {
-        name = "virtio-mmio-cmdline";
-        patch = null;
-        extraConfig = ''
-                VIRTIO_MMIO_CMDLINE_DEVICES y
-              '';
-        } ];
-
 
       environment.etc = {
         "hosts".text = ''
@@ -79,7 +73,6 @@ let
       };
       environment.etc.profile.text = ''
         export PS1="\e[0;32m[\u@\h \w]\$ \e[0m"
-        export MODULE_DRIVERS_DIR="${modules}/lib/modules/$(uname -r)/kernel/drivers"
       '';
     };
   }).config;
