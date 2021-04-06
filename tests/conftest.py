@@ -12,7 +12,7 @@ from typing import Iterator, List, Type
 
 import pytest
 from qemu import QemuVm, VmImage, spawn_qemu
-from root import TEST_ROOT
+from root import TEST_ROOT, PROJECT_ROOT
 
 sys.path.append(str(TEST_ROOT.parent))
 
@@ -20,8 +20,8 @@ build_artifacts = Path("/dev/null")  # folder with cargo-built executables
 
 
 def cargo_build() -> Path:
-    subprocess.run(["cargo", "build"])
-    return Path("target/debug")
+    subprocess.run(["cargo", "build"], cwd=PROJECT_ROOT)
+    return PROJECT_ROOT.joinpath("target", "debug")
 
 
 def rootfs_image(image: Path) -> VmImage:
