@@ -11,6 +11,7 @@ let
   pythonEnv = (pkgs.python3.withPackages (ps: [
     ps.pytest
     ps.pyelftools
+    ps.intervaltree
 
     # linting
     ps.black
