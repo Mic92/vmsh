@@ -103,7 +103,7 @@ impl Device {
 
         let args = BlockArgs {
             common,
-            file_path: PathBuf::from("/tmp/foobar"),
+            file_path: PathBuf::from("/dev/null"),
             read_only: false,
             root_device: true,
             advertise_flush: true,

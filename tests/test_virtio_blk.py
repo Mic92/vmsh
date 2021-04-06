@@ -33,6 +33,7 @@ def test_virtio_device_space(helpers: conftest.Helpers) -> None:
 
         vmsh.kill()
         vmsh.join(10)
-        vmsh.terminate()
+        if vmsh.exitcode is None:
+            vmsh.terminate()
 
         assert res.stdout.find("virtio_mmio: unknown parameter 'device' ignored") < 0
