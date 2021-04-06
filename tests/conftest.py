@@ -56,7 +56,9 @@ def ensure_debugfs_access() -> Iterator[None]:
         yield
 
 
-def run_vmsh_command(args: List[str], cargo_executable: str = "vmsh") -> None:
+def spawn_vmsh_command(
+    args: List[str], cargo_executable: str = "vmsh"
+) -> subprocess.Popen:
     if not os.path.isdir("/sys/module/kheaders"):
         subprocess.run(["sudo", "modprobe", "kheaders"])
     uid = os.getuid()
@@ -84,7 +86,7 @@ def run_vmsh_command(args: List[str], cargo_executable: str = "vmsh") -> None:
             cmd_quoted,
         ]
         print("$ " + " ".join(map(quote, cmd)))
-        subprocess.run(cmd, check=True)
+        return subprocess.Popen(cmd)
 
 
 class Helpers:
@@ -97,8 +99,15 @@ class Helpers:
         return rootfs_image(TEST_ROOT.joinpath("../nix/not-os-image.nix"))
 
     @staticmethod
+    def spawn_vmsh_command(
+        args: List[str], cargo_executable: str = "vmsh"
+    ) -> subprocess.Popen:
+        return spawn_vmsh_command(args, cargo_executable)
+
+    @staticmethod
     def run_vmsh_command(args: List[str], cargo_executable: str = "vmsh") -> None:
-        return run_vmsh_command(args, cargo_executable=cargo_executable)
+        proc = spawn_vmsh_command(args, cargo_executable)
+        assert proc.wait() == 0
 
     @staticmethod
     def spawn_qemu(image: VmImage) -> "contextlib._GeneratorContextManager[QemuVm]":

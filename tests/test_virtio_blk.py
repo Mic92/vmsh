@@ -1,5 +1,5 @@
 import conftest
-from multiprocessing import Process
+import subprocess
 
 
 def test_loading_virtio_mmio(helpers: conftest.Helpers) -> None:
@@ -18,27 +18,29 @@ def test_loading_virtio_mmio(helpers: conftest.Helpers) -> None:
 
 def test_virtio_device_space(helpers: conftest.Helpers) -> None:
     with helpers.spawn_qemu(helpers.notos_image()) as vm:
-        vmsh = Process(target=helpers.run_vmsh_command, args=(["attach", str(vm.pid)],))
-        vmsh.start()
-        vm.wait_for_ssh()
-        print("ssh available")
+        vmsh = helpers.spawn_vmsh_command(["attach", str(vm.pid)])
+        try:
+            vm.wait_for_ssh()
+            print("ssh available")
 
-        mmio_config = "0x1000@0xd0000000:5"
-        res = vm.ssh_cmd(
-            [
-                "insmod",
-                "/run/current-system/sw/lib/modules/virtio/virtio_mmio.ko",
-                f"device={mmio_config}",
-            ]
-        )
-        print("stdout:\n", res.stdout)
-        print("stderr:\n", res.stderr)
+            mmio_config = "0x1000@0xd0000000:5"
+            res = vm.ssh_cmd(
+                [
+                    "insmod",
+                    "/run/current-system/sw/lib/modules/virtio/virtio_mmio.ko",
+                    f"device={mmio_config}",
+                ]
+            )
+            print("stdout:\n", res.stdout)
+            print("stderr:\n", res.stderr)
 
-        res = vm.ssh_cmd(["dmesg"])
-        print("stdout:\n", res.stdout)
+            res = vm.ssh_cmd(["dmesg"])
+            print("stdout:\n", res.stdout)
 
-        vmsh.kill()
-        vmsh.join(10)
-        vmsh.terminate()
-
-        assert res.stdout.find("virtio_mmio: unknown parameter 'device' ignored") < 0
+            assert (
+                res.stdout.find("virtio_mmio: unknown parameter 'device' ignored") < 0
+            )
+        finally:
+            # we cannot kill sudo, but we can stop vmsh as it drops privileges to our user
+            subprocess.run(["pkill", "--parent", str(vmsh.pid)])
+            vmsh.wait()
