@@ -51,7 +51,7 @@ def test_virtio_device_space(helpers: conftest.Helpers) -> None:
             # running test_virtio_blk.py when using on of the following:
             #
             # subprocess.run(["sudo", "pkill", "-P", f"{vmsh.pid}"], check=True),
-            # subprocess.run(["su", "-c", f"pkill -P {vmsh.pid}"], check=True),
+            # subprocess.run(["sh", "-c", f"pkill -P {vmsh.pid}"], check=True),
             # (vmsh.kill() doesn't work either)
             #
             # The following magically removes all children though.
