@@ -2,13 +2,15 @@ import conftest
 from multiprocessing import Process
 
 
-def test_this_test(helpers: conftest.Helpers) -> None:
+def test_loading_virtio_mmio(helpers: conftest.Helpers) -> None:
     with helpers.spawn_qemu(helpers.notos_image()) as vm:
         vm.wait_for_ssh()
         print("ssh available")
-        res = vm.ssh_cmd_sh("insmod $MODULE_DRIVERS_DIR/virtio/virtio_mmio.ko.xz")
+        res = vm.ssh_cmd(
+            ["insmod", "/run/current-system/sw/lib/modules/virtio/virtio_mmio.ko"]
+        )
         assert res.returncode == 0
-        # assert that vritio_mmio is now loaded
+        # assert that virtio_mmio is now loaded
         res = vm.ssh_cmd(["lsmod"])
         assert res.stdout
         assert res.stdout.find("virtio_mmio") >= 0
@@ -22,8 +24,12 @@ def test_virtio_device_space(helpers: conftest.Helpers) -> None:
         print("ssh available")
 
         mmio_config = "0x1000@0xd0000000:5"
-        res = vm.ssh_cmd_sh(
-            f"insmod $MODULE_DRIVERS_DIR/virtio/virtio_mmio.ko.xz device={mmio_config}"
+        res = vm.ssh_cmd(
+            [
+                "insmod",
+                "/run/current-system/sw/lib/modules/virtio/virtio_mmio.ko",
+                f"device={mmio_config}",
+            ]
         )
         print("stdout:\n", res.stdout)
         print("stderr:\n", res.stderr)

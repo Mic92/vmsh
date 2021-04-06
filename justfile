@@ -61,6 +61,9 @@ nixos-image:
   [[ {{linux_dir}}/nixos.qcow2 -nt nix/sources.json ]] || \
   install -m600 "$(nix-build --no-out-link nix/nixos-image.nix)/nixos.qcow2" {{linux_dir}}/nixos.qcow2
 
+notos-image:
+  nix-build nix/not-os-image.nix -A json
+
 # built image for qemu_nested.sh
 nested-nixos-image: nixos-image
   ln -f "{{linux_dir}}/nixos.qcow2" {{linux_dir}}/nixos-nested.qcow2
