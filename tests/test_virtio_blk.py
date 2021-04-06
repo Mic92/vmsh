@@ -40,6 +40,12 @@ def test_virtio_device_space(helpers: conftest.Helpers) -> None:
             assert (
                 res.stdout.find("virtio_mmio: unknown parameter 'device' ignored") < 0
             )
+            assert (
+                res.stdout.find(
+                    "New virtio-mmio devices (version 2) must provide VIRTIO_F_VERSION_1 feature!"
+                )
+                >= 0
+            )
         finally:
             # we cannot kill sudo, but we can stop vmsh as it drops privileges to our user
             subprocess.run(["pkill", "--parent", str(vmsh.pid)])
