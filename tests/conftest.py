@@ -8,7 +8,7 @@ import sys
 from contextlib import contextmanager
 from pathlib import Path
 from shlex import quote
-from typing import Iterator, List, Type
+from typing import Iterator, List, Type, Optional, Any
 
 import pytest
 from qemu import QemuVm, VmImage, spawn_qemu
@@ -57,7 +57,7 @@ def ensure_debugfs_access() -> Iterator[None]:
 
 
 def spawn_vmsh_command(
-    args: List[str], cargo_executable: str = "vmsh"
+    args: List[str], cargo_executable: str = "vmsh", stdout: Any = None
 ) -> subprocess.Popen:
     if not os.path.isdir("/sys/module/kheaders"):
         subprocess.run(["sudo", "modprobe", "kheaders"])
@@ -86,7 +86,47 @@ def spawn_vmsh_command(
             cmd_quoted,
         ]
         print("$ " + " ".join(map(quote, cmd)))
-        return subprocess.Popen(cmd)
+        return subprocess.Popen(cmd, stdout=stdout)
+
+
+def vmsh_print_stdout_flush(proc: subprocess.Popen) -> None:
+    print("vmsh: ", end="", flush=True)
+    while True:
+        stdout_ = proc.stdout
+        if stdout_ is not None:
+            res = stdout_.read(1)
+        else:
+            raise Exception("foobar")
+
+        if len(res) > 0:
+            res = bytearray(res).decode("utf-8")
+            print(f"{res}", end="", flush=True)
+            if res == "\n":
+                print("vmsh: ", end="", flush=True)
+        else:
+            print("", flush=True)
+            return
+
+
+def vmsh_print_stdout_until(proc: subprocess.Popen, until_line: Optional[str]) -> None:
+    """
+    to be used whith Popen.stdout == subprocess.PIPE
+    blocks until until_line is printed
+    @param until_line example: "pause\n"
+    """
+    while True:
+        stdout_ = proc.stdout
+        if stdout_ is not None:
+            res = stdout_.readline()
+        else:
+            raise Exception("foobar")
+
+        if len(res) > 0:
+            res = bytearray(res).decode("utf-8")
+            print(f"vmsh: {res}", end="", flush=True)
+            if res == until_line:
+                print("vmsh_print_stdout_until fulfilled")
+                return
 
 
 class Helpers:
@@ -100,14 +140,24 @@ class Helpers:
 
     @staticmethod
     def spawn_vmsh_command(
-        args: List[str], cargo_executable: str = "vmsh"
+        args: List[str], cargo_executable: str = "vmsh", stdout: Any = None
     ) -> subprocess.Popen:
-        return spawn_vmsh_command(args, cargo_executable)
+        return spawn_vmsh_command(args, cargo_executable, stdout=stdout)
 
     @staticmethod
     def run_vmsh_command(args: List[str], cargo_executable: str = "vmsh") -> None:
         proc = spawn_vmsh_command(args, cargo_executable)
         assert proc.wait() == 0
+
+    @staticmethod
+    def vmsh_print_stdout_flush(proc: subprocess.Popen) -> None:
+        return vmsh_print_stdout_flush(proc)
+
+    @staticmethod
+    def vmsh_print_stdout_until(
+        proc: subprocess.Popen, until_line: Optional[str]
+    ) -> None:
+        return vmsh_print_stdout_until(proc, until_line)
 
     @staticmethod
     def spawn_qemu(image: VmImage) -> "contextlib._GeneratorContextManager[QemuVm]":

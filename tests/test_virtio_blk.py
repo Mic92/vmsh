@@ -18,7 +18,10 @@ def test_loading_virtio_mmio(helpers: conftest.Helpers) -> None:
 
 def test_virtio_device_space(helpers: conftest.Helpers) -> None:
     with helpers.spawn_qemu(helpers.notos_image()) as vm:
-        vmsh = helpers.spawn_vmsh_command(["attach", str(vm.pid)])
+        vmsh = helpers.spawn_vmsh_command(
+            ["attach", str(vm.pid)], stdout=subprocess.PIPE
+        )
+
         try:
             vm.wait_for_ssh()
             print("ssh available")
@@ -34,6 +37,7 @@ def test_virtio_device_space(helpers: conftest.Helpers) -> None:
             print("stdout:\n", res.stdout)
             print("stderr:\n", res.stderr)
 
+            helpers.vmsh_print_stdout_until(vmsh, "pause\n")
             res = vm.ssh_cmd(["dmesg"])
             print("stdout:\n", res.stdout)
 
@@ -50,3 +54,4 @@ def test_virtio_device_space(helpers: conftest.Helpers) -> None:
             # we cannot kill sudo, but we can stop vmsh as it drops privileges to our user
             subprocess.run(["pkill", "--parent", str(vmsh.pid)])
             vmsh.wait()
+            helpers.vmsh_print_stdout_flush(vmsh)
