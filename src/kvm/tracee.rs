@@ -17,6 +17,7 @@ use crate::result::Result;
 /// In theory this is dynamic however for for simplicity we limit it to 1 entry to not have to rewrite our vm allocation stack
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub struct kvm_msrs {
     pub nmsrs: u32,
     pub pad: u32,

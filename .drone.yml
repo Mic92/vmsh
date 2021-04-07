@@ -1,13 +1,7 @@
 ---
 kind: pipeline
 type: ssh
-name: Test
-
-server:
-  host: martha.r
-  user: ci
-  ssh_key:
-    from_secret: SSH_KEY
+name: Test on amd64
 
 platform:
   os: linux
@@ -20,12 +14,46 @@ steps:
 - name: run tests
   commands:
   - nix-shell ./ci.nix --run 'pytest -s ./tests'
+
+trigger:
+  event:
+  - push
+
+server:
+  user: ci
+  host: martha.r
+  ssh_key:
+    from_secret: SSH_KEY
+
+---
+kind: pipeline
+type: ssh
+name: Test on aarch64
+
+platform:
+  os: linux
+  arch: aarch64
+
+clone:
+  depth: 1
+
+steps:
+- name: run tests
+  commands:
+  - . /etc/profile.d/nix.sh && nix-shell ./ci.nix --run 'pytest -s ./tests'
+
+server:
+  user: ci
+  host: grandalf.r
+  ssh_key:
+    from_secret: SSH_KEY
+
 trigger:
   event:
   - push
 
 ---
 kind: signature
-hmac: f76f9042f2f43346e512039664b2650bf4fbb38468f8b376cad80dff9b514542
+hmac: d95ba3599915d45c591f4a562000393bb8b1ec369d8e2d831d2c07805591380f
 
 ...

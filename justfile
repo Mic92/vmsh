@@ -47,7 +47,7 @@ configure-linux: clone-linux
 
 sign-drone:
   DRONE_SERVER=https://drone.thalheim.io \
-  DRONE_TOKEN=$(cat $HOME/.secret/drone-token) \
+  DRONE_TOKEN=$([[ -f $HOME/.secret/drone-token ]] && cat $HOME/.secret/drone-token || echo "$DRONE_TOKEN") \
     nix-shell -p drone-cli --run 'drone sign Mic92/vmsh --save'
 
 build-linux-shell:
