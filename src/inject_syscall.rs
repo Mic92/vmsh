@@ -236,6 +236,12 @@ impl Process {
         self.syscall(&args).map(|v| v as ssize_t)
     }
 
+    pub fn userfaultfd(&self, flags: c_int) -> Result<c_int> {
+        let args = syscall_args!(self.saved_regs, libc::SYS_userfaultfd as c_ulong, flags);
+
+        self.syscall(&args).map(|v| v as c_int)
+    }
+
     fn syscall(&self, regs: &Regs) -> Result<isize> {
         try_with!(
             self.main_thread().setregs(regs),

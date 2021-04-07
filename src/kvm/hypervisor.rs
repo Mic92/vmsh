@@ -384,6 +384,23 @@ impl Hypervisor {
         Ok(eventfd)
     }
 
+    pub fn userfaultfd(&self) -> Result<c_int> {
+        let tracee = try_with!(
+            self.tracee.read(),
+            "cannot obtain tracee read lock: poinsoned"
+        );
+        let proc = tracee.try_get_proc()?;
+
+        let uffd = proc.userfaultfd(libc::O_NONBLOCK)?;
+        if uffd <= 0 {
+            bail!("userfaultfd failed with {}", uffd);
+        }
+
+        // TODO impl userfaultfd handling
+
+        Ok(-1)
+    }
+
     pub fn check_extension(&self, cap: c_int) -> Result<c_int> {
         let tracee = try_with!(
             self.tracee.read(),
