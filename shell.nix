@@ -12,6 +12,7 @@ let
     ps.pytest
     ps.pytest-xdist
     ps.pyelftools
+    ps.intervaltree
 
     # linting
     ps.black
