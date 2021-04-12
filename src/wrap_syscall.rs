@@ -14,6 +14,8 @@ pub struct KvmRunWrapper {
 
 impl KvmRunWrapper {
     pub fn attach(pid: Pid) -> Result<KvmRunWrapper> {
+        //let threads = vec![try_with!(ptrace::attach(pid), "foo")];
+        //let process_idx = 0;
         let (threads, process_idx) = try_with!(
             ptrace::attach_all_threads(pid),
             "cannot attach KvmRunWrapper to all threads of {} via ptrace",
@@ -29,11 +31,14 @@ impl KvmRunWrapper {
         &self.threads[self.process_idx]
     }
 
+    // -> Err if third qemu thread terminates
     pub fn wait_for_ioctl(&self) -> Result<()> {
+        println!("syscall");
         //for thread in &self.threads {
             //thread.syscall()?;
         //}
-        self.main_thread().syscall()?;
+        //println!("syscall {}", self.threads[0].tid);
+        try_with!(self.main_thread().syscall(), "fii");
 
         //  
         // Further options to waitpid on many Ps at the same time:
@@ -48,14 +53,31 @@ impl KvmRunWrapper {
         //   zombies?)
         //   => sounds a bit dangerous, doesn't it?
 
-        // use linux default flag of __WALL: wait for main_thread and all its children
-        let status = try_with!(
-            waitpid(self.main_thread().tid, None),
-            "cannot wait for ioctl syscall"
-        );
+        // use linux default flag of __WALL: wait for main_thread and all kinds of children
+        // to wait for all children, use -gid
+        //println!("wait {}", self.threads[0].tid);
+        println!("waitpid");
+        let status = self.waitpid_busy()?;
+        //let status = try_with!(
+            //waitpid(Pid::from_raw(-self.main_thread().tid.as_raw()), None),
+            //"cannot wait for ioctl syscall"
+        //);
         self.process_status(status)?;
 
         Ok(())
+    }
+
+    fn waitpid_busy(&self) -> Result<WaitStatus> {
+        loop {
+            for thread in &self.threads {
+                let status = try_with!(waitpid(thread.tid, Some(nix::sys::wait::WaitPidFlag::WNOHANG)),
+                    "cannot wait for ioctl syscall"
+                );
+                if WaitStatus::StillAlive != status {
+                    return Ok(status);
+                }
+            }
+        }
     }
 
     fn process_status(&self, status: WaitStatus) -> Result<()> {
