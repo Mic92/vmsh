@@ -411,7 +411,8 @@ impl Hypervisor {
         //let proc = tracee.try_get_proc()?;
 
         let kvm_run = KvmRunWrapper::attach(self.pid)?;
-        for _ in 0..2 {
+        for i in 0..10000 {
+            println!("{}", i);
             kvm_run.wait_for_ioctl()?;
         }
 

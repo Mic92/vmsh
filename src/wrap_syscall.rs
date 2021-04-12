@@ -27,6 +27,13 @@ impl KvmRunWrapper {
         })
     }
 
+    pub fn cont(&self) -> Result<()> {
+        for thread in &self.threads {
+            thread.cont(None)?;
+        }
+        Ok(())
+    }
+
     fn main_thread(&self) -> &ptrace::Thread {
         &self.threads[self.process_idx]
     }

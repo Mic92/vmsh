@@ -206,10 +206,10 @@ fn guest_kvm_exits(pid: Pid) -> Result<()> {
     let vm = try_with!(get_hypervisor(pid), "cannot get vms for process {}", pid);
 
     //vm.stop()?;
-    for i in 0..100 {
-        println!("{}", i);
+    //for i in 0..100 {
+        //println!("{}", i);
         vm.log_kvm_exits()?;
-    }
+    //}
     //vm.resume()?;
 
     Ok(())
