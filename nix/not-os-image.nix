@@ -22,6 +22,7 @@ let
         pkgs.utillinux
         pkgs.gnugrep
         pkgs.kmod
+        pkgs.devmem2
         virtio_mmio
       ];
       environment.pathsToLink = [ "/lib/modules" ];

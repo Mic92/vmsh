@@ -129,6 +129,26 @@ fn fd_transfer(pid: Pid, nr_fds: u32) -> Result<()> {
     Ok(())
 }
 
+fn guest_mprotect(pid: Pid) -> Result<()> {
+    let vm = try_with!(get_hypervisor(pid), "cannot get vms for process {}", pid);
+    vm.stop()?;
+
+    let vm_mem = vm.vm_add_mem::<u64>(0xd0000000, true)?;
+    vm_mem.mem.write(&0xdeadbeef)?;
+    assert_eq!(vm_mem.mem.read()?, 0xdeadbeef);
+
+    // register userfaultfd which always returns something else
+    //vm.mprotect()?;
+
+    vm.resume()?;
+
+    println!("pause");
+    nix::unistd::pause();
+    // pytest shall now check that the memory does not contain 0xdeadbeef on read
+
+    Ok(())
+}
+
 fn guest_ioeventfd(pid: Pid) -> Result<()> {
     let vm = try_with!(get_hypervisor(pid), "cannot get vms for process {}", pid);
     vm.stop()?;
@@ -188,6 +208,7 @@ fn main() {
         .subcommand(subtest("guest_add_mem_get_maps"))
         .subcommand(subtest("fd_transfer1"))
         .subcommand(subtest("fd_transfer2"))
+        .subcommand(subtest("guest_mprotect"))
         .subcommand(subtest("guest_ioeventfd"));
 
     let matches = app.get_matches();
@@ -203,6 +224,7 @@ fn main() {
         "guest_add_mem_get_maps" => guest_add_mem(pid, true),
         "fd_transfer1" => fd_transfer(pid, 1),
         "fd_transfer2" => fd_transfer(pid, 2),
+        "guest_mprotect" => guest_mprotect(pid),
         "guest_ioeventfd" => guest_ioeventfd(pid),
         _ => std::process::exit(2),
     };
