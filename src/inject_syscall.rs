@@ -1,15 +1,13 @@
 use libc::{c_int, c_long, c_ulong, c_void, off_t, pid_t, size_t, ssize_t, SYS_munmap};
 use libc::{SYS_getpid, SYS_ioctl, SYS_mmap};
+use nix::sys::signal::Signal;
 use nix::sys::wait::{waitpid, WaitStatus};
-use nix::sys::{signal::Signal, wait::WaitPidFlag};
 use nix::unistd::Pid;
 use simple_error::bail;
 use simple_error::try_with;
-use std::fs;
 use std::os::unix::prelude::RawFd;
 
 use crate::cpu::{self, Regs};
-use crate::proc;
 use crate::ptrace;
 use crate::result::Result;
 
@@ -21,30 +19,7 @@ pub struct Process {
 }
 
 pub fn attach(pid: Pid) -> Result<Process> {
-    let dir = proc::pid_path(pid).join("task");
-    let threads_dir = try_with!(
-        fs::read_dir(&dir),
-        "failed to open directory {}",
-        dir.display()
-    );
-    let mut process_idx = 0;
-
-    let threads = threads_dir
-        .enumerate()
-        .map(|(i, thread_name)| {
-            let entry = try_with!(thread_name, "failed to read directory {}", dir.display());
-            let _file_name = entry.file_name();
-            let file_name = _file_name.to_str().unwrap();
-            let raw_tid = try_with!(file_name.parse::<pid_t>(), "invalid tid {}", file_name);
-            let tid = Pid::from_raw(raw_tid);
-            if tid == pid {
-                process_idx = i;
-            }
-            let thread = ptrace::attach(tid);
-            try_with!(waitpid(tid, Some(WaitPidFlag::WSTOPPED)), "waitpid failed");
-            thread
-        })
-        .collect::<Result<Vec<_>>>()?;
+    let (threads, process_idx) = ptrace::attach_all_threads(pid)?;
 
     let saved_regs = try_with!(
         threads[process_idx].getregs(),
@@ -286,6 +261,71 @@ impl Process {
                 }
             }
         }
+    }
+
+    /// Depricated. TODO remove
+    pub fn await_syscall(&self) -> Result<()> {
+        // TODO spawn worker threads that do the same
+        //for thread in &self.threads {
+        //thread.syscall()?;
+        //}
+
+        self.main_thread().syscall()?;
+        loop {
+            let status = try_with!(waitpid(self.main_thread().tid, None), "cannot waitpid");
+
+            match status {
+                WaitStatus::PtraceEvent(_, _, _) => {
+                    bail!("got unexpected ptrace event")
+                }
+                WaitStatus::PtraceSyscall(_) => {
+                    bail!("got unexpected ptrace syscall event")
+                }
+                WaitStatus::StillAlive => {
+                    bail!("got unexpected still-alive waitpid() event")
+                }
+                WaitStatus::Continued(_) => {
+                    println!("WaitStatus::Continued");
+                } // noop
+                //WaitStatus::Stopped(_, Signal::SIGTRAP) => {
+                //let regs =
+                //try_with!(self.main_thread().getregs(), "cannot syscall results");
+                //println!("syscall: eax {:x} ebx {:x}", regs.rax, regs.rbx);
+
+                //return Ok(());
+                //}
+                WaitStatus::Stopped(pid, signal) => {
+                    println!("process {} was stopped by by signal: {}", pid, signal);
+                    let regs = try_with!(self.main_thread().getregs(), "cannot syscall results");
+                    println!(
+                        "syscall: eax {:x} ebx {:x} cs {:x}",
+                        regs.rax, regs.rbx, regs.cs
+                    );
+                    let siginfo = try_with!(
+                        nix::sys::ptrace::getsiginfo(self.main_thread().tid),
+                        "cannot getsiginfo"
+                    );
+                    if (siginfo.si_code == libc::SIGTRAP)
+                        || (siginfo.si_code == (libc::SIGTRAP | 0x80))
+                    {
+                        println!("siginfo.si_code true: 0x{:x}", siginfo.si_code);
+                        return Ok(());
+                    } else {
+                        println!("siginfo.si_code false: 0x{:x}", siginfo.si_code);
+                        //try_with!(nix::sys::ptrace::syscall(self.main_thread().tid, None), "cannot ptrace::syscall");
+                    }
+                    //bail!("process was stopped by by signal: {}", signal);
+                    //self.main_thread().cont(Some(signal))?;
+                    //return self.await_syscall();
+                }
+                WaitStatus::Exited(_, status) => bail!("process exited with: {}", status),
+                WaitStatus::Signaled(_, signal, _) => {
+                    bail!("process was stopped by signal: {}", signal)
+                }
+            }
+        }
+
+        Ok(())
     }
 
     fn main_thread(&self) -> &ptrace::Thread {

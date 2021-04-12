@@ -11,3 +11,4 @@ pub mod page_math;
 pub mod proc;
 pub mod ptrace;
 pub mod result;
+pub mod wrap_syscall;

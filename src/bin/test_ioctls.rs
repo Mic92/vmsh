@@ -195,6 +195,26 @@ fn guest_ioeventfd(pid: Pid) -> Result<()> {
     Ok(())
 }
 
+fn guest_kvm_exits(pid: Pid) -> Result<()> {
+    //let tracee = vmsh::inject_syscall::attach(pid)?;
+    //for i in 0..10 {
+        //println!("{}", i);
+        //tracee.await_syscall()?;
+    //}
+    //return Ok(());
+
+    let vm = try_with!(get_hypervisor(pid), "cannot get vms for process {}", pid);
+
+    //vm.stop()?;
+    for i in 0..10 {
+        println!("{}", i);
+        vm.log_kvm_exits()?;
+    }
+    //vm.resume()?;
+
+    Ok(())
+}
+
 fn subtest(name: &str) -> App {
     SubCommand::with_name(name).arg(Arg::with_name("pid").required(true).index(1))
 }
@@ -209,6 +229,7 @@ fn main() {
         .subcommand(subtest("fd_transfer1"))
         .subcommand(subtest("fd_transfer2"))
         .subcommand(subtest("guest_userfaultfd"))
+        .subcommand(subtest("guest_kvm_exits"))
         .subcommand(subtest("guest_ioeventfd"));
 
     let matches = app.get_matches();
@@ -225,6 +246,7 @@ fn main() {
         "fd_transfer1" => fd_transfer(pid, 1),
         "fd_transfer2" => fd_transfer(pid, 2),
         "guest_userfaultfd" => guest_userfaultfd(pid),
+        "guest_kvm_exits" => guest_kvm_exits(pid),
         "guest_ioeventfd" => guest_ioeventfd(pid),
         _ => std::process::exit(2),
     };

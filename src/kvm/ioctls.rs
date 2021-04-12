@@ -213,6 +213,8 @@ ioctl_iow_nr!(
     kvmb::kvm_userspace_memory_region
 );
 
+ioctl_io_nr!(KVM_RUN, KVMIO, 0x80);
+
 // Ioctls for VM fds.
 /* Available with KVM_CAP_USER_MEMORY */
 //ioctl_iow_nr!(

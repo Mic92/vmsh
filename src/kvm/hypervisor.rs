@@ -20,6 +20,7 @@ use crate::kvm::tracee::{kvm_msrs, Tracee};
 use crate::page_math;
 use crate::proc::{openpid, Mapping, PidHandle};
 use crate::result::Result;
+use crate::wrap_syscall::KvmRunWrapper;
 
 /// # Safety
 ///
@@ -399,6 +400,22 @@ impl Hypervisor {
         // TODO impl userfaultfd handling
 
         Ok(-1)
+    }
+
+    /// Expects Self.resumed()-ed
+    pub fn log_kvm_exits(&self) -> Result<()> {
+        //let tracee = try_with!(
+        //    self.tracee.read(),
+        //    "cannot obtain tracee read lock: poinsoned"
+        //);
+        //let proc = tracee.try_get_proc()?;
+
+        let kvm_run = KvmRunWrapper::attach(self.pid)?;
+        for _ in 0..2 {
+            kvm_run.wait_for_ioctl()?;
+        }
+
+        Ok(())
     }
 
     pub fn check_extension(&self, cap: c_int) -> Result<c_int> {
