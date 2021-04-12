@@ -16,7 +16,9 @@ use vmm_sys_util::eventfd::{EventFd, EFD_NONBLOCK};
 use crate::cpu;
 use crate::kvm::fd_transfer;
 use crate::kvm::ioctls;
-use crate::kvm::tracee::{kvm_msrs, Tracee};
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+use crate::kvm::tracee::kvm_msrs;
+use crate::kvm::tracee::Tracee;
 use crate::page_math;
 use crate::proc::{openpid, Mapping, PidHandle};
 use crate::result::Result;

@@ -6,6 +6,7 @@ use simple_error::try_with;
 use std::{mem, ptr};
 
 use crate::cpu::Regs;
+use crate::elf;
 use crate::result::Result;
 
 pub struct Thread {
@@ -14,17 +15,21 @@ pub struct Thread {
 
 /// Get user registers, as with `ptrace(PTRACE_GETREGS, ...)`
 fn getregs(pid: Pid) -> nix::Result<Regs> {
-    ptrace_get_data::<Regs>(Request::PTRACE_GETREGS, pid)
+    ptrace_get_data::<Regs>(Request::PTRACE_GETREGSET, pid)
 }
 
 /// Set user registers, as with `ptrace(PTRACE_SETREGS, ...)`
 fn setregs(pid: Pid, regs: &Regs) -> nix::Result<()> {
+    let iov = libc::iovec {
+        iov_base: regs as *const _ as *mut _,
+        iov_len: mem::size_of::<Regs>(),
+    };
     let res = unsafe {
         libc::ptrace(
-            Request::PTRACE_SETREGS as RequestType,
+            Request::PTRACE_SETREGSET as RequestType,
             libc::pid_t::from(pid),
-            ptr::null_mut::<c_void>(),
-            regs as *const _ as *const c_void,
+            elf::NT_PRSTATUS,
+            &iov,
         )
     };
     Errno::result(res).map(drop)
@@ -36,12 +41,16 @@ fn setregs(pid: Pid, regs: &Regs) -> nix::Result<()> {
 /// requests.
 fn ptrace_get_data<T>(request: Request, pid: Pid) -> nix::Result<T> {
     let mut data = mem::MaybeUninit::uninit();
+    let iov = libc::iovec {
+        iov_base: data.as_mut_ptr() as *mut _,
+        iov_len: mem::size_of::<T>(),
+    };
     let res = unsafe {
         libc::ptrace(
             request as RequestType,
             libc::pid_t::from(pid),
-            ptr::null_mut::<T>(),
-            data.as_mut_ptr() as *const _ as *const c_void,
+            elf::NT_PRSTATUS,
+            &iov,
         )
     };
     Errno::result(res)?;
