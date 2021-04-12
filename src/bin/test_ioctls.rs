@@ -207,8 +207,8 @@ fn guest_kvm_exits(pid: Pid) -> Result<()> {
 
     //vm.stop()?;
     //for i in 0..100 {
-        //println!("{}", i);
-        vm.log_kvm_exits()?;
+    //println!("{}", i);
+    vm.log_kvm_exits()?;
     //}
     //vm.resume()?;
 

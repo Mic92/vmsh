@@ -7,9 +7,24 @@ use crate::cpu::{self, Regs};
 use crate::ptrace;
 use crate::result::Result;
 
+struct Thread {
+    ptthread: ptrace::Thread,
+    is_running: bool,
+}
+
+impl Thread {
+    pub fn new(ptthread: ptrace::Thread) -> Thread {
+        Thread {
+            ptthread,
+            is_running: false,
+        }
+    }
+}
+
+/// TODO respect and handle newly spawned threads as well
 pub struct KvmRunWrapper {
     process_idx: usize,
-    threads: Vec<ptrace::Thread>,
+    threads: Vec<Thread>,
 }
 
 impl KvmRunWrapper {
@@ -21,6 +36,7 @@ impl KvmRunWrapper {
             "cannot attach KvmRunWrapper to all threads of {} via ptrace",
             pid
         );
+        let threads = threads.into_iter().map(|t| Thread::new(t)).collect();
         Ok(KvmRunWrapper {
             process_idx,
             threads,
@@ -29,31 +45,41 @@ impl KvmRunWrapper {
 
     pub fn cont(&self) -> Result<()> {
         for thread in &self.threads {
-            thread.cont(None)?;
+            thread.ptthread.cont(None)?;
         }
         Ok(())
     }
 
-    fn main_thread(&self) -> &ptrace::Thread {
+    fn main_thread(&self) -> &Thread {
         &self.threads[self.process_idx]
     }
 
-    // -> Err if third qemu thread terminates
-    pub fn wait_for_ioctl(&self) -> Result<()> {
-        println!("syscall");
-        //for thread in &self.threads {
-            //thread.syscall()?;
-        //}
-        //println!("syscall {}", self.threads[0].tid);
-        try_with!(self.main_thread().syscall(), "fii");
+    fn main_thread_mut(&mut self) -> &mut Thread {
+        &mut self.threads[self.process_idx]
+    }
 
-        //  
+    // -> Err if third qemu thread terminates
+    pub fn wait_for_ioctl(&mut self) -> Result<()> {
+        println!("syscall");
+        for thread in &mut self.threads {
+            if !thread.is_running {
+                thread.ptthread.syscall()?;
+                thread.is_running = true;
+            }
+        }
+        //println!("syscall {}", self.threads[0].tid);
+        //if !self.main_thread().is_running {
+        //    try_with!(self.main_thread().ptthread.syscall(), "fii");
+        //    self.main_thread_mut().is_running = true;
+        //}
+
+        //
         // Further options to waitpid on many Ps at the same time:
-        // 
+        //
         // - waitpid(WNOHANG): async waitpid, busy polling
-        // 
+        //
         // - linux waitid() P_PIDFD pidfd_open(): maybe (e)poll() on this fd? dunno
-        // 
+        //
         // - setpgid(): waitpid on the pgid. Grouping could destroy existing Hypervisor groups and
         //   requires all group members to be in the same session (whatever that means). Also if
         //   the group owner (pid==pgid) dies, the enire group orphans (will it be killed as
@@ -66,21 +92,27 @@ impl KvmRunWrapper {
         println!("waitpid");
         let status = self.waitpid_busy()?;
         //let status = try_with!(
-            //waitpid(Pid::from_raw(-self.main_thread().tid.as_raw()), None),
-            //"cannot wait for ioctl syscall"
+        //waitpid(Pid::from_raw(-self.main_thread().tid.as_raw()), None),
+        //"cannot wait for ioctl syscall"
         //);
         self.process_status(status)?;
 
         Ok(())
     }
 
-    fn waitpid_busy(&self) -> Result<WaitStatus> {
+    fn waitpid_busy(&mut self) -> Result<WaitStatus> {
         loop {
-            for thread in &self.threads {
-                let status = try_with!(waitpid(thread.tid, Some(nix::sys::wait::WaitPidFlag::WNOHANG)),
+            for thread in &mut self.threads {
+                let status = try_with!(
+                    waitpid(
+                        thread.ptthread.tid,
+                        Some(nix::sys::wait::WaitPidFlag::WNOHANG)
+                    ),
                     "cannot wait for ioctl syscall"
                 );
                 if WaitStatus::StillAlive != status {
+                    println!("waipid: {}", thread.ptthread.tid);
+                    thread.is_running = false;
                     return Ok(status);
                 }
             }
@@ -110,10 +142,13 @@ impl KvmRunWrapper {
             //}
             WaitStatus::Stopped(pid, signal) => {
                 println!("process {} was stopped by by signal: {}", pid, signal);
-                let thread: &ptrace::Thread =
-                    match self.threads.iter().find(|thread| thread.tid == pid) {
-                        Some(t) => &t,
-                        None => bail!("received stop for unkown process: {}", pid),
+                let thread: &ptrace::Thread = match self
+                    .threads
+                    .iter()
+                    .find(|thread| thread.ptthread.tid == pid)
+                {
+                    Some(t) => &t.ptthread,
+                    None => bail!("received stop for unkown process: {}", pid),
                 };
 
                 let regs = try_with!(thread.getregs(), "cannot syscall results");
