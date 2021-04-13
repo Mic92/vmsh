@@ -1,11 +1,15 @@
-use libc::{c_long, c_void};
+use nix::sys::wait::{waitpid, WaitStatus};
+use libc::{c_int, c_long, c_ulong, c_void, off_t, pid_t, size_t, ssize_t, SYS_munmap};
 use nix::errno::Errno;
 use nix::sys::ptrace::{self, AddressType, Request, RequestType};
 use nix::unistd::Pid;
 use simple_error::try_with;
 use std::{mem, ptr};
+use nix::sys::{signal::Signal, wait::WaitPidFlag};
+use std::fs;
 
 use crate::cpu::Regs;
+use crate::proc;
 use crate::result::Result;
 
 pub struct Thread {
@@ -61,6 +65,14 @@ impl Thread {
         ))
     }
 
+    pub fn cont(&self, sig: Option<nix::sys::signal::Signal>) -> Result<()> {
+        try_with!(
+            ptrace::cont(self.tid, sig),
+            "cannot continue tracee with ptrace"
+        );
+        Ok(())
+    }
+
     pub fn syscall(&self) -> Result<()> {
         try_with!(
             ptrace::syscall(self.tid, None),
@@ -91,6 +103,40 @@ impl Thread {
 pub fn attach(tid: Pid) -> Result<Thread> {
     try_with!(ptrace::attach(tid), "cannot attach to process");
     Ok(Thread { tid })
+}
+
+pub fn attach_all_threads(pid: Pid) -> Result<(Vec<Thread>, usize)> {
+    let dir = proc::pid_path(pid).join("task");
+    let threads_dir = try_with!(
+        fs::read_dir(&dir),
+        "failed to open directory {}",
+        dir.display()
+    );
+    let mut process_idx = 0;
+
+    let threads = threads_dir
+        .enumerate()
+        .map(|(i, thread_name)| {
+            let entry = try_with!(thread_name, "failed to read directory {}", dir.display());
+            let _file_name = entry.file_name();
+            let file_name = _file_name.to_str().unwrap();
+            let raw_tid = try_with!(file_name.parse::<pid_t>(), "invalid tid {}", file_name);
+            let tid = Pid::from_raw(raw_tid);
+            if tid == pid {
+                process_idx = i;
+            }
+            let thread = attach(tid);
+            try_with!(waitpid(tid, Some(WaitPidFlag::WSTOPPED)), "waitpid failed");
+            thread
+        })
+        .collect::<Result<Vec<_>>>()?;
+
+    println!("pid: {}", pid);
+    for thread in &threads {
+        println!("  tid: {}", thread.tid);
+    }
+
+    Ok((threads, process_idx))
 }
 
 impl Drop for Thread {

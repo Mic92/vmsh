@@ -5,6 +5,7 @@ pub mod device;
 pub mod elf;
 pub mod gdb_break;
 pub mod inject_syscall;
+pub mod catch_signals;
 pub mod inspect;
 pub mod kvm;
 pub mod page_math;

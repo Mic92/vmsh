@@ -3,6 +3,7 @@ use libc::{c_int, c_void};
 use log::warn;
 use nix::sys::uio::{process_vm_readv, process_vm_writev, IoVec, RemoteIoVec};
 use nix::unistd::Pid;
+use nix::sys::mman::ProtFlags;
 use simple_error::{bail, try_with};
 use std::ffi::OsStr;
 use std::marker::PhantomData;
@@ -14,6 +15,7 @@ use std::sync::{Arc, RwLock};
 use vmm_sys_util::eventfd::{EventFd, EFD_NONBLOCK};
 
 use crate::cpu;
+use crate::catch_signals::SignalCatcher;
 use crate::kvm::fd_transfer;
 use crate::kvm::ioctls;
 use crate::kvm::tracee::{kvm_msrs, Tracee};
@@ -85,6 +87,7 @@ pub fn process_write<T: Sized + Copy>(pid: Pid, addr: *mut c_void, val: &T) -> R
 
 /// Hypervisor Memory
 pub struct HvMem<T: Copy> {
+    /// ptr belongs to hypervisor memory space
     pub ptr: *mut c_void,
     pid: Pid,
     tracee: Arc<RwLock<Tracee>>,
@@ -162,6 +165,33 @@ impl<T: Copy> Drop for VmMem<T> {
     }
 }
 
+/// Monitored VM memory (somewhat transactional)
+pub struct MonMem<T: Copy> {
+    pub mem: VmMem<T>,
+}
+
+impl<T: Copy> MonMem<T> {
+    pub fn new(mem: VmMem<T>) -> Result<MonMem<T>> {
+        let mon = MonMem { mem };
+        mon.set_prot(ProtFlags::PROT_READ)?;
+        Ok(mon)
+    }
+
+    pub fn set_prot(&self, prot: ProtFlags) -> Result<()> {
+        let mem = &self.mem.mem;
+        let tracee = try_with!(
+            mem.tracee.read(),
+            "cannot obtain tracee write lock: poinsoned"
+        );
+        tracee.try_get_proc()?.mprotect(mem.ptr, size_of::<T>(), prot.bits())?;
+        Ok(())
+    }
+
+    pub fn wait_for_read() -> Result<()> {
+        Ok(())
+    }
+}
+
 pub struct VCPU {
     pub idx: usize,
     pub fd_num: RawFd,
@@ -231,9 +261,9 @@ impl Hypervisor {
             self.tracee.read(),
             "cannot obtain tracee write lock: poinsoned"
         );
-        let ret = tracee.vm_ioctl_with_ref(ioctls::KVM_SET_USER_MEMORY_REGION(), &arg_hv)?;
+        let ret = try_with!(tracee.vm_ioctl_with_ref(ioctls::KVM_SET_USER_MEMORY_REGION(), &arg_hv), "cannot attach hypervisor page as physical memory to KVM.");
         if ret != 0 {
-            bail!("ioctl_with_ref failed: {}", ret)
+            bail!("cannot attach hypervisor page as physical memory to KVM: {}", ret)
         }
 
         Ok(VmMem {
@@ -261,7 +291,7 @@ impl Hypervisor {
         );
         // safe, event for the tracee, because HvMem enforces to write and read at mose
         // `size_of::<T> <= size` bytes.
-        let ptr = tracee.mmap(size)?;
+        let ptr = try_with!(tracee.mmap(size), "cannot allocate hypervisor memory");
         Ok(HvMem {
             ptr,
             pid: self.pid,
@@ -391,6 +421,18 @@ impl Hypervisor {
         );
         tracee.check_extension(cap)
     }
+
+    /// must be resume()-ed
+    pub fn mprotect<T: Copy>(&self, monmem: &MonMem<T>) -> Result<()> {
+        let mut tracer = SignalCatcher::attach(self.pid)?;
+        for i in 0..10 {
+            println!("i {}", i);
+            tracer.wait_for_signal(monmem)?;
+        }
+
+        Ok(())
+    }
+
 
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     pub fn get_sregs(&self, vcpu: &VCPU) -> Result<kvmb::kvm_sregs> {

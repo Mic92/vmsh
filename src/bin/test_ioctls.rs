@@ -6,6 +6,7 @@ use std::os::unix::io::AsRawFd;
 use std::time::Duration;
 use vmm_sys_util::eventfd::{EventFd, EFD_NONBLOCK};
 use vmsh::kvm::hypervisor::get_hypervisor;
+use vmsh::kvm::hypervisor::MonMem;
 use vmsh::result::Result;
 
 fn inject(pid: Pid) -> Result<()> {
@@ -129,18 +130,34 @@ fn fd_transfer(pid: Pid, nr_fds: u32) -> Result<()> {
     Ok(())
 }
 
+/// As expected this is interrupted by SIGSEGV. (other than ioctl(KVM_RUN) - which returns with bad
+/// address)
+fn mprotect() -> Result<()> {
+    unsafe {
+        let mem = try_with!(nix::sys::mman::mmap(0 as *mut libc::c_void, 64, nix::sys::mman::ProtFlags::PROT_READ, nix::sys::mman::MapFlags::MAP_SHARED | nix::sys::mman::MapFlags::MAP_ANONYMOUS, -1, 0), "foo");
+        let mem: *mut u32 = mem as *mut u32;
+        let i = 1;
+        std::ptr::write(mem, i);
+    }
+
+    Ok(())
+}
+
 fn guest_mprotect(pid: Pid) -> Result<()> {
+    //std::thread::sleep(Duration::from_millis(10000));
     let vm = try_with!(get_hypervisor(pid), "cannot get vms for process {}", pid);
     vm.stop()?;
 
-    let vm_mem = vm.vm_add_mem::<u64>(0xd0000000, true)?;
+    let vm_mem = vm.vm_add_mem::<u64>(0xd0000000, false)?;
+    println!("vm_mem addr in hv: {:?}", vm_mem.mem.ptr);
     vm_mem.mem.write(&0xdeadbeef)?;
     assert_eq!(vm_mem.mem.read()?, 0xdeadbeef);
+    let mon_vm_mem = MonMem::new(vm_mem)?;
+    //mon_vm_mem.mem.mem.write(&0xdeadbeef)?;
+    vm.resume()?;
 
     // register userfaultfd which always returns something else
-    //vm.mprotect()?;
-
-    vm.resume()?;
+    //vm.mprotect(&mon_vm_mem)?;
 
     println!("pause");
     nix::unistd::pause();
@@ -209,6 +226,7 @@ fn main() {
         .subcommand(subtest("fd_transfer1"))
         .subcommand(subtest("fd_transfer2"))
         .subcommand(subtest("guest_mprotect"))
+        .subcommand(subtest("mprotect"))
         .subcommand(subtest("guest_ioeventfd"));
 
     let matches = app.get_matches();
@@ -225,6 +243,7 @@ fn main() {
         "fd_transfer1" => fd_transfer(pid, 1),
         "fd_transfer2" => fd_transfer(pid, 2),
         "guest_mprotect" => guest_mprotect(pid),
+        "mprotect" => mprotect(),
         "guest_ioeventfd" => guest_ioeventfd(pid),
         _ => std::process::exit(2),
     };
