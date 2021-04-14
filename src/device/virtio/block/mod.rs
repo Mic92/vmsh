@@ -41,8 +41,11 @@ pub enum Error {
     Endpoint(EvmgrError),
     EventFd(io::Error),
     OpenFile(io::Error),
+    #[allow(dead_code)] // FIXME
     QueuesNotValid,
+    #[allow(dead_code)] // FIXME
     RegisterIoevent(errno::Error),
+    #[allow(dead_code)] // FIXME
     RegisterIrqfd(errno::Error),
     Seek(io::Error),
 }

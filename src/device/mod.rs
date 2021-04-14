@@ -21,6 +21,7 @@ use vm_memory::{GuestMemoryMmap, GuestRegionMmap};
 use vm_virtio::device::status::RESET;
 
 // Where BIOS/VGA magic would live on a real PC.
+#[allow(dead_code)] // FIXME
 const EBDA_START: u64 = 0x9fc00;
 const FIRST_ADDR_PAST_32BITS: u64 = 1 << 32;
 const MEM_32BIT_GAP_SIZE: u64 = 768 << 20;
@@ -65,6 +66,7 @@ fn convert(mappings: &[Mapping]) -> Result<GuestMemoryMmap> {
     ))
 }
 
+#[allow(dead_code)] // FIXME
 pub struct Device {
     vmm: Arc<Hypervisor>,
     blkdev: Arc<Mutex<Block>>,
