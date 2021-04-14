@@ -4,6 +4,7 @@ use simple_error::bail;
 use simple_error::try_with;
 
 use crate::cpu::{self, Regs};
+use crate::kvm::ioctls;
 use crate::ptrace;
 use crate::result::Result;
 
@@ -155,6 +156,16 @@ impl KvmRunWrapper {
                     return Ok(());
                 }
                 println!("process {} was stopped by by signal: {}", pid, signal);
+                println!("{:?}", regs);
+                // SYS_ioctl = 0x16
+                // KVM_RUN = 0xae80 = ioctl_io_nr!(KVM_RUN, KVMIO, 0x80)
+                let (syscall_nr, ioctl_fd, ioctl_request) = regs.get_syscall_params();
+                if syscall_nr == libc::SYS_ioctl as u64 {
+                    println!("ioctl(fd = {}, request = {})", ioctl_fd, ioctl_request);
+                }
+                if ioctl_request == ioctls::KVM_RUN() {
+                    println!("kvm-run!");
+                }
                 println!(
                     "syscall: eax {:x} ebx {:x} cs {:x} rip {:x}",
                     regs.rax, regs.rbx, regs.cs, regs.rip
