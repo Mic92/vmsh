@@ -136,7 +136,7 @@ pub fn get_syscall_info(pid: Pid) -> Result<SyscallInfo> {
             info.as_mut_ptr(),
         )
     };
-    println!("syscall info written bytes {}", ret);
+    //println!("syscall info written bytes {}", ret);
     if ret <= 0 {
         bail!("ptrace get syscall info error: {}", ret);
     }
@@ -146,10 +146,10 @@ pub fn get_syscall_info(pid: Pid) -> Result<SyscallInfo> {
             && size_of::<RawInfo>() - size_of::<RawData>() == ret as usize)
             || (size_of::<RawInfo>() == ret as usize)
     );
-    println!(
-        "syscall info: instruction_pointer {:x}",
-        info.instruction_pointer
-    );
+    // println!(
+    //     "syscall info: instruction_pointer {:x}",
+    //     info.instruction_pointer
+    // );
     let info = try_with!(
         parse_raw_info(info),
         "cannot understand ptrace(PTRACE_GET_SYSCALL_INFO) response"
