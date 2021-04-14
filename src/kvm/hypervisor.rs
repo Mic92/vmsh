@@ -162,6 +162,7 @@ impl<T: Copy> Drop for VmMem<T> {
     }
 }
 
+#[allow(non_camel_case_types)]
 pub struct VCPU {
     pub idx: usize,
     pub fd_num: RawFd,
