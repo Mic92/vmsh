@@ -37,6 +37,7 @@ const VIRTIO_MMIO_INT_VRING: u8 = 0x01;
 
 // The driver will write to the register at this offset in the MMIO region to notify the device
 // about available queue events.
+#[allow(dead_code)] // FIXME
 const VIRTIO_MMIO_QUEUE_NOTIFY_OFFSET: u64 = 0x50;
 
 // TODO: Make configurable for each device maybe?
