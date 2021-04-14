@@ -503,6 +503,7 @@ fn find_vm_fd(handle: &PidHandle) -> Result<(Vec<RawFd>, Vec<VCPU>)> {
                 "cannot parse number {}",
                 parts[0]
             );
+            println!("vcpu {} fd {}", idx, fd.fd_num);
             vcpu_fds.push(VCPU {
                 idx,
                 fd_num: fd.fd_num,

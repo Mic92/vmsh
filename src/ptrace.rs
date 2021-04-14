@@ -10,6 +10,7 @@ use std::{mem, ptr};
 
 use crate::cpu::Regs;
 use crate::proc;
+use crate::ptrace_syscall_info::{get_syscall_info, SyscallInfo};
 use crate::result::Result;
 
 pub struct Thread {
@@ -71,6 +72,14 @@ impl Thread {
             "cannot set break on syscall with ptrace"
         );
         Ok(())
+    }
+
+    pub fn syscall_info(&self) -> Result<SyscallInfo> {
+        let info = try_with!(
+            get_syscall_info(self.tid),
+            "cannot get syscall info with ptrace"
+        );
+        Ok(info)
     }
 
     pub fn cont(&self, sig: Option<nix::sys::signal::Signal>) -> Result<()> {

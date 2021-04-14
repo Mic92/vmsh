@@ -60,7 +60,7 @@ impl KvmRunWrapper {
 
     // -> Err if third qemu thread terminates
     pub fn wait_for_ioctl(&mut self) -> Result<()> {
-        println!("syscall");
+        //println!("syscall");
         for thread in &mut self.threads {
             if !thread.is_running {
                 thread.ptthread.syscall()?;
@@ -89,7 +89,7 @@ impl KvmRunWrapper {
         // use linux default flag of __WALL: wait for main_thread and all kinds of children
         // to wait for all children, use -gid
         //println!("wait {}", self.threads[0].tid);
-        println!("waitpid");
+        //println!("waitpid");
         let status = self.waitpid_busy()?;
         //let status = try_with!(
         //waitpid(Pid::from_raw(-self.main_thread().tid.as_raw()), None),
@@ -111,7 +111,7 @@ impl KvmRunWrapper {
                     "cannot wait for ioctl syscall"
                 );
                 if WaitStatus::StillAlive != status {
-                    println!("waipid: {}", thread.ptthread.tid);
+                    //println!("waipid: {}", thread.ptthread.tid);
                     thread.is_running = false;
                     return Ok(status);
                 }
@@ -141,7 +141,6 @@ impl KvmRunWrapper {
             //return Ok(());
             //}
             WaitStatus::Stopped(pid, signal) => {
-                println!("process {} was stopped by by signal: {}", pid, signal);
                 let thread: &ptrace::Thread = match self
                     .threads
                     .iter()
@@ -152,10 +151,18 @@ impl KvmRunWrapper {
                 };
 
                 let regs = try_with!(thread.getregs(), "cannot syscall results");
+                if regs.rbx != 0xae80 {
+                    return Ok(());
+                }
+                println!("process {} was stopped by by signal: {}", pid, signal);
                 println!(
-                    "syscall: eax {:x} ebx {:x} cs {:x}",
-                    regs.rax, regs.rbx, regs.cs
+                    "syscall: eax {:x} ebx {:x} cs {:x} rip {:x}",
+                    regs.rax, regs.rbx, regs.cs, regs.rip
                 );
+
+                let syscall_info = try_with!(thread.syscall_info(), "cannot syscall info");
+                println!("syscall info op: {:?}", syscall_info.op);
+
                 let siginfo = try_with!(
                     nix::sys::ptrace::getsiginfo(thread.tid),
                     "cannot getsiginfo"
