@@ -162,7 +162,7 @@ impl<T: Copy> Drop for VmMem<T> {
     }
 }
 
-#[allow(upper_case_acronyms)]
+#[allow(clippy::upper_case_acronyms)]
 pub struct VCPU {
     pub idx: usize,
     pub fd_num: RawFd,
