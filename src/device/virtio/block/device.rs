@@ -2,10 +2,12 @@
 // Author of further modifications: Peter Okelmann
 // SPDX-License-Identifier: Apache-2.0 OR BSD-3-Clause
 
+use std::borrow::{Borrow, BorrowMut};
 use std::fs::OpenOptions;
 use std::ops::DerefMut;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+use vm_virtio::device::VirtioDeviceType;
 
 use event_manager::{MutEventSubscriber, RemoteEndpoint, Result as EvmgrResult, SubscriberId};
 use vm_device::bus::MmioAddress;
@@ -13,7 +15,7 @@ use vm_device::device_manager::MmioManager;
 use vm_device::{DeviceMmio, MutDeviceMmio};
 use vm_memory::GuestAddressSpace;
 use vm_virtio::block::stdio_executor::StdIoBackend;
-use vm_virtio::device::{VirtioConfig, VirtioMmioDevice, WithDeviceOps, WithVirtioConfig};
+use vm_virtio::device::{VirtioConfig, VirtioDeviceActions, VirtioMmioDevice};
 use vm_virtio::Queue;
 use vmm_sys_util::eventfd::{EventFd, EFD_NONBLOCK};
 
@@ -136,30 +138,30 @@ where
 
 // We now implement `WithVirtioConfig` and `WithDeviceOps` to get the automatic implementation
 // for `VirtioDevice`.
-impl<M: GuestAddressSpace + Clone + Send + 'static> WithVirtioConfig<M> for Block<M> {
+impl<M: GuestAddressSpace + Clone + Send + 'static> VirtioDeviceType for Block<M> {
     fn device_type(&self) -> u32 {
         BLOCK_DEVICE_ID
     }
+}
 
-    fn virtio_config(&self) -> &VirtioConfig<M> {
+impl<M: GuestAddressSpace + Clone + Send + 'static> Borrow<VirtioConfig<M>> for Block<M> {
+    fn borrow(&self) -> &VirtioConfig<M> {
         &self.virtio_cfg
     }
+}
 
-    fn virtio_config_mut(&mut self) -> &mut VirtioConfig<M> {
+impl<M: GuestAddressSpace + Clone + Send + 'static> BorrowMut<VirtioConfig<M>> for Block<M> {
+    fn borrow_mut(&mut self) -> &mut VirtioConfig<M> {
         &mut self.virtio_cfg
     }
 }
 
-impl<M: GuestAddressSpace + Clone + Send + 'static> WithDeviceOps for Block<M> {
+impl<M: GuestAddressSpace + Clone + Send + 'static> VirtioDeviceActions for Block<M> {
     type E = Error;
 
     fn activate(&mut self) -> Result<()> {
         if self.virtio_cfg.device_activated {
             return Err(Error::AlreadyActivated);
-        }
-
-        if !self.queues_valid() {
-            return Err(Error::QueuesNotValid);
         }
 
         // We do not support legacy drivers.

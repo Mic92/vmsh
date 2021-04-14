@@ -67,7 +67,7 @@ impl MmioDeviceSpace {
             version: MMIO_VERSION,
             device_id: device.device_type(),
             vendor_id: VENDOR_ID,
-            device_features: device.device_features(device.device_features_select()),
+            device_features: device.device_features() as u32,
             device_features_sel: 0,
             pad1: [0u32; 2],
             driver_features: 0, // TODO properly init this field and others
