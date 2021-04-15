@@ -174,6 +174,9 @@ pub struct Hypervisor {
     pub pid: Pid,
     pub vm_fd: RawFd,
     pub vcpus: Vec<VCPU>,
+    /// hypervisor memory where fd_num is mapped to.
+    /// sorted by vcpu nr. TODO what if there exist cpu [0, 1, 4]?
+    pub vcpu_maps: Vec<Mapping>,
     tracee: Arc<RwLock<Tracee>>,
 }
 
@@ -418,7 +421,7 @@ impl Hypervisor {
         //);
         //let proc = tracee.try_get_proc()?;
 
-        let mut kvm_run = KvmRunWrapper::attach(self.pid)?;
+        let mut kvm_run = KvmRunWrapper::attach(self.pid, &self.vcpu_maps)?;
         for i in 0..100000 {
             println!("{}", i);
             kvm_run.wait_for_ioctl()?;
@@ -534,6 +537,9 @@ pub fn get_hypervisor(pid: Pid) -> Result<Hypervisor> {
     let handle = try_with!(openpid(pid), "cannot open handle in proc");
 
     let (vm_fds, vcpus) = try_with!(find_vm_fd(&handle), "failed to access kvm fds");
+    let tracee = Hypervisor::attach(pid, vm_fds[0]);
+    let vcpu_maps = try_with!(tracee.get_vcpu_maps(), "cannot get vcpufd memory maps");
+
     if vm_fds.is_empty() {
         bail!("no VMs found");
     }
@@ -543,11 +549,15 @@ pub fn get_hypervisor(pid: Pid) -> Result<Hypervisor> {
     if vcpus.is_empty() {
         bail!("found KVM instance but no VCPUs");
     }
+    if vcpu_maps.is_empty() {
+        bail!("found VCPUs but no mappings of their fds");
+    }
 
     Ok(Hypervisor {
         pid,
-        tracee: Arc::new(RwLock::new(Hypervisor::attach(pid, vm_fds[0]))),
+        tracee: Arc::new(RwLock::new(tracee)),
         vm_fd: vm_fds[0],
         vcpus,
+        vcpu_maps,
     })
 }

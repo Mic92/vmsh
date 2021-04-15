@@ -1,25 +1,33 @@
+use kvm_bindings as kvmb;
 use nix::sys::wait::{waitpid, WaitStatus};
 use nix::unistd::Pid;
 use simple_error::bail;
 use simple_error::try_with;
 
 use crate::cpu::{self, Regs};
+use crate::kvm::hypervisor;
 use crate::kvm::ioctls;
+use crate::kvm::memslots::get_vcpu_maps;
+use crate::proc::Mapping;
 use crate::ptrace;
 use crate::result::Result;
 
+/// Contains the state of the thread running a vcpu.
+/// TODO in theory vcpus could change threads which they are run on
 struct Thread {
     ptthread: ptrace::Thread,
+    vcpu_map: Mapping,
     is_running: bool,
     in_syscall: bool,
 }
 
 impl Thread {
-    pub fn new(ptthread: ptrace::Thread) -> Thread {
+    pub fn new(ptthread: ptrace::Thread, vcpu_map: Mapping) -> Thread {
         Thread {
             ptthread,
             is_running: false,
             in_syscall: false, // ptrace (in practice) never attaches to a process while it is in a syscall
+            vcpu_map,
         }
     }
 
@@ -35,7 +43,7 @@ pub struct KvmRunWrapper {
 }
 
 impl KvmRunWrapper {
-    pub fn attach(pid: Pid) -> Result<KvmRunWrapper> {
+    pub fn attach(pid: Pid, vcpu_maps: &Vec<Mapping>) -> Result<KvmRunWrapper> {
         //let threads = vec![try_with!(ptrace::attach(pid), "foo")];
         //let process_idx = 0;
         let (threads, process_idx) = try_with!(
@@ -43,7 +51,19 @@ impl KvmRunWrapper {
             "cannot attach KvmRunWrapper to all threads of {} via ptrace",
             pid
         );
-        let threads = threads.into_iter().map(|t| Thread::new(t)).collect();
+        let threads: Vec<Thread> = threads
+            .into_iter()
+            .map(|t| {
+                let vcpu_map = vcpu_maps[0].clone(); // TODO support more than 1 cpu and respect remaps
+                Thread::new(t, vcpu_map)
+            })
+            .collect();
+
+        for t in &threads {
+            let maps = get_vcpu_maps(t.ptthread.tid)?;
+            println!("thread {} vcpu0 map: {:?}", t.ptthread.tid, maps[0]);
+            assert_eq!(vcpu_maps[0].start, maps[0].start);
+        }
         Ok(KvmRunWrapper {
             process_idx,
             threads,
@@ -161,7 +181,6 @@ impl KvmRunWrapper {
                 let (syscall_nr, ioctl_fd, ioctl_request) = regs.get_syscall_params();
                 if syscall_nr == libc::SYS_ioctl as u64 {
                     // SYS_ioctl = 16
-                    println!("ioctl(fd = {}, request = 0x{:x})", ioctl_fd, ioctl_request);
                 } else {
                     return Ok(());
                 }
@@ -170,10 +189,23 @@ impl KvmRunWrapper {
                 thread.toggle_in_syscall();
                 if ioctl_request == ioctls::KVM_RUN() {
                     // KVM_RUN = 0xae80 = ioctl_io_nr!(KVM_RUN, KVMIO, 0x80)
-                    println!("kvm-run in_syscall {}", thread.in_syscall);
-                }
+                    if thread.in_syscall {
+                        println!("kvm-run enter");
+                    } else {
+                        println!("kvm-run exit.");
+                    }
+                    let map_ptr = thread.vcpu_map.start as *const kvm_bindings::kvm_run;
+                    let kvm_run: kvm_bindings::kvm_run =
+                        hypervisor::process_read(pid, map_ptr as *const libc::c_void)?;
 
-                //println!("process {} was stopped by by signal: {}", pid, signal);
+                    if kvm_run.exit_reason == kvmb::KVM_EXIT_MMIO {
+                        println!("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! EXIT_MMIO");
+                    }
+                } else {
+                    return Ok(());
+                }
+                println!("ioctl(fd = {}, request = 0x{:x})", ioctl_fd, ioctl_request);
+                //println!("process {} was stopped by signal: {}", pid, signal);
                 // println!(
                 //     "syscall: eax {:x} ebx {:x} cs {:x} rip {:x}",
                 //     regs.rax, regs.rbx, regs.cs, regs.rip

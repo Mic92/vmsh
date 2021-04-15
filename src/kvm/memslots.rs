@@ -166,8 +166,8 @@ pub fn get_maps(tracee: &Tracee) -> Result<Vec<Mapping>> {
 }
 
 /// ordered list of the hypervisor memory mapped to [vcpu0fd, vcpu1fd, ...]
-pub fn get_vcpu_maps(tracee: &Tracee) -> Result<Vec<Mapping>> {
-    let mappings = fetch_mappings(tracee.pid())?;
+pub fn get_vcpu_maps(pid: Pid) -> Result<Vec<Mapping>> {
+    let mappings = fetch_mappings(pid)?;
     let vcpu_maps = mappings.into_iter().filter(|m| {
         m.pathname
             .starts_with(hypervisor::VCPUFD_INODE_NAME_STARTS_WITH)

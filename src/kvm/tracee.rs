@@ -292,6 +292,6 @@ impl Tracee {
     }
 
     pub fn get_vcpu_maps(&self) -> Result<Vec<Mapping>> {
-        get_vcpu_maps(self)
+        get_vcpu_maps(self.pid)
     }
 }
