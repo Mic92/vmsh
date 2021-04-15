@@ -3,6 +3,7 @@ use nix::sys::wait::{waitpid, WaitStatus};
 use nix::unistd::Pid;
 use simple_error::bail;
 use simple_error::try_with;
+use std::fmt;
 
 use crate::cpu::{self, Regs};
 use crate::kvm::hypervisor;
@@ -11,6 +12,68 @@ use crate::kvm::memslots::get_vcpu_maps;
 use crate::proc::Mapping;
 use crate::ptrace;
 use crate::result::Result;
+
+type MmioRwRaw = kvmb::kvm_run__bindgen_ty_1__bindgen_ty_6;
+
+pub struct MmioRw {
+    /// address in the guest physical memory
+    pub addr: u64,
+    pub is_write: bool,
+    data: [u8; 8],
+    len: usize,
+}
+
+impl MmioRw {
+    pub fn new(raw: &MmioRwRaw) -> MmioRw {
+        // should we sanity check len here in order to not crash on out of bounds?
+        MmioRw {
+            addr: raw.phys_addr,
+            is_write: raw.is_write != 0,
+            data: raw.data,
+            len: raw.len as usize,
+        }
+    }
+
+    pub fn from(kvm_run: &kvmb::kvm_run) -> Option<MmioRw> {
+        match kvm_run.exit_reason {
+            kvmb::KVM_EXIT_MMIO => {
+                // Safe because the exit_reason (which comes from the kernel) told us which
+                // union field to use.
+                let mmio: &MmioRwRaw = unsafe { &kvm_run.__bindgen_anon_1.mmio };
+                Some(MmioRw::new(&mmio))
+            }
+            _ => None,
+        }
+    }
+
+    pub fn data(&self) -> &[u8] {
+        &self.data[..self.len]
+    }
+}
+
+impl fmt::Display for MmioRw {
+    // This trait requires `fmt` with this exact signature.
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        // Write strictly the first element into the supplied output
+        // stream: `f`. Returns `fmt::Result` which indicates whether the
+        // operation succeeded or failed. Note that `write!` uses syntax which
+        // is very similar to `println!`.
+        if self.is_write {
+            write!(
+                f,
+                "MmioRw{{ write {:?} to guest phys @ 0x{:x} }}",
+                self.data(),
+                self.addr
+            )
+        } else {
+            write!(
+                f,
+                "MmioRw{{ read {}b from guest phys @ 0x{:x} }}",
+                self.len, self.addr
+            )
+        }
+    }
+}
 
 /// Contains the state of the thread running a vcpu.
 /// TODO in theory vcpus could change threads which they are run on
@@ -122,7 +185,9 @@ impl KvmRunWrapper {
         //waitpid(Pid::from_raw(-self.main_thread().tid.as_raw()), None),
         //"cannot wait for ioctl syscall"
         //);
-        self.process_status(status)?;
+        if let Some(mmio) = self.process_status(status)? {
+            println!("kvm exit: {}", mmio);
+        }
 
         Ok(())
     }
@@ -146,7 +211,7 @@ impl KvmRunWrapper {
         }
     }
 
-    fn process_status(&mut self, status: WaitStatus) -> Result<()> {
+    fn process_status(&mut self, status: WaitStatus) -> Result<Option<MmioRw>> {
         match status {
             WaitStatus::PtraceEvent(_, _, _) => {
                 bail!("got unexpected ptrace event")
@@ -182,7 +247,7 @@ impl KvmRunWrapper {
                 if syscall_nr == libc::SYS_ioctl as u64 {
                     // SYS_ioctl = 16
                 } else {
-                    return Ok(());
+                    return Ok(None);
                 }
                 // TODO check vcpufd and save a mapping for active syscalls from thread to cpu to
                 // support multiple cpus
@@ -198,11 +263,14 @@ impl KvmRunWrapper {
                     let kvm_run: kvm_bindings::kvm_run =
                         hypervisor::process_read(pid, map_ptr as *const libc::c_void)?;
 
-                    if kvm_run.exit_reason == kvmb::KVM_EXIT_MMIO {
+                    let mmio = MmioRw::from(&kvm_run);
+                    if mmio.is_some() {
                         println!("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! EXIT_MMIO");
                     }
+
+                    return Ok(mmio);
                 } else {
-                    return Ok(());
+                    return Ok(None);
                 }
                 println!("ioctl(fd = {}, request = 0x{:x})", ioctl_fd, ioctl_request);
                 //println!("process {} was stopped by signal: {}", pid, signal);
@@ -218,8 +286,28 @@ impl KvmRunWrapper {
                 bail!("process was stopped by signal: {}", signal)
             }
         }
-        Ok(())
+        Ok(None)
     }
+
+    // fn parse_kvm_run(kvm_run: &kvmb::kvm_run) -> Result<&MmioRW> {
+    //     match kvm_run.exit_reason {
+    //         // from https://github.com/rust-vmm/kvm-ioctls via MIT license
+    //         KVM_EXIT_MMIO => {
+    //             // Safe because the exit_reason (which comes from the kernel) told us which
+    //             // union field to use.
+    //             let mmio: &MmioRW = unsafe { &mut kvm_run.__bindgen_anon_1.mmio };
+    //             let addr = mmio.phys_addr;
+    //             let len = mmio.len as usize;
+    //             let data_slice = &mut mmio.data[..len];
+    //             if mmio.is_write != 0 {
+    //                 Ok(VcpuExit::MmioWrite(addr, data_slice))
+    //             } else {
+    //                 Ok(VcpuExit::MmioRead(addr, data_slice))
+    //             }
+    //         }
+    //     }
+    //     Ok(())
+    // }
 
     fn check_siginfo(&self, thread: &Thread) -> Result<()> {
         let siginfo = try_with!(
