@@ -1,11 +1,11 @@
 use kvm_bindings as kvmb;
+use nix::sys::signal::Signal;
 use nix::sys::wait::{waitpid, WaitStatus};
 use nix::unistd::Pid;
 use simple_error::bail;
 use simple_error::try_with;
 use std::fmt;
 
-use crate::cpu::{self, Regs};
 use crate::kvm::hypervisor;
 use crate::kvm::ioctls;
 use crate::kvm::memslots::get_vcpu_maps;
@@ -52,12 +52,7 @@ impl MmioRw {
 }
 
 impl fmt::Display for MmioRw {
-    // This trait requires `fmt` with this exact signature.
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        // Write strictly the first element into the supplied output
-        // stream: `f`. Returns `fmt::Result` which indicates whether the
-        // operation succeeded or failed. Note that `write!` uses syntax which
-        // is very similar to `println!`.
         if self.is_write {
             write!(
                 f,
@@ -140,31 +135,34 @@ impl KvmRunWrapper {
         Ok(())
     }
 
+    #[allow(dead_code)]
     fn main_thread(&self) -> &Thread {
         &self.threads[self.process_idx]
     }
 
+    #[allow(dead_code)]
     fn main_thread_mut(&mut self) -> &mut Thread {
         &mut self.threads[self.process_idx]
     }
 
-    // -> Err if third qemu thread terminates
-    pub fn wait_for_ioctl(&mut self) -> Result<()> {
-        //println!("syscall");
+    // TODO Err if third qemu thread terminates?
+    pub fn wait_for_ioctl(&mut self) -> Result<Option<MmioRw>> {
         for thread in &mut self.threads {
             if !thread.is_running {
                 thread.ptthread.syscall()?;
                 thread.is_running = true;
             }
         }
-        //println!("syscall {}", self.threads[0].tid);
-        //if !self.main_thread().is_running {
-        //    try_with!(self.main_thread().ptthread.syscall(), "fii");
-        //    self.main_thread_mut().is_running = true;
-        //}
+        let status = self.waitpid()?;
+        let mmio = self.process_status(status)?;
 
+        Ok(mmio)
+    }
+
+    /// busy polling on all thread tids
+    fn waitpid(&mut self) -> Result<WaitStatus> {
         //
-        // Further options to waitpid on many Ps at the same time:
+        // Options to waitpid on many Ps at the same time:
         //
         // - waitpid(WNOHANG): async waitpid, busy polling
         //
@@ -178,21 +176,6 @@ impl KvmRunWrapper {
 
         // use linux default flag of __WALL: wait for main_thread and all kinds of children
         // to wait for all children, use -gid
-        //println!("wait {}", self.threads[0].tid);
-        //println!("waitpid");
-        let status = self.waitpid_busy()?;
-        //let status = try_with!(
-        //waitpid(Pid::from_raw(-self.main_thread().tid.as_raw()), None),
-        //"cannot wait for ioctl syscall"
-        //);
-        if let Some(mmio) = self.process_status(status)? {
-            println!("kvm exit: {}", mmio);
-        }
-
-        Ok(())
-    }
-
-    fn waitpid_busy(&mut self) -> Result<WaitStatus> {
         loop {
             for thread in &mut self.threads {
                 let status = try_with!(
@@ -203,7 +186,6 @@ impl KvmRunWrapper {
                     "cannot wait for ioctl syscall"
                 );
                 if WaitStatus::StillAlive != status {
-                    //println!("waipid: {}", thread.ptthread.tid);
                     thread.is_running = false;
                     return Ok(status);
                 }
@@ -225,61 +207,8 @@ impl KvmRunWrapper {
             WaitStatus::Continued(_) => {
                 println!("WaitStatus::Continued");
             } // noop
-            //WaitStatus::Stopped(_, Signal::SIGTRAP) => {
-            //let regs =
-            //try_with!(self.main_thread().getregs(), "cannot syscall results");
-            //println!("syscall: eax {:x} ebx {:x}", regs.rax, regs.rbx);
-
-            //return Ok(());
-            //}
             WaitStatus::Stopped(pid, signal) => {
-                let thread: &mut Thread = match self
-                    .threads
-                    .iter_mut()
-                    .find(|thread| thread.ptthread.tid == pid)
-                {
-                    Some(t) => t,
-                    None => bail!("received stop for unkown process: {}", pid),
-                };
-
-                let regs = try_with!(thread.ptthread.getregs(), "cannot syscall results");
-                let (syscall_nr, ioctl_fd, ioctl_request) = regs.get_syscall_params();
-                if syscall_nr == libc::SYS_ioctl as u64 {
-                    // SYS_ioctl = 16
-                } else {
-                    return Ok(None);
-                }
-                // TODO check vcpufd and save a mapping for active syscalls from thread to cpu to
-                // support multiple cpus
-                thread.toggle_in_syscall();
-                if ioctl_request == ioctls::KVM_RUN() {
-                    // KVM_RUN = 0xae80 = ioctl_io_nr!(KVM_RUN, KVMIO, 0x80)
-                    if thread.in_syscall {
-                        println!("kvm-run enter");
-                    } else {
-                        println!("kvm-run exit.");
-                    }
-                    let map_ptr = thread.vcpu_map.start as *const kvm_bindings::kvm_run;
-                    let kvm_run: kvm_bindings::kvm_run =
-                        hypervisor::process_read(pid, map_ptr as *const libc::c_void)?;
-
-                    let mmio = MmioRw::from(&kvm_run);
-                    if mmio.is_some() {
-                        println!("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! EXIT_MMIO");
-                    }
-
-                    return Ok(mmio);
-                } else {
-                    return Ok(None);
-                }
-                println!("ioctl(fd = {}, request = 0x{:x})", ioctl_fd, ioctl_request);
-                //println!("process {} was stopped by signal: {}", pid, signal);
-                // println!(
-                //     "syscall: eax {:x} ebx {:x} cs {:x} rip {:x}",
-                //     regs.rax, regs.rbx, regs.cs, regs.rip
-                // );
-                let syscall_info = try_with!(thread.ptthread.syscall_info(), "cannot syscall info");
-                println!("syscall info op: {:?}", syscall_info.op);
+                return self.stopped(pid, &signal);
             }
             WaitStatus::Exited(_, status) => bail!("process exited with: {}", status),
             WaitStatus::Signaled(_, signal, _) => {
@@ -289,27 +218,49 @@ impl KvmRunWrapper {
         Ok(None)
     }
 
-    // fn parse_kvm_run(kvm_run: &kvmb::kvm_run) -> Result<&MmioRW> {
-    //     match kvm_run.exit_reason {
-    //         // from https://github.com/rust-vmm/kvm-ioctls via MIT license
-    //         KVM_EXIT_MMIO => {
-    //             // Safe because the exit_reason (which comes from the kernel) told us which
-    //             // union field to use.
-    //             let mmio: &MmioRW = unsafe { &mut kvm_run.__bindgen_anon_1.mmio };
-    //             let addr = mmio.phys_addr;
-    //             let len = mmio.len as usize;
-    //             let data_slice = &mut mmio.data[..len];
-    //             if mmio.is_write != 0 {
-    //                 Ok(VcpuExit::MmioWrite(addr, data_slice))
-    //             } else {
-    //                 Ok(VcpuExit::MmioRead(addr, data_slice))
-    //             }
-    //         }
-    //     }
-    //     Ok(())
-    // }
+    fn stopped(&mut self, pid: Pid, _signal: &Signal) -> Result<Option<MmioRw>> {
+        let thread: &mut Thread = match self
+            .threads
+            .iter_mut()
+            .find(|thread| thread.ptthread.tid == pid)
+        {
+            Some(t) => t,
+            None => bail!("received stop for unkown process: {}", pid),
+        };
 
-    fn check_siginfo(&self, thread: &Thread) -> Result<()> {
+        let regs = try_with!(thread.ptthread.getregs(), "cannot syscall results");
+        // TODO check for matching ioctlfd
+        let (syscall_nr, _ioctl_fd, ioctl_request) = regs.get_syscall_params();
+        // SYS_ioctl = 16
+        if syscall_nr != libc::SYS_ioctl as u64 {
+            return Ok(None);
+        }
+
+        // TODO check vcpufd and save a mapping for active syscalls from thread to cpu to
+        // support multiple cpus
+        thread.toggle_in_syscall();
+        // KVM_RUN = 0xae80 = ioctl_io_nr!(KVM_RUN, KVMIO, 0x80)
+        if ioctl_request != ioctls::KVM_RUN() {
+            return Ok(None);
+        }
+
+        if thread.in_syscall {
+            //println!("kvm-run enter");
+            return Ok(None);
+        } else {
+            //println!("kvm-run exit.");
+        }
+
+        // fulfilled precondition: ioctl(KVM_RUN) just returned
+        let map_ptr = thread.vcpu_map.start as *const kvm_bindings::kvm_run;
+        let kvm_run: kvm_bindings::kvm_run =
+            hypervisor::process_read(pid, map_ptr as *const libc::c_void)?;
+        let mmio = MmioRw::from(&kvm_run);
+
+        Ok(mmio)
+    }
+
+    fn _check_siginfo(&self, thread: &Thread) -> Result<()> {
         let siginfo = try_with!(
             nix::sys::ptrace::getsiginfo(thread.ptthread.tid),
             "cannot getsiginfo"

@@ -415,16 +415,13 @@ impl Hypervisor {
 
     /// Expects Self.resumed()-ed
     pub fn log_kvm_exits(&self) -> Result<()> {
-        //let tracee = try_with!(
-        //    self.tracee.read(),
-        //    "cannot obtain tracee read lock: poinsoned"
-        //);
-        //let proc = tracee.try_get_proc()?;
-
         let mut kvm_run = KvmRunWrapper::attach(self.pid, &self.vcpu_maps)?;
         for i in 0..100000 {
-            println!("{}", i);
-            kvm_run.wait_for_ioctl()?;
+            //println!("{}", i);
+            let mmio = kvm_run.wait_for_ioctl()?;
+            if let Some(mmio) = &mmio {
+                println!("kvm exit: {}", mmio);
+            }
         }
 
         Ok(())
