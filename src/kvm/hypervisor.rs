@@ -415,12 +415,17 @@ impl Hypervisor {
 
     /// Expects Self.resumed()-ed
     pub fn log_kvm_exits(&self) -> Result<()> {
+        let value: [u8; 2] = 0xDEADu16.to_ne_bytes();
         let mut kvm_run = KvmRunWrapper::attach(self.pid, &self.vcpu_maps)?;
+        println!("attached");
         for i in 0..100000 {
             //println!("{}", i);
-            let mmio = kvm_run.wait_for_ioctl()?;
-            if let Some(mmio) = &mmio {
+            let mut mmio = kvm_run.wait_for_ioctl()?;
+            if let Some(mmio) = &mut mmio {
                 println!("kvm exit: {}", mmio);
+                if !mmio.is_write {
+                    mmio.answer_read(&value)?;
+                }
             }
         }
 

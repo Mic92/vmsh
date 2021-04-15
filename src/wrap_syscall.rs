@@ -21,26 +21,31 @@ pub struct MmioRw {
     pub is_write: bool,
     data: [u8; 8],
     len: usize,
+    pid: Pid,
+    vcpu_map: Mapping,
 }
 
 impl MmioRw {
-    pub fn new(raw: &MmioRwRaw) -> MmioRw {
+    pub fn new(raw: &MmioRwRaw, pid: Pid, vcpu_map: Mapping) -> MmioRw {
         // should we sanity check len here in order to not crash on out of bounds?
+        // should we check that vcpu_map is big enough for kvm_run?
         MmioRw {
             addr: raw.phys_addr,
             is_write: raw.is_write != 0,
             data: raw.data,
             len: raw.len as usize,
+            pid,
+            vcpu_map,
         }
     }
 
-    pub fn from(kvm_run: &kvmb::kvm_run) -> Option<MmioRw> {
+    pub fn from(kvm_run: &kvmb::kvm_run, pid: Pid, vcpu_map: Mapping) -> Option<MmioRw> {
         match kvm_run.exit_reason {
             kvmb::KVM_EXIT_MMIO => {
                 // Safe because the exit_reason (which comes from the kernel) told us which
                 // union field to use.
                 let mmio: &MmioRwRaw = unsafe { &kvm_run.__bindgen_anon_1.mmio };
-                Some(MmioRw::new(&mmio))
+                Some(MmioRw::new(&mmio, pid, vcpu_map))
             }
             _ => None,
         }
@@ -48,6 +53,49 @@ impl MmioRw {
 
     pub fn data(&self) -> &[u8] {
         &self.data[..self.len]
+    }
+
+    pub fn data_mut(&mut self) -> &mut [u8] {
+        &mut self.data[..self.len]
+    }
+
+    /// # Safety of the tracee
+    ///
+    /// Do not run this function when the traced process has continued since
+    /// the last KvmRunWrapper.wait_for_ioctl()! Additionally it assumes that the last
+    /// wait_for_ioctl() has returned with Some(_)!
+    ///
+    /// TODO refactor api to reflect those preconditions better.
+    pub fn answer_read(&mut self, data: &[u8]) -> Result<()> {
+        if self.is_write {
+            bail!("cannot answer a mmio write with a read value");
+        }
+        if data.len() != self.len {
+            bail!(
+                "cannot answer mmio read of {}b with {}b",
+                self.len,
+                data.len()
+            );
+        }
+        self.data_mut().clone_from_slice(data);
+
+        let kvm_run_ptr = self.vcpu_map.start as *mut kvm_bindings::kvm_run;
+        // safe because those pointers will not be used in our process :) and additionally Self::new
+        // may or may not perform vcpu_map size assertions.
+        let mmio_ptr: *mut MmioRwRaw = unsafe { &mut ((*kvm_run_ptr).__bindgen_anon_1.mmio) };
+        let data_ptr: *mut [u8; 8] = unsafe { &mut ((*mmio_ptr).data) };
+        hypervisor::process_write(self.pid, data_ptr as *mut libc::c_void, &self.data)?;
+
+        // gnihihi guess who will never know that this was a mmio read :D
+        let is_totally_write = 1u8;
+        let is_write_ptr: *mut u8 = unsafe { &mut ((*mmio_ptr).is_write) };
+        hypervisor::process_write(
+            self.pid,
+            is_write_ptr as *mut libc::c_void,
+            &is_totally_write,
+        )?;
+
+        Ok(())
     }
 }
 
@@ -250,12 +298,13 @@ impl KvmRunWrapper {
         } else {
             //println!("kvm-run exit.");
         }
+        // TODO abort, if syscall failed
 
         // fulfilled precondition: ioctl(KVM_RUN) just returned
         let map_ptr = thread.vcpu_map.start as *const kvm_bindings::kvm_run;
         let kvm_run: kvm_bindings::kvm_run =
             hypervisor::process_read(pid, map_ptr as *const libc::c_void)?;
-        let mmio = MmioRw::from(&kvm_run);
+        let mmio = MmioRw::from(&kvm_run, thread.ptthread.tid, thread.vcpu_map.clone());
 
         Ok(mmio)
     }

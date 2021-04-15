@@ -86,3 +86,37 @@ def test_virtio_device_space(helpers: conftest.Helpers) -> None:
             subprocess.run(["pkill", "--parent", str(vmsh.pid)])
             vmsh.wait()
             helpers.vmsh_print_stdout_flush(vmsh)
+
+
+def test_wrap_syscall(helpers: conftest.Helpers) -> None:
+    with helpers.spawn_qemu(helpers.notos_image()) as vm:
+        try:
+            vm.wait_for_ssh()
+            print("ssh available")
+            # attach vmsh after boot, because it slows the vm down a lot.
+            vmsh = helpers.spawn_vmsh_command(
+                ["guest_kvm_exits", str(vm.pid)],
+                stdout=subprocess.PIPE,
+                cargo_executable="test_ioctls",
+            )
+            helpers.vmsh_print_stdout_until(vmsh, "attached\n")
+
+            res = vm.ssh_cmd(["devmem2", "0xc0000000", "h"])
+            print("read:\n", res.stdout)
+            print("stderr:\n", res.stderr)
+            assert "0xDEAD" in res.stdout
+
+            res = vm.ssh_cmd(["devmem2", "0xc0000000", "h", "0xBEEF"])
+            print("write 0xBEEF:\n", res.stdout)
+            print("stderr:\n", res.stderr)
+
+            res = vm.ssh_cmd(["devmem2", "0xc0000000", "h"])
+            print("read:\n", res.stdout)
+            print("stderr:\n", res.stderr)
+            assert "0xDEAD" in res.stdout
+
+        finally:
+            # we cannot kill sudo, but we can stop vmsh as it drops privileges to our user
+            subprocess.run(["pkill", "--parent", str(vmsh.pid)])
+            vmsh.wait()
+            helpers.vmsh_print_stdout_flush(vmsh)
