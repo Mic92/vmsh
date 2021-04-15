@@ -5,11 +5,13 @@ use core::slice::from_raw_parts as make_slice;
 use libc::{c_ulong, size_t};
 use nix::unistd::Pid;
 use simple_error::bail;
+use simple_error::require_with;
 use simple_error::try_with;
 use std::sync::mpsc::channel;
 use std::time::Duration;
 use std::{fmt, ptr};
 
+use crate::kvm::hypervisor;
 use crate::proc::{self, Mapping};
 use crate::result::Result;
 use crate::{kvm::tracee::Tracee, page_math::page_size};
@@ -161,4 +163,37 @@ pub fn get_maps(tracee: &Tracee) -> Result<Vec<Mapping>> {
             ),
         })
         .collect()
+}
+
+/// ordered list of the hypervisor memory mapped to [vcpu0fd, vcpu1fd, ...]
+pub fn get_vcpu_maps(tracee: &Tracee) -> Result<Vec<Mapping>> {
+    let mappings = fetch_mappings(tracee.pid())?;
+    let vcpu_maps = mappings.into_iter().filter(|m| {
+        m.pathname
+            .starts_with(hypervisor::VCPUFD_INODE_NAME_STARTS_WITH)
+    });
+
+    // we need a for loop, because we can not return errors from within a .sort() lambda.
+    let mut taged_maps = vec![]; // (vcpunr, vcpu_map)
+    for vcpu_map in vcpu_maps {
+        let ao: Option<&str> = vcpu_map
+            .pathname
+            .strip_prefix(hypervisor::VCPUFD_INODE_NAME_STARTS_WITH);
+        let astr: &str = require_with!(
+            ao,
+            "vcpufd {} does not start with expected prefix",
+            vcpu_map.pathname,
+        );
+        let ai = try_with!(
+            u64::from_str_radix(astr, 10),
+            "vcpufd {} has unexpected postfix {}",
+            vcpu_map.pathname,
+            astr,
+        );
+        taged_maps.push((ai, vcpu_map));
+    }
+
+    taged_maps.sort_unstable_by_key(|(i, _map)| i.clone());
+    let sorted_maps = taged_maps.into_iter().map(|(_i, map)| map).collect();
+    Ok(sorted_maps)
 }

@@ -10,7 +10,7 @@ use crate::inject_syscall;
 use crate::inject_syscall::Process as Injectee;
 use crate::kvm::hypervisor::{HvMem, VCPU};
 use crate::kvm::ioctls::KVM_CHECK_EXTENSION;
-use crate::kvm::memslots::get_maps;
+use crate::kvm::memslots::{get_maps, get_vcpu_maps};
 use crate::proc::Mapping;
 use crate::result::Result;
 
@@ -289,5 +289,9 @@ impl Tracee {
 
     pub fn get_maps(&self) -> Result<Vec<Mapping>> {
         get_maps(self)
+    }
+
+    pub fn get_vcpu_maps(&self) -> Result<Vec<Mapping>> {
+        get_vcpu_maps(self)
     }
 }

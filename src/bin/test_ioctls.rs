@@ -215,6 +215,31 @@ fn guest_kvm_exits(pid: Pid) -> Result<()> {
     Ok(())
 }
 
+fn vcpu_maps(pid: Pid) -> Result<()> {
+    let vm = try_with!(get_hypervisor(pid), "cannot get vms for process {}", pid);
+    vm.stop()?;
+
+    use std::mem::size_of;
+    let kvm_run_len = size_of::<kvm_bindings::kvm_run>();
+    println!("kvm_run len {}", kvm_run_len);
+
+    let maps = vm.get_maps()?;
+    assert!(maps.len() >= 1);
+
+    println!("vcpu maps");
+    let vcpus = vm.get_vcpu_maps()?;
+    assert!(vcpus.len() >= 1);
+    for map in vcpus {
+        println!(
+            "vm cpu mem: 0x{:x} -> 0x{:x} (physical: 0x{:x}, flags: {:?} | {:?}) @@ {}",
+            map.start, map.end, map.phys_addr, map.prot_flags, map.map_flags, map.pathname
+        );
+        assert!(map.end - map.start >= kvm_run_len);
+    }
+
+    Ok(())
+}
+
 fn subtest(name: &str) -> App {
     SubCommand::with_name(name).arg(Arg::with_name("pid").required(true).index(1))
 }
@@ -230,6 +255,7 @@ fn main() {
         .subcommand(subtest("fd_transfer2"))
         .subcommand(subtest("guest_userfaultfd"))
         .subcommand(subtest("guest_kvm_exits"))
+        .subcommand(subtest("vcpu_maps"))
         .subcommand(subtest("guest_ioeventfd"));
 
     let matches = app.get_matches();
@@ -247,6 +273,7 @@ fn main() {
         "fd_transfer2" => fd_transfer(pid, 2),
         "guest_userfaultfd" => guest_userfaultfd(pid),
         "guest_kvm_exits" => guest_kvm_exits(pid),
+        "vcpu_maps" => vcpu_maps(pid),
         "guest_ioeventfd" => guest_ioeventfd(pid),
         _ => std::process::exit(2),
     };

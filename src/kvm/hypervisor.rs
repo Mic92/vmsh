@@ -208,6 +208,14 @@ impl Hypervisor {
         tracee.get_maps()
     }
 
+    pub fn get_vcpu_maps(&self) -> Result<Vec<Mapping>> {
+        let tracee = try_with!(
+            self.tracee.read(),
+            "cannot obtain tracee read lock: poinsoned"
+        );
+        tracee.get_vcpu_maps()
+    }
+
     /// `readonly`: If true, a guest writing to it leads to KVM_EXIT_MMIO.
     ///
     /// Safety: This function is safe even for the guest because VmMem enforces, that only the
@@ -476,6 +484,9 @@ impl Hypervisor {
     }
 }
 
+pub const VMFD_INODE_NAME: &str = "anon_inode:kvm-vm";
+pub const VCPUFD_INODE_NAME_STARTS_WITH: &str = "anon_inode:kvm-vcpu:";
+
 fn find_vm_fd(handle: &PidHandle) -> Result<(Vec<RawFd>, Vec<VCPU>)> {
     let mut vm_fds: Vec<RawFd> = vec![];
     let mut vcpu_fds: Vec<VCPU> = vec![];
@@ -492,10 +503,10 @@ fn find_vm_fd(handle: &PidHandle) -> Result<(Vec<RawFd>, Vec<VCPU>)> {
             .unwrap_or_else(|| OsStr::new(""))
             .to_str()
             .unwrap_or("");
-        if name == "anon_inode:kvm-vm" {
+        if name == VMFD_INODE_NAME {
             vm_fds.push(fd.fd_num)
         // i.e. anon_inode:kvm-vcpu:0
-        } else if name.starts_with("anon_inode:kvm-vcpu:") {
+        } else if name.starts_with(VCPUFD_INODE_NAME_STARTS_WITH) {
             let parts = name.rsplitn(2, ':').collect::<Vec<_>>();
             assert!(parts.len() == 2);
             let idx = try_with!(
