@@ -140,11 +140,6 @@ pub fn attach_all_threads(pid: Pid) -> Result<(Vec<Thread>, usize)> {
         })
         .collect::<Result<Vec<_>>>()?;
 
-    println!("pid: {}", pid);
-    for thread in &threads {
-        println!("  tid: {}", thread.tid);
-    }
-
     Ok((threads, process_idx))
 }
 

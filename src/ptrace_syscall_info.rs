@@ -123,6 +123,10 @@ fn parse_raw_info(raw: RawInfo) -> Result<SyscallInfo> {
 
 pub fn get_syscall_info(pid: Pid) -> Result<SyscallInfo> {
     let mut info = MaybeUninit::<RawInfo>::zeroed();
+    // Safe, because the kernel writes at most size_of::<RawInfo>() bytes and at least `ret` bytes.
+    // We check he has written size_of::<RawInfo>() bytes. We also allow him to omit the trailing
+    // `data: RawData` field if he marks its absence in the op field, because in that case the
+    // parser (`parse_raw_info()`) will ignore the data and never access it.
     let ret = unsafe {
         libc::ptrace(
             PTRACE_GET_SYSCALL_INFO,
@@ -135,11 +139,12 @@ pub fn get_syscall_info(pid: Pid) -> Result<SyscallInfo> {
         bail!("ptrace get syscall info error: {}", ret);
     }
     let info = unsafe { info.assume_init() };
-    assert!(
-        (info.op == OpType::PTRACE_SYSCALL_INFO_NONE
-            && size_of::<RawInfo>() - size_of::<RawData>() == ret as usize)
-            || (size_of::<RawInfo>() == ret as usize)
-    );
+    if !((info.op == OpType::PTRACE_SYSCALL_INFO_NONE
+        && size_of::<RawInfo>() - size_of::<RawData>() == ret as usize)
+        || (size_of::<RawInfo>() == ret as usize))
+    {
+        bail!("ptrace wrote unexpected number of bytes");
+    }
     let info = try_with!(
         parse_raw_info(info),
         "cannot understand ptrace(PTRACE_GET_SYSCALL_INFO) response"

@@ -276,7 +276,7 @@ impl KvmRunWrapper {
 
         let regs = try_with!(thread.ptthread.getregs(), "cannot syscall results");
         // TODO check for matching ioctlfd
-        let (syscall_nr, _ioctl_fd, ioctl_request) = regs.get_syscall_params();
+        let (syscall_nr, _ioctl_fd, ioctl_request, _, _, _, _) = regs.get_syscall_params();
         // SYS_ioctl = 16
         if syscall_nr != libc::SYS_ioctl as u64 {
             return Ok(None);

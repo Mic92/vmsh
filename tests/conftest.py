@@ -93,10 +93,8 @@ def vmsh_print_stdout_flush(proc: subprocess.Popen) -> None:
     print("vmsh: ", end="", flush=True)
     while True:
         stdout_ = proc.stdout
-        if stdout_ is not None:
-            res = stdout_.read(1)
-        else:
-            raise Exception("foobar")
+        assert stdout_ is not None
+        res = stdout_.read(1)
 
         if len(res) > 0:
             res = bytearray(res).decode("utf-8")
@@ -116,10 +114,8 @@ def vmsh_print_stdout_until(proc: subprocess.Popen, until_line: Optional[str]) -
     """
     while True:
         stdout_ = proc.stdout
-        if stdout_ is not None:
-            res = stdout_.readline()
-        else:
-            raise Exception("foobar")
+        assert stdout_ is not None
+        res = stdout_.readline()
 
         if len(res) > 0:
             res = bytearray(res).decode("utf-8")

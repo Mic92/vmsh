@@ -11,9 +11,9 @@ pub mod kvm;
 pub mod page_math;
 pub mod proc;
 pub mod ptrace;
-/// This module provides a safe wrapper for ptrace(PTRACE_GET_SYSCALL_INFO). This function exists
-/// since linux 5.3 but changed the binary layout of its output (struct ptrace_syscall_info)
-/// between 5.10 and 5.11.
+/// This module provides a safe wrapper for ptrace(PTRACE_GET_SYSCALL_INFO) but only for linux
+/// v5.3-v5.10. This function exists since linux 5.3 but changed the binary layout of its output
+/// (struct ptrace_syscall_info) between 5.10 and 5.11.
 ///
 /// Note:
 ///

@@ -124,15 +124,23 @@ mod arch {
         }
 
         /// To be used during wrap_syscall.
-        /// return [syscall_nr, arg1, arg2]
-        pub fn get_syscall_params(&self) -> (u64, u64, u64) {
+        /// return (syscall_nr, arg1, ..., arg6)
+        pub fn get_syscall_params(&self) -> (u64, u64, u64, u64, u64, u64, u64) {
             // self.rax contains return value of `syscall` instruction.
             // old rax (before `syscall` instruction) is rax_old or orig_rax.
             // also: https://lkml.org/lkml/2006/8/29/350:
             // > It's important that ORIG_EAX be set to some value that is not a valid system call
             // > number, so that the system call restart logic (see the signal handling code)
             // > doesn't trigger.
-            (self.orig_rax, self.rdi, self.rsi)
+            (
+                self.orig_rax,
+                self.rdi,
+                self.rsi,
+                self.rdx,
+                self.r10,
+                self.r8,
+                self.r9,
+            )
         }
     }
 
