@@ -213,14 +213,15 @@ impl KvmRunWrapper {
         //
         // - linux waitid() P_PIDFD pidfd_open(): maybe (e)poll() on this fd? dunno
         //
-        // - setpgid(): waitpid on the pgid. Grouping could destroy existing Hypervisor groups and
+        // - waitpid(pid = -pgid): Use linux default flag of __WALL: wait for main_thread and all
+        //   kinds of children. To wait for all children, use -pgid.
+        //   pid = -self.main_thread().tid fails with ECHILD though because it requires pgid (not
+        //   parent id):
+        //   setpgid(): waitpid on the pgid. Grouping could destroy existing Hypervisor groups and
         //   requires all group members to be in the same session (whatever that means). Also if
         //   the group owner (pid==pgid) dies, the enire group orphans (will it be killed as
         //   zombies?)
         //   => sounds a bit dangerous, doesn't it?
-
-        // use linux default flag of __WALL: wait for main_thread and all kinds of children
-        // to wait for all children, use -gid
         loop {
             for thread in &mut self.threads {
                 let status = try_with!(
@@ -294,8 +295,12 @@ impl KvmRunWrapper {
             return Ok(None);
         } else {
             //println!("kvm-run exit.");
+            if regs.syscall_ret() != 0 {
+                log::warn!("wrap_syscall: ioctl(KVM_RUN) failed.");
+                // hope that hypervisor handles it correctly
+                return Ok(None);
+            }
         }
-        // TODO abort, if syscall failed
 
         // fulfilled precondition: ioctl(KVM_RUN) just returned
         let map_ptr = thread.vcpu_map.start as *const kvm_bindings::kvm_run;
