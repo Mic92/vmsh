@@ -86,7 +86,7 @@ impl MmioRw {
         let data_ptr: *mut [u8; 8] = unsafe { &mut ((*mmio_ptr).data) };
         hypervisor::process_write(self.pid, data_ptr as *mut libc::c_void, &self.data)?;
 
-        // gnihihi guess who will never know that this was a mmio read :D
+        // guess who will never know that this was a mmio read
         let is_totally_write = 1u8;
         let is_write_ptr: *mut u8 = unsafe { &mut ((*mmio_ptr).is_write) };
         hypervisor::process_write(
@@ -149,9 +149,7 @@ pub struct KvmRunWrapper {
 }
 
 impl KvmRunWrapper {
-    pub fn attach(pid: Pid, vcpu_maps: &Vec<Mapping>) -> Result<KvmRunWrapper> {
-        //let threads = vec![try_with!(ptrace::attach(pid), "foo")];
-        //let process_idx = 0;
+    pub fn attach(pid: Pid, vcpu_maps: &[Mapping]) -> Result<KvmRunWrapper> {
         let (threads, process_idx) = try_with!(
             ptrace::attach_all_threads(pid),
             "cannot attach KvmRunWrapper to all threads of {} via ptrace",
@@ -209,8 +207,7 @@ impl KvmRunWrapper {
 
     /// busy polling on all thread tids
     fn waitpid(&mut self) -> Result<WaitStatus> {
-        //
-        // Options to waitpid on many Ps at the same time:
+        // Options to waitpid on many pids at the same time:
         //
         // - waitpid(WNOHANG): async waitpid, busy polling
         //
@@ -319,7 +316,6 @@ impl KvmRunWrapper {
             return Ok(());
         } else {
             println!("siginfo.si_code false: 0x{:x}", siginfo.si_code);
-            //try_with!(nix::sys::ptrace::syscall(self.main_thread().tid, None), "cannot ptrace::syscall");
         }
         Ok(())
     }

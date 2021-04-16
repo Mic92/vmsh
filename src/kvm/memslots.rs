@@ -193,7 +193,7 @@ pub fn get_vcpu_maps(pid: Pid) -> Result<Vec<Mapping>> {
         taged_maps.push((ai, vcpu_map));
     }
 
-    taged_maps.sort_unstable_by_key(|(i, _map)| i.clone());
+    taged_maps.sort_unstable_by_key(|(i, _map)| *i);
     let sorted_maps = taged_maps.into_iter().map(|(_i, map)| map).collect();
     Ok(sorted_maps)
 }

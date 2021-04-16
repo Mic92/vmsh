@@ -111,7 +111,6 @@ impl Thread {
 
 pub fn attach(tid: Pid) -> Result<Thread> {
     try_with!(ptrace::attach(tid), "cannot attach to process");
-    //try_with!(ptrace::setoptions(tid, ptrace::Options::PTRACE_O_TRACESYSGOOD), "cannot set option PTRACE_O_TRACESYSGOOD");
     Ok(Thread { tid })
 }
 

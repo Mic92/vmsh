@@ -129,6 +129,7 @@ fn fd_transfer(pid: Pid, nr_fds: u32) -> Result<()> {
     Ok(())
 }
 
+/// Some parts of this implementation are still missing.
 fn guest_userfaultfd(pid: Pid) -> Result<()> {
     let vm = try_with!(get_hypervisor(pid), "cannot get vms for process {}", pid);
     vm.stop()?;
@@ -196,22 +197,8 @@ fn guest_ioeventfd(pid: Pid) -> Result<()> {
 }
 
 fn guest_kvm_exits(pid: Pid) -> Result<()> {
-    //let tracee = vmsh::inject_syscall::attach(pid)?;
-    //for i in 0..10 {
-    //println!("{}", i);
-    //tracee.await_syscall()?;
-    //}
-    //return Ok(());
-
     let vm = try_with!(get_hypervisor(pid), "cannot get vms for process {}", pid);
-
-    //vm.stop()?;
-    //for i in 0..100 {
-    //println!("{}", i);
     vm.log_kvm_exits()?;
-    //}
-    //vm.resume()?;
-
     Ok(())
 }
 
@@ -224,11 +211,11 @@ fn vcpu_maps(pid: Pid) -> Result<()> {
     println!("kvm_run len {}", kvm_run_len);
 
     let maps = vm.get_maps()?;
-    assert!(maps.len() >= 1);
+    assert!(!maps.is_empty());
 
     println!("vcpu maps");
     let vcpus = vm.get_vcpu_maps()?;
-    assert!(vcpus.len() >= 1);
+    assert!(!vcpus.is_empty());
     for map in vcpus {
         println!(
             "vm cpu mem: 0x{:x} -> 0x{:x} (physical: 0x{:x}, flags: {:?} | {:?}) @@ {}",

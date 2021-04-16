@@ -16,7 +16,7 @@ def test_loading_virtio_mmio(helpers: conftest.Helpers) -> None:
         assert res.stdout.find("virtio_mmio") >= 0
 
 
-def test_userfaultfd(helpers: conftest.Helpers) -> None:
+def test_userfaultfd_completes(helpers: conftest.Helpers) -> None:
     with helpers.spawn_qemu(helpers.notos_image()) as vm:
         vmsh = helpers.spawn_vmsh_command(
             ["guest_userfaultfd", str(vm.pid)],

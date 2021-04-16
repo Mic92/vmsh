@@ -418,8 +418,8 @@ impl Hypervisor {
         let value: [u8; 2] = 0xDEADu16.to_ne_bytes();
         let mut kvm_run = KvmRunWrapper::attach(self.pid, &self.vcpu_maps)?;
         println!("attached");
-        for i in 0..100000 {
-            //println!("{}", i);
+        for _i in 0..100000 {
+            //println!("{}", _i);
             let mut mmio = kvm_run.wait_for_ioctl()?;
             if let Some(mmio) = &mut mmio {
                 println!("kvm exit: {}", mmio);

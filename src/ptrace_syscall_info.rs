@@ -1,21 +1,16 @@
 use crate::result::Result;
-use libc::c_int;
-use nix::sys::ptrace::{self, AddressType, Request, RequestType};
 use nix::unistd::Pid;
 use simple_error::bail;
 use simple_error::try_with;
 use std::mem::size_of;
-use std::mem::{self, MaybeUninit};
+use std::mem::MaybeUninit;
 
 const PTRACE_GET_SYSCALL_INFO: u32 = 0x420e;
 
-// const PTRACE_SYSCALL_INFO_NONE: u8 = 0;
-// const PTRACE_SYSCALL_INFO_ENTRY: u8 = 1;
-// const PTRACE_SYSCALL_INFO_EXIT: u8 = 2;
-// const PTRACE_SYSCALL_INFO_SECCOMP: u8 = 3;
-
 #[repr(u8)]
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
+#[allow(dead_code)]
+#[allow(non_camel_case_types)]
 enum OpType {
     PTRACE_SYSCALL_INFO_NONE = 0,
     PTRACE_SYSCALL_INFO_ENTRY = 1,
@@ -136,7 +131,6 @@ pub fn get_syscall_info(pid: Pid) -> Result<SyscallInfo> {
             info.as_mut_ptr(),
         )
     };
-    //println!("syscall info written bytes {}", ret);
     if ret <= 0 {
         bail!("ptrace get syscall info error: {}", ret);
     }
@@ -146,10 +140,6 @@ pub fn get_syscall_info(pid: Pid) -> Result<SyscallInfo> {
             && size_of::<RawInfo>() - size_of::<RawData>() == ret as usize)
             || (size_of::<RawInfo>() == ret as usize)
     );
-    // println!(
-    //     "syscall info: instruction_pointer {:x}",
-    //     info.instruction_pointer
-    // );
     let info = try_with!(
         parse_raw_info(info),
         "cannot understand ptrace(PTRACE_GET_SYSCALL_INFO) response"
