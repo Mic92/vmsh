@@ -25,7 +25,7 @@ def test_userfaultfd_completes(helpers: conftest.Helpers) -> None:
         )
 
         with vmsh:
-            vmsh.print_stdout_until("pause\n")
+            vmsh.wait_until_line("pause")
             vm.wait_for_ssh()
             print("ssh available")
 
@@ -62,7 +62,7 @@ def test_virtio_device_space(helpers: conftest.Helpers) -> None:
             print("stdout:\n", res.stdout)
             print("stderr:\n", res.stderr)
 
-            vmsh.print_stdout_until("pause\n")
+            vmsh.wait_until_line("pause")
             res = vm.ssh_cmd(["dmesg"])
             print("stdout:\n", res.stdout)
 
@@ -88,7 +88,7 @@ def test_wrap_syscall(helpers: conftest.Helpers) -> None:
             cargo_executable="test_ioctls",
         )
         with vmsh:
-            vmsh.print_stdout_until("attached\n")
+            vmsh.wait_until_line("attached")
             res = vm.ssh_cmd(["devmem2", "0xc0000000", "h"])
             print("read:\n", res.stdout)
             print("stderr:\n", res.stderr)

@@ -5,10 +5,12 @@ import json
 import os
 import subprocess
 import sys
+import threading
+from queue import Queue
 from contextlib import contextmanager
 from pathlib import Path
 from shlex import quote
-from typing import Iterator, List, Type, Optional, Any
+from typing import Iterator, List, Type, Any, Union
 
 import pytest
 from qemu import QemuVm, VmImage, spawn_qemu
@@ -56,42 +58,52 @@ def ensure_debugfs_access() -> Iterator[None]:
         yield
 
 
-def print_stdout_with_prefix(proc: subprocess.Popen, prefix: str) -> None:
-    print("vmsh: ", end="", flush=True)
-    while True:
-        assert proc.stdout is not None
-        res = proc.stdout.read(1)
-
-        if len(res) > 0:
-            print(f"{res}", end="", flush=True)
-            if res == "\n":
-                print(prefix, end="", flush=True)
-        else:
-            print("", flush=True)
-            return
+EOF = 1
 
 
 class VmshPopen(subprocess.Popen):
+    def process_stdout(self) -> None:
+        self.lines: Queue[Union[str, int]] = Queue()
+        threading.Thread(target=self.print_stdout_with_prefix).start()
+
     def __exit__(self, exc_type: Any, exc_value: Any, traceback: Any) -> None:
         # we cannot kill sudo, but we can stop vmsh as it drops privileges to our user
         subprocess.run(["pkill", "--parent", str(self.pid)])
-        print_stdout_with_prefix(self, "vmsh: ")
         super().__exit__(exc_type, exc_value, traceback)
 
-    def print_stdout_until(self: subprocess.Popen, until_line: Optional[str]) -> None:
-        """
-        blocks until until_line is printed
-        @param until_line example: "pause\n"
-        """
+    def print_stdout_with_prefix(self) -> None:
+        buf = ""
         while True:
             assert self.stdout is not None
-            line = self.stdout.readline()
+            res = self.stdout.read(1)
 
-            if len(line) > 0:
-                print(f"vmsh: {line}", end="", flush=True)
-                if line == until_line:
-                    print("print_stdout_until fulfilled")
-                    return
+            if len(res) > 0:
+                if res == "\n":
+                    print(f"vmsh[{self.pid}] {buf}")
+                    self.lines.put(buf)
+                    buf = ""
+                else:
+                    buf += res
+            else:
+                if buf != "":
+                    print(f"vmsh[{self.pid}] {buf}", flush=True)
+                self.lines.put(EOF)
+                return
+
+    def wait_until_line(self, line: str) -> None:
+        """
+        blocks until line is printed
+        @param line example: "pause\n"
+        """
+        print(f"wait for '{line}'...")
+        while True:
+            l = self.lines.get()
+
+            if l == EOF:
+                raise Exception("reach end of stdout output before process finished")
+
+            if l == line:
+                return
 
 
 def spawn_vmsh_command(
@@ -124,7 +136,9 @@ def spawn_vmsh_command(
             cmd_quoted,
         ]
         print("$ " + " ".join(map(quote, cmd)))
-        return VmshPopen(cmd, stdout=subprocess.PIPE, text=True)
+        p = VmshPopen(cmd, stdout=subprocess.PIPE, text=True)
+        p.process_stdout()
+        return p
 
 
 class Helpers:
