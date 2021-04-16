@@ -16,11 +16,32 @@ pub fn inspect(opts: &InspectOptions) -> Result<()> {
         "cannot get vms for process {}",
         opts.pid
     );
+    vm.stop()?;
+
     for map in vm.get_maps()? {
         println!(
-            "vm mem: 0x{:x} -> 0x{:x} (physical: 0x{:x}, flags: {:?} | {:?})",
-            map.start, map.end, map.phys_addr, map.prot_flags, map.map_flags,
+            "vm mem: 0x{:x} -> 0x{:x} (physical: 0x{:x}, flags: {:?} | {:?}) @@ {}",
+            map.start, map.end, map.phys_addr, map.prot_flags, map.map_flags, map.pathname
         )
+    }
+
+    println!("vcpu maps");
+    for map in vm.get_vcpu_maps()? {
+        println!(
+            "vm cpu mem: 0x{:x} -> 0x{:x} (physical: 0x{:x}, flags: {:?} | {:?}) @@ {}",
+            map.start, map.end, map.phys_addr, map.prot_flags, map.map_flags, map.pathname
+        );
+
+        let map_ptr = map.start as *const kvm_bindings::kvm_run;
+        let kvm_run: kvm_bindings::kvm_run =
+            kvm::hypervisor::process_read(opts.pid, map_ptr as *const libc::c_void)?;
+        println!("kvm_run: exit_reason {}", kvm_run.exit_reason);
+
+        let reason_ptr: *const u32 = unsafe { &((*map_ptr).exit_reason) };
+        let reason: u32 =
+            kvm::hypervisor::process_read(opts.pid, reason_ptr as *const libc::c_void)?;
+        println!("reason ptr = {:?}", reason_ptr);
+        println!("reason = {}", reason);
     }
 
     Ok(())

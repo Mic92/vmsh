@@ -20,6 +20,7 @@ use crate::kvm::tracee::{kvm_msrs, Tracee};
 use crate::page_math;
 use crate::proc::{openpid, Mapping, PidHandle};
 use crate::result::Result;
+use crate::wrap_syscall::KvmRunWrapper;
 
 /// # Safety
 ///
@@ -174,6 +175,9 @@ pub struct Hypervisor {
     pub pid: Pid,
     pub vm_fd: RawFd,
     pub vcpus: Vec<VCPU>,
+    /// hypervisor memory where fd_num is mapped to.
+    /// sorted by vcpu nr. TODO what if there exist cpu [0, 1, 4]?
+    pub vcpu_maps: Vec<Mapping>,
     tracee: Arc<RwLock<Tracee>>,
 }
 
@@ -206,6 +210,14 @@ impl Hypervisor {
             "cannot obtain tracee read lock: poinsoned"
         );
         tracee.get_maps()
+    }
+
+    pub fn get_vcpu_maps(&self) -> Result<Vec<Mapping>> {
+        let tracee = try_with!(
+            self.tracee.read(),
+            "cannot obtain tracee read lock: poinsoned"
+        );
+        tracee.get_vcpu_maps()
     }
 
     /// `readonly`: If true, a guest writing to it leads to KVM_EXIT_MMIO.
@@ -385,6 +397,42 @@ impl Hypervisor {
         Ok(eventfd)
     }
 
+    pub fn userfaultfd(&self) -> Result<c_int> {
+        let tracee = try_with!(
+            self.tracee.read(),
+            "cannot obtain tracee read lock: poinsoned"
+        );
+        let proc = tracee.try_get_proc()?;
+
+        let uffd = proc.userfaultfd(libc::O_NONBLOCK)?;
+        if uffd <= 0 {
+            bail!("userfaultfd failed with {}", uffd);
+        }
+
+        // TODO impl userfaultfd handling
+
+        Ok(-1)
+    }
+
+    /// Expects Self.resumed()-ed
+    pub fn log_kvm_exits(&self) -> Result<()> {
+        let value: [u8; 2] = 0xDEADu16.to_ne_bytes();
+        let mut kvm_run = KvmRunWrapper::attach(self.pid, &self.vcpu_maps)?;
+        println!("attached");
+        for _i in 0..100000 {
+            //println!("{}", _i);
+            let mut mmio = kvm_run.wait_for_ioctl()?;
+            if let Some(mmio) = &mut mmio {
+                println!("kvm exit: {}", mmio);
+                if !mmio.is_write {
+                    mmio.answer_read(&value)?;
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     pub fn check_extension(&self, cap: c_int) -> Result<c_int> {
         let tracee = try_with!(
             self.tracee.read(),
@@ -442,6 +490,9 @@ impl Hypervisor {
     }
 }
 
+pub const VMFD_INODE_NAME: &str = "anon_inode:kvm-vm";
+pub const VCPUFD_INODE_NAME_STARTS_WITH: &str = "anon_inode:kvm-vcpu:";
+
 fn find_vm_fd(handle: &PidHandle) -> Result<(Vec<RawFd>, Vec<VCPU>)> {
     let mut vm_fds: Vec<RawFd> = vec![];
     let mut vcpu_fds: Vec<VCPU> = vec![];
@@ -458,10 +509,10 @@ fn find_vm_fd(handle: &PidHandle) -> Result<(Vec<RawFd>, Vec<VCPU>)> {
             .unwrap_or_else(|| OsStr::new(""))
             .to_str()
             .unwrap_or("");
-        if name == "anon_inode:kvm-vm" {
+        if name == VMFD_INODE_NAME {
             vm_fds.push(fd.fd_num)
         // i.e. anon_inode:kvm-vcpu:0
-        } else if name.starts_with("anon_inode:kvm-vcpu:") {
+        } else if name.starts_with(VCPUFD_INODE_NAME_STARTS_WITH) {
             let parts = name.rsplitn(2, ':').collect::<Vec<_>>();
             assert!(parts.len() == 2);
             let idx = try_with!(
@@ -469,6 +520,7 @@ fn find_vm_fd(handle: &PidHandle) -> Result<(Vec<RawFd>, Vec<VCPU>)> {
                 "cannot parse number {}",
                 parts[0]
             );
+            println!("vcpu {} fd {}", idx, fd.fd_num);
             vcpu_fds.push(VCPU {
                 idx,
                 fd_num: fd.fd_num,
@@ -488,6 +540,9 @@ pub fn get_hypervisor(pid: Pid) -> Result<Hypervisor> {
     let handle = try_with!(openpid(pid), "cannot open handle in proc");
 
     let (vm_fds, vcpus) = try_with!(find_vm_fd(&handle), "failed to access kvm fds");
+    let tracee = Hypervisor::attach(pid, vm_fds[0]);
+    let vcpu_maps = try_with!(tracee.get_vcpu_maps(), "cannot get vcpufd memory maps");
+
     if vm_fds.is_empty() {
         bail!("no VMs found");
     }
@@ -497,11 +552,15 @@ pub fn get_hypervisor(pid: Pid) -> Result<Hypervisor> {
     if vcpus.is_empty() {
         bail!("found KVM instance but no VCPUs");
     }
+    if vcpu_maps.is_empty() {
+        bail!("found VCPUs but no mappings of their fds");
+    }
 
     Ok(Hypervisor {
         pid,
-        tracee: Arc::new(RwLock::new(Hypervisor::attach(pid, vm_fds[0]))),
+        tracee: Arc::new(RwLock::new(tracee)),
         vm_fd: vm_fds[0],
         vcpus,
+        vcpu_maps,
     })
 }

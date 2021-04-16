@@ -129,6 +129,27 @@ fn fd_transfer(pid: Pid, nr_fds: u32) -> Result<()> {
     Ok(())
 }
 
+/// Some parts of this implementation are still missing.
+fn guest_userfaultfd(pid: Pid) -> Result<()> {
+    let vm = try_with!(get_hypervisor(pid), "cannot get vms for process {}", pid);
+    vm.stop()?;
+
+    let vm_mem = vm.vm_add_mem::<u64>(0xd0000000, true)?;
+    vm_mem.mem.write(&0xdeadbeef)?;
+    assert_eq!(vm_mem.mem.read()?, 0xdeadbeef);
+
+    // register userfaultfd which always returns something else
+    vm.userfaultfd()?;
+
+    vm.resume()?;
+
+    println!("pause");
+    nix::unistd::pause();
+    // pytest shall now check that the memory does not contain 0xdeadbeef on read
+
+    Ok(())
+}
+
 fn guest_ioeventfd(pid: Pid) -> Result<()> {
     let vm = try_with!(get_hypervisor(pid), "cannot get vms for process {}", pid);
     vm.stop()?;
@@ -175,6 +196,37 @@ fn guest_ioeventfd(pid: Pid) -> Result<()> {
     Ok(())
 }
 
+fn guest_kvm_exits(pid: Pid) -> Result<()> {
+    let vm = try_with!(get_hypervisor(pid), "cannot get vms for process {}", pid);
+    vm.log_kvm_exits()?;
+    Ok(())
+}
+
+fn vcpu_maps(pid: Pid) -> Result<()> {
+    let vm = try_with!(get_hypervisor(pid), "cannot get vms for process {}", pid);
+    vm.stop()?;
+
+    use std::mem::size_of;
+    let kvm_run_len = size_of::<kvm_bindings::kvm_run>();
+    println!("kvm_run len {}", kvm_run_len);
+
+    let maps = vm.get_maps()?;
+    assert!(!maps.is_empty());
+
+    println!("vcpu maps");
+    let vcpus = vm.get_vcpu_maps()?;
+    assert!(!vcpus.is_empty());
+    for map in vcpus {
+        println!(
+            "vm cpu mem: 0x{:x} -> 0x{:x} (physical: 0x{:x}, flags: {:?} | {:?}) @@ {}",
+            map.start, map.end, map.phys_addr, map.prot_flags, map.map_flags, map.pathname
+        );
+        assert!(map.end - map.start >= kvm_run_len);
+    }
+
+    Ok(())
+}
+
 fn subtest(name: &str) -> App {
     SubCommand::with_name(name).arg(Arg::with_name("pid").required(true).index(1))
 }
@@ -188,6 +240,9 @@ fn main() {
         .subcommand(subtest("guest_add_mem_get_maps"))
         .subcommand(subtest("fd_transfer1"))
         .subcommand(subtest("fd_transfer2"))
+        .subcommand(subtest("guest_userfaultfd"))
+        .subcommand(subtest("guest_kvm_exits"))
+        .subcommand(subtest("vcpu_maps"))
         .subcommand(subtest("guest_ioeventfd"));
 
     let matches = app.get_matches();
@@ -203,6 +258,9 @@ fn main() {
         "guest_add_mem_get_maps" => guest_add_mem(pid, true),
         "fd_transfer1" => fd_transfer(pid, 1),
         "fd_transfer2" => fd_transfer(pid, 2),
+        "guest_userfaultfd" => guest_userfaultfd(pid),
+        "guest_kvm_exits" => guest_kvm_exits(pid),
+        "vcpu_maps" => vcpu_maps(pid),
         "guest_ioeventfd" => guest_ioeventfd(pid),
         _ => std::process::exit(2),
     };

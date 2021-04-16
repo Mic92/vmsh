@@ -5,10 +5,12 @@ import json
 import os
 import subprocess
 import sys
+import threading
+from queue import Queue
 from contextlib import contextmanager
 from pathlib import Path
 from shlex import quote
-from typing import Iterator, List, Type
+from typing import Iterator, List, Type, Any, Union
 
 import pytest
 from qemu import QemuVm, VmImage, spawn_qemu
@@ -56,9 +58,57 @@ def ensure_debugfs_access() -> Iterator[None]:
         yield
 
 
+EOF = 1
+
+
+class VmshPopen(subprocess.Popen):
+    def process_stdout(self) -> None:
+        self.lines: Queue[Union[str, int]] = Queue()
+        threading.Thread(target=self.print_stdout_with_prefix).start()
+
+    def __exit__(self, exc_type: Any, exc_value: Any, traceback: Any) -> None:
+        # we cannot kill sudo, but we can stop vmsh as it drops privileges to our user
+        subprocess.run(["pkill", "--parent", str(self.pid)])
+        super().__exit__(exc_type, exc_value, traceback)
+
+    def print_stdout_with_prefix(self) -> None:
+        buf = ""
+        while True:
+            assert self.stdout is not None
+            res = self.stdout.read(1)
+
+            if len(res) > 0:
+                if res == "\n":
+                    print(f"vmsh[{self.pid}] {buf}")
+                    self.lines.put(buf)
+                    buf = ""
+                else:
+                    buf += res
+            else:
+                if buf != "":
+                    print(f"vmsh[{self.pid}] {buf}", flush=True)
+                self.lines.put(EOF)
+                return
+
+    def wait_until_line(self, line: str) -> None:
+        """
+        blocks until line is printed
+        @param line example: "pause\n"
+        """
+        print(f"wait for '{line}'...")
+        while True:
+            l = self.lines.get()
+
+            if l == EOF:
+                raise Exception("reach end of stdout output before process finished")
+
+            if l == line:
+                return
+
+
 def spawn_vmsh_command(
-    args: List[str], cargo_executable: str = "vmsh"
-) -> subprocess.Popen:
+    args: List[str], cargo_executable: str = "vmsh", stdout: Any = None
+) -> VmshPopen:
     if not os.path.isdir("/sys/module/kheaders"):
         subprocess.run(["sudo", "modprobe", "kheaders"])
     uid = os.getuid()
@@ -86,7 +136,9 @@ def spawn_vmsh_command(
             cmd_quoted,
         ]
         print("$ " + " ".join(map(quote, cmd)))
-        return subprocess.Popen(cmd)
+        p = VmshPopen(cmd, stdout=subprocess.PIPE, text=True)
+        p.process_stdout()
+        return p
 
 
 class Helpers:
@@ -100,9 +152,9 @@ class Helpers:
 
     @staticmethod
     def spawn_vmsh_command(
-        args: List[str], cargo_executable: str = "vmsh"
-    ) -> subprocess.Popen:
-        return spawn_vmsh_command(args, cargo_executable)
+        args: List[str], cargo_executable: str = "vmsh", stdout: Any = None
+    ) -> VmshPopen:
+        return spawn_vmsh_command(args, cargo_executable, stdout=stdout)
 
     @staticmethod
     def run_vmsh_command(args: List[str], cargo_executable: str = "vmsh") -> None:
