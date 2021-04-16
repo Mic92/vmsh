@@ -56,9 +56,47 @@ def ensure_debugfs_access() -> Iterator[None]:
         yield
 
 
+def print_stdout_with_prefix(proc: subprocess.Popen, prefix: str) -> None:
+    print("vmsh: ", end="", flush=True)
+    while True:
+        assert proc.stdout is not None
+        res = proc.stdout.read(1)
+
+        if len(res) > 0:
+            print(f"{res}", end="", flush=True)
+            if res == "\n":
+                print(prefix, end="", flush=True)
+        else:
+            print("", flush=True)
+            return
+
+
+class VmshPopen(subprocess.Popen):
+    def __exit__(self, exc_type: Any, exc_value: Any, traceback: Any) -> None:
+        # we cannot kill sudo, but we can stop vmsh as it drops privileges to our user
+        subprocess.run(["pkill", "--parent", str(self.pid)])
+        print_stdout_with_prefix(self, "vmsh: ")
+        super().__exit__(exc_type, exc_value, traceback)
+
+    def print_stdout_until(self: subprocess.Popen, until_line: Optional[str]) -> None:
+        """
+        blocks until until_line is printed
+        @param until_line example: "pause\n"
+        """
+        while True:
+            assert self.stdout is not None
+            line = self.stdout.readline()
+
+            if len(line) > 0:
+                print(f"vmsh: {line}", end="", flush=True)
+                if line == until_line:
+                    print("print_stdout_until fulfilled")
+                    return
+
+
 def spawn_vmsh_command(
     args: List[str], cargo_executable: str = "vmsh", stdout: Any = None
-) -> subprocess.Popen:
+) -> VmshPopen:
     if not os.path.isdir("/sys/module/kheaders"):
         subprocess.run(["sudo", "modprobe", "kheaders"])
     uid = os.getuid()
@@ -86,43 +124,7 @@ def spawn_vmsh_command(
             cmd_quoted,
         ]
         print("$ " + " ".join(map(quote, cmd)))
-        return subprocess.Popen(cmd, stdout=stdout)
-
-
-def vmsh_print_stdout_flush(proc: subprocess.Popen) -> None:
-    print("vmsh: ", end="", flush=True)
-    while True:
-        stdout_ = proc.stdout
-        assert stdout_ is not None
-        res = stdout_.read(1)
-
-        if len(res) > 0:
-            res = bytearray(res).decode("utf-8")
-            print(f"{res}", end="", flush=True)
-            if res == "\n":
-                print("vmsh: ", end="", flush=True)
-        else:
-            print("", flush=True)
-            return
-
-
-def vmsh_print_stdout_until(proc: subprocess.Popen, until_line: Optional[str]) -> None:
-    """
-    to be used whith Popen.stdout == subprocess.PIPE
-    blocks until until_line is printed
-    @param until_line example: "pause\n"
-    """
-    while True:
-        stdout_ = proc.stdout
-        assert stdout_ is not None
-        res = stdout_.readline()
-
-        if len(res) > 0:
-            res = bytearray(res).decode("utf-8")
-            print(f"vmsh: {res}", end="", flush=True)
-            if res == until_line:
-                print("vmsh_print_stdout_until fulfilled")
-                return
+        return VmshPopen(cmd, stdout=subprocess.PIPE, text=True)
 
 
 class Helpers:
@@ -137,23 +139,13 @@ class Helpers:
     @staticmethod
     def spawn_vmsh_command(
         args: List[str], cargo_executable: str = "vmsh", stdout: Any = None
-    ) -> subprocess.Popen:
+    ) -> VmshPopen:
         return spawn_vmsh_command(args, cargo_executable, stdout=stdout)
 
     @staticmethod
     def run_vmsh_command(args: List[str], cargo_executable: str = "vmsh") -> None:
         proc = spawn_vmsh_command(args, cargo_executable)
         assert proc.wait() == 0
-
-    @staticmethod
-    def vmsh_print_stdout_flush(proc: subprocess.Popen) -> None:
-        return vmsh_print_stdout_flush(proc)
-
-    @staticmethod
-    def vmsh_print_stdout_until(
-        proc: subprocess.Popen, until_line: Optional[str]
-    ) -> None:
-        return vmsh_print_stdout_until(proc, until_line)
 
     @staticmethod
     def spawn_qemu(image: VmImage) -> "contextlib._GeneratorContextManager[QemuVm]":
