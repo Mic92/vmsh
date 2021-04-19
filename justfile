@@ -8,6 +8,8 @@ linux_rev := "bf05bf16"
 
 kernel_fhs := `nix-build --no-out-link nix/kernel-fhs.nix` + "/bin/linux-kernel-build"
 
+qemu_pid := `pgrep -u $USER qemu-system | awk '{print $1}'`
+
 lint:
   flake8 tests
   black --check tests
@@ -89,13 +91,13 @@ nested-qemu: nested-nixos-image
   ssh -i {{invocation_directory()}}/nix/ssh_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@localhost -p 2222 qemu-nested
 
 inspect-qemu:
-  cargo run -- inspect "$(pidof qemu-system-x86_64)"
+  cargo run -- inspect "{{qemu_pid}}"
 
 coredump-qemu:
-  cargo run -- coredump "$(pidof qemu-system-x86_64)"
+  cargo run -- coredump "{{qemu_pid}}"
 
 trace-qemu:
-  perf trace -p "$(pidof qemu-system-x86_64)"
+  perf trace -p "{{qemu_pid}}"
 
 capsh:
   @ if [ -n "${IN_CAPSH:-}" ]; then \
