@@ -1,5 +1,6 @@
-import conftest
 import subprocess
+
+import conftest
 
 
 def test_loading_virtio_mmio(helpers: conftest.Helpers) -> None:

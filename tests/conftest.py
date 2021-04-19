@@ -6,15 +6,15 @@ import os
 import subprocess
 import sys
 import threading
-from queue import Queue
 from contextlib import contextmanager
 from pathlib import Path
+from queue import Queue
 from shlex import quote
-from typing import Iterator, List, Type, Any, Union
+from typing import Any, Iterator, List, Type, Union
 
 import pytest
 from qemu import QemuVm, VmImage, spawn_qemu
-from root import TEST_ROOT, PROJECT_ROOT
+from root import PROJECT_ROOT, TEST_ROOT
 
 sys.path.append(str(TEST_ROOT.parent))
 
