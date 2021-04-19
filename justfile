@@ -4,6 +4,7 @@
 # vim: set ft=make :
 
 linux_dir := invocation_directory() + "/../linux"
+linux_rev := "bf05bf16"
 
 kernel_fhs := `nix-build --no-out-link nix/kernel-fhs.nix` + "/bin/linux-kernel-build"
 
@@ -26,6 +27,7 @@ test:
 clone-linux:
   [[ -d {{linux_dir}} ]] || \
     git clone https://github.com/torvalds/linux {{linux_dir}}
+  git -C {{linux_dir}} checkout {{linux_rev}}
 
 configure-linux: clone-linux
   #!/usr/bin/env bash

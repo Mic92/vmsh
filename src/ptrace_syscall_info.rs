@@ -10,7 +10,7 @@ const PTRACE_GET_SYSCALL_INFO: u32 = 0x420e;
 #[repr(u8)]
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
 #[allow(dead_code)]
-#[allow(non_camel_case_types)]
+#[allow(non_camel_case_types, clippy::upper_case_acronyms)]
 enum OpType {
     PTRACE_SYSCALL_INFO_NONE = 0,
     PTRACE_SYSCALL_INFO_ENTRY = 1,

@@ -10,8 +10,6 @@ import sys
 from enum import IntEnum
 from typing import IO, Optional, Tuple
 
-from intervaltree import IntervalTree, Interval
-
 from coredump import ElfCore, Memory
 from cpu_flags import (
     _PAGE_ACCESSED,
@@ -31,6 +29,7 @@ from cpu_flags import (
     X86_CR4_PCIDE,
     X86_CR4_PKE,
 )
+from intervaltree import Interval, IntervalTree
 
 
 def is_printable(byte: int) -> bool:
