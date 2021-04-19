@@ -386,55 +386,54 @@ PHYS_LOAD_ADDR = 0x100000
 # computed with kernel.py from https://github.com/Mic92/x86_64-linux-cheatsheats/
 FIXADDR_START = 0xFFFFFFFFFF57A000
 
+
 # https://www.kernel.org/doc/Documentation/x86/x86_64/mm.txt
 # TODO: this is for kalsr disabled only afaik
 memory_layout = IntervalTree(
     [
         Interval(0x0000000000000000, 0x00007FFFFFFFFFFF, "userspace"),
-        Interval(0x0000800000000000, 0xFFFF7FFFFFFFFFFF, "hole"),
+        Interval(0x0000800000000000, 0xFFFF7FFFFFFFFFFF, "hole 1"),
         Interval(0xFFFF800000000000, 0xFFFF87FFFFFFFFFF, "guard hole (for hypervisor)"),
         Interval(0xFFFF880000000000, 0xFFFF887FFFFFFFFF, "LDT remap for PTI"),
         Interval(
-            0xFFFFC88000000000,
+            0xFFFF888000000000,
             0xFFFFC87FFFFFFFFF,
             "direct mapping of all physical memory",
         ),
-        Interval(0xFFFFC88000000000, 0xFFFFC8FFFFFFFFFF, "unused hole"),
+        Interval(0xFFFFC88000000000, 0xFFFFC8FFFFFFFFFF, "hole 2"),
         Interval(
             0xFFFFC90000000000,
             0xFFFFE8FFFFFFFFFF,
             "vmalloc/ioremap space (vmalloc_base)",
         ),
-        Interval(0xFFFFE90000000000, 0xFFFFE9FFFFFFFFFF, "unused hole"),
+        Interval(0xFFFFE90000000000, 0xFFFFE9FFFFFFFFFF, "hole 3"),
         Interval(
             0xFFFFEA0000000000, 0xFFFFEAFFFFFFFFFF, "virtual memory map (vmemmap_base)"
         ),
-        Interval(0xFFFFEB0000000000, 0xFFFFEBFFFFFFFFFF, "unused hole"),
+        Interval(0xFFFFEB0000000000, 0xFFFFEBFFFFFFFFFF, "hole 4"),
         Interval(0xFFFFEC0000000000, 0xFFFFFBFFFFFFFFFF, "KASAN shadow memory"),
-        Interval(0xFFFFFC0000000000, 0xFFFFFDFFFFFFFFFF, "unused hole"),
+        Interval(0xFFFFFC0000000000, 0xFFFFFDFFFFFFFFFF, "hole 5"),
         Interval(0xFFFFFE0000000000, 0xFFFFFE7FFFFFFFFF, "cpu_entry_area mapping"),
-        Interval(0xFFFFFC0000000000, 0xFFFFFDFFFFFFFFFF, "unused hole"),
-        Interval(0xFFFFFE0000000000, 0xFFFFFE7FFFFFFFFF, "cpu_entry_area mapping"),
-        Interval(0xFFFFFE8000000000, 0xFFFFFEFFFFFFFFFF, "unused hole"),
+        Interval(0xFFFFFE8000000000, 0xFFFFFEFFFFFFFFFF, "hole 6"),
         Interval(0xFFFFFF0000000000, 0xFFFFFF7FFFFFFFFF, "%esp fixup stacks"),
-        Interval(0xFFFFFF8000000000, 0xFFFFFFEEFFFFFFFF, "unused hole"),
+        Interval(0xFFFFFF8000000000, 0xFFFFFFEEFFFFFFFF, "hole 7"),
         Interval(0xFFFFFFEF00000000, 0xFFFFFFFEFFFFFFFF, "EFI region mapping space"),
-        Interval(0xFFFFFFFF00000000, 0xFFFFFFFF7FFFFFFF, "unused hole"),
+        Interval(0xFFFFFFFF00000000, 0xFFFFFFFF7FFFFFFF, "hole 8"),
         Interval(
             0xFFFFFFFF80000000,
             0xFFFFFFFF9FFFFFFF,
             "kernel text mapping, mapped to physical address 0",
         ),
-        Interval(0xFFFFFFFF80000000, 0xFFFFFFFFA0000000, "hole"),
+        Interval(0xFFFFFFFF9FFFFFFF, 0xFFFFFFFFA0000000, "hole 9"),
         Interval(0xFFFFFFFFA0000000, 0xFFFFFFFFFEFFFFFF, "module mapping space"),
-        Interval(0xFFFFFFFFFF000000, FIXADDR_START, "hole"),
+        Interval(0xFFFFFFFFFF000000, FIXADDR_START, "hole 10"),
         Interval(
             FIXADDR_START,
             0xFFFFFFFFFF5FFFFF,
             "kernel-internal fixmap range, variable size and offset",
         ),
         Interval(0xFFFFFFFFFF600000, 0xFFFFFFFFFF600FFF, "legacy vsyscall ABI"),
-        Interval(0xFFFFFFFFFFE00000, 0xFFFFFFFFFFFFFFFF, "unused hole"),
+        Interval(0xFFFFFFFFFFE00000, 0xFFFFFFFFFFFFFFFF, "hole 11"),
     ]
 )
 
