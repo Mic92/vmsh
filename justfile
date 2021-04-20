@@ -4,7 +4,7 @@
 # vim: set ft=make :
 
 linux_dir := invocation_directory() + "/../linux"
-linux_rev := "bf05bf16"
+linux_rev := "v5.11"
 
 kernel_fhs := `nix-build --no-out-link nix/kernel-fhs.nix` + "/bin/linux-kernel-build"
 
