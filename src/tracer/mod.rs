@@ -14,7 +14,7 @@ use crate::wrap_syscall::{KvmRunWrapper, MmioRw};
 pub struct Tracer {
     pub process_idx: usize,
     pub threads: Vec<ptrace::Thread>,
-    pub vcpu_map: Mapping,
+    pub vcpu_map: Mapping, // TODO support multiple cpus
 }
 
 impl Tracer {

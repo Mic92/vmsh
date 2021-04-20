@@ -8,6 +8,7 @@ use simple_error::try_with;
 use std::os::unix::prelude::RawFd;
 
 use crate::cpu::{self, Regs};
+use crate::proc::Mapping;
 use crate::ptrace;
 use crate::result::Result;
 use crate::tracer::Tracer;
@@ -16,7 +17,8 @@ pub struct Process {
     process_idx: usize,
     saved_regs: Regs,
     saved_text: c_long,
-    threads: Vec<ptrace::Thread>,
+    /// Must never be None during operation. Only Process::drop will complete while this is None.
+    threads: Option<Vec<ptrace::Thread>>,
 }
 
 /// save and overwrite main thread state
@@ -46,7 +48,16 @@ pub fn from_tracer(t: Tracer) -> Result<Process> {
         process_idx: t.process_idx,
         saved_regs,
         saved_text,
-        threads: t.threads,
+        threads: Some(t.threads),
+    })
+}
+
+pub fn into_tracer(mut p: Process, vcpu_map: Mapping) -> Result<Tracer> {
+    Ok(Tracer {
+        process_idx: p.process_idx,
+        // we may only take() here, because p is dropped immediately afterwards
+        threads: p.threads.take().unwrap(),
+        vcpu_map: vcpu_map,
     })
 }
 
@@ -58,7 +69,7 @@ pub fn attach(pid: Pid) -> Result<Process> {
         process_idx,
         saved_regs,
         saved_text,
-        threads,
+        threads: Some(threads),
     })
 }
 
@@ -283,7 +294,7 @@ impl Process {
     }
 
     fn main_thread(&self) -> &ptrace::Thread {
-        &self.threads[self.process_idx]
+        &(self.threads.as_ref().unwrap()[self.process_idx])
     }
 }
 
