@@ -15,12 +15,12 @@
         "branch": "master",
         "description": "Nix Packages collection",
         "homepage": "",
-        "owner": "Mic92",
+        "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "e9e52af52137d8c143fbb5c5cff4b18f61aa013f",
-        "sha256": "107xs2gd2p89iyikvp4rg053iza7fn74dnjdh4xi6k6s14l0vjmp",
+        "rev": "6a707e80e658d0db5c0a173281d7fb2c8e7ebe64",
+        "sha256": "12drpck13dcwyfqpma26pc685afw5nwksablgzki4kns4hwfpmw8",
         "type": "tarball",
-        "url": "https://github.com/Mic92/nixpkgs/archive/e9e52af52137d8c143fbb5c5cff4b18f61aa013f.tar.gz",
+        "url": "https://github.com/NixOS/nixpkgs/archive/6a707e80e658d0db5c0a173281d7fb2c8e7ebe64.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
     "not-os": {
