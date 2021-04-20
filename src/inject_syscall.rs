@@ -10,6 +10,7 @@ use std::os::unix::prelude::RawFd;
 use crate::cpu::{self, Regs};
 use crate::ptrace;
 use crate::result::Result;
+use crate::tracer::Tracer;
 
 pub struct Process {
     process_idx: usize,
@@ -18,9 +19,8 @@ pub struct Process {
     threads: Vec<ptrace::Thread>,
 }
 
-pub fn attach(pid: Pid) -> Result<Process> {
-    let (threads, process_idx) = ptrace::attach_all_threads(pid)?;
-
+/// save and overwrite main thread state
+fn init(threads: &[ptrace::Thread], process_idx: usize) -> Result<(Regs, c_long)> {
     let saved_regs = try_with!(
         threads[process_idx].getregs(),
         "cannot get registers for main process ({})",
@@ -35,6 +35,24 @@ pub fn attach(pid: Pid) -> Result<Process> {
         unsafe { threads[process_idx].write(ip as *mut c_void, cpu::SYSCALL_TEXT as *mut c_void) },
         "cannot patch syscall instruction"
     );
+
+    Ok((saved_regs, saved_text))
+}
+
+pub fn from_tracer(t: Tracer) -> Result<Process> {
+    let (saved_regs, saved_text) = init(&t.threads, t.process_idx)?;
+
+    Ok(Process {
+        process_idx: t.process_idx,
+        saved_regs,
+        saved_text,
+        threads: t.threads,
+    })
+}
+
+pub fn attach(pid: Pid) -> Result<Process> {
+    let (threads, process_idx) = ptrace::attach_all_threads(pid)?;
+    let (saved_regs, saved_text) = init(&threads, process_idx)?;
 
     Ok(Process {
         process_idx,
@@ -98,6 +116,7 @@ macro_rules! syscall_args {
     };
 }
 
+use crate::wrap_syscall::KvmRunWrapper;
 impl Process {
     pub fn ioctl(&self, fd: RawFd, request: c_ulong, arg: c_ulong) -> Result<c_int> {
         let args = syscall_args!(

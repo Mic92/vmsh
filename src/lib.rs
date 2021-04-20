@@ -21,4 +21,5 @@ pub mod ptrace;
 /// v5.4.106) always empty (SyscallOp::None) - which makes this function kind of useless.
 pub mod ptrace_syscall_info;
 pub mod result;
+pub mod tracer;
 pub mod wrap_syscall;

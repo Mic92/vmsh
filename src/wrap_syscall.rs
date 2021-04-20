@@ -1,3 +1,4 @@
+use crate::tracer::Tracer;
 use kvm_bindings as kvmb;
 use nix::sys::signal::Signal;
 use nix::sys::wait::{waitpid, WaitStatus};
@@ -6,6 +7,7 @@ use simple_error::bail;
 use simple_error::try_with;
 use std::fmt;
 
+use crate::inject_syscall::Process;
 use crate::kvm::hypervisor;
 use crate::kvm::ioctls;
 use crate::kvm::memslots::get_vcpu_maps;
@@ -172,6 +174,16 @@ impl KvmRunWrapper {
             process_idx,
             threads,
         })
+    }
+
+    pub fn into_tracer(self) -> Tracer {
+        let vcpu_map = self.threads[0].vcpu_map.clone();
+        let threads = self.threads.into_iter().map(|t| t.ptthread).collect();
+        Tracer {
+            process_idx: self.process_idx,
+            threads,
+            vcpu_map,
+        }
     }
 
     pub fn cont(&self) -> Result<()> {
