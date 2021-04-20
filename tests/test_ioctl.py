@@ -27,6 +27,7 @@ def test_ioctl_guest_add_mem(helpers: conftest.Helpers) -> None:
 # add mem and try to get maps afterwards again
 def test_ioctl_guest_add_mem_get_maps(helpers: conftest.Helpers) -> None:
     with helpers.spawn_qemu(helpers.notos_image()) as vm:
+        vm.wait_for_ssh()  # to be sure qemu won't add any memory we didn't expect
         helpers.run_vmsh_command(
             ["guest_add_mem_get_maps", str(vm.pid)],
             cargo_executable="test_ioctls",
@@ -56,6 +57,7 @@ def test_get_vcpu_maps(helpers: conftest.Helpers) -> None:
 
 def test_userfaultfd_completes(helpers: conftest.Helpers) -> None:
     with helpers.spawn_qemu(helpers.notos_image()) as vm:
+        vm.wait_for_ssh()
         vmsh = helpers.spawn_vmsh_command(
             ["guest_userfaultfd", str(vm.pid)],
             cargo_executable="test_ioctls",
@@ -64,7 +66,6 @@ def test_userfaultfd_completes(helpers: conftest.Helpers) -> None:
 
         with vmsh:
             vmsh.wait_until_line("pause")
-            vm.wait_for_ssh()
             print("ssh available")
 
             res = vm.ssh_cmd(
