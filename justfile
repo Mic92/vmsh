@@ -90,6 +90,19 @@ qemu: build-linux nixos-image
 nested-qemu: nested-nixos-image
   ssh -i {{invocation_directory()}}/nix/ssh_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@localhost -p 2222 qemu-nested
 
+# Build debug kernel module for VM using kernel build by `just build-linux`
+build-debug-kernel-mod:
+  # don't invoke linux kernel build every time because it is a bit slow...
+  if [[ ! -d {{linux_dir}} ]]; then just build-linux; fi
+  cd {{invocation_directory()}}/tests/debug-kernel-mod && make KERNELDIR={{linux_dir}}
+
+# Load debug kernel module into VM started by `just qemu` using ssh
+load-debug-kernel-mod: build-debug-kernel-mod
+  ssh -i {{invocation_directory()}}/nix/ssh_key \
+    -o StrictHostKeyChecking=no \
+    -o UserKnownHostsFile=/dev/null \
+    root@localhost -p 2222 "rmmod debug-kernel-mod; insmod /mnt/vmsh/tests/debug-kernel-mod/debug-kernel-mod.ko && dmesg"
+
 inspect-qemu:
   cargo run -- inspect "{{qemu_pid}}"
 
