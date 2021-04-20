@@ -7,10 +7,9 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "tests"))
 
 import ctypes as ct
 import sys
-from enum import IntEnum
-from typing import IO, Optional, Tuple
+from typing import IO, Tuple
 
-from coredump import ElfCore, Memory
+from coredump import ElfCore, Memory, KVMSRegs
 from cpu_flags import (
     _PAGE_ACCESSED,
     _PAGE_NX,
@@ -20,14 +19,7 @@ from cpu_flags import (
     _PAGE_PWT,
     _PAGE_RW,
     _PAGE_USER,
-    EFER_LME,
-    EFER_NX,
-    X86_CR0_PG,
-    X86_CR3_PCD,
-    X86_CR3_PWT,
-    X86_CR4_PAE,
     X86_CR4_PCIDE,
-    X86_CR4_PKE,
 )
 from intervaltree import Interval, IntervalTree
 
@@ -68,31 +60,6 @@ def get_kernel_base(kaddr: int) -> int:
     return (kaddr & 0xFFFFFFFFFFF00000) - 0x1000000
 
 
-NT_PRXFPREG = 1189489535
-
-
-def bitmask_numbits(numbits: int) -> int:
-    return (1 << numbits) - 1
-
-
-def entry_extract_flags(entry: int) -> int:
-    # TODO dump more flags?
-    return entry & (
-        _PAGE_NX | _PAGE_RW | _PAGE_USER | _PAGE_PWT | _PAGE_PCD | _PAGE_ACCESSED
-    )
-
-
-# Might be wrong, kernel uses cpuid to figure this out
-x86_phys_bits = 36  # my kvm had 28 max phys bits?
-pte_reserved_flags = bitmask_numbits(
-    51 - x86_phys_bits + 1
-)  # bitmap with up to 51 bit set
-
-
-def is_page_aligned(num: int) -> bool:
-    return num & (4096 - 1) == num
-
-
 # A 4k intel page table with 512 64bit entries.
 PAGE_TABLE_SIZE = 512
 PageTableEntries = ct.c_uint64 * PAGE_TABLE_SIZE
@@ -101,283 +68,66 @@ PageTableEntries = ct.c_uint64 * PAGE_TABLE_SIZE
 class PageTable:
     def __init__(self, mem: Memory) -> None:
         self.entries = PageTableEntries.from_buffer_copy(mem.data)
-        # current index into the pagetable
-        self._i = 0
-        self.baddr = mem.offset
-
-    @property
-    def i(self) -> int:
-        """
-        virtual memory base address mapped by current pml4e
-        """
-        return self._i
-
-    @i.setter
-    def i(self, val: int) -> None:
-        assert val >= 0 and val < 512
-        self._i = val
 
 
-class State:
-    def __init__(self, mem: Memory, cr3: int) -> None:
-        self.mem = mem
-        self.pml4 = self.page_table(cr3)
-        self.pdpt: Optional[PageTable] = None
-        self.pd: Optional[PageTable] = None
-        self.pt: Optional[PageTable] = None
-
-        # compress output, don't print same entries all over
-        self.last_addr: int = 0
-        self.last_flags: int = 0
-        self.skipped: int = 0
-        self.entries: int = 0
-
-    def page_table(self, addr: int) -> PageTable:
-        assert addr > 0
-        end = addr + ct.sizeof(PageTableEntries)
-        return PageTable(self.mem[addr:end])
-
-    def next_page_table(self, pagetbl_entry: int) -> PageTable:
-        # pagetble_entry bits 51:12 contains the physical address of the next page
-        # table level
-        bm = bitmask_numbits(51 - 12 + 1) << 12
-        # physical addr of page table entry
-        paddr = pagetbl_entry & bm
-        # Actually, 51:.. is too generous, there are some reserved bits which must be
-        # zero
-        # assert (pagetbl_entry & pte_reserved_flags) == 0
-
-        if is_page_aligned(paddr):
-            raise RuntimeError("CRITICAL: invalid addr {paddr}\n")
-
-        return self.page_table(paddr)
+def page_table(mem: Memory, addr: int) -> PageTable:
+    if addr == 0:
+        breakpoint()
+    end = addr + ct.sizeof(PageTableEntries)
+    return PageTable(mem[addr:end])
 
 
-# Each level of page tables is responsible for 9 bits of the virtual address.
-# PML4 39:47 (inclusive)
-# PDPT 30:38 (inclusive)
-# PD   21:29 (inclusive)
-# PT   12:20 (inclusive)
-# (0:11 are the offset in a 4K page)
-# The position of the bit of the virtual memory address that the page table
-# level refers to.
-class pt_addr_bit(IntEnum):
-    PML4 = 39
-    PDPT = 30
-    PD = 21
-    PT = 12
-
-
-# The part of the virtual address defined by the page table entry at index for
-# the page table level indicated by bitpos
-def pte_addr_part(index: int, bitpos: pt_addr_bit) -> int:
-    assert index < 512
-    assert (
-        bitpos == pt_addr_bit.PML4
-        or bitpos == pt_addr_bit.PDPT
-        or bitpos == pt_addr_bit.PD
-        or bitpos == pt_addr_bit.PT
+def dump_page_table_entry(e: int, addr: int, level: int) -> None:
+    rw = "W" if (e & _PAGE_RW) else "R"
+    user = "U" if (e & _PAGE_USER) else "K"
+    pwt = "PWT" if (e & _PAGE_PWT) else ""
+    pcd = "PCD" if (e & _PAGE_PCD) else ""
+    accessed = "A" if (e & _PAGE_ACCESSED) else ""
+    nx = "NX" if (e & _PAGE_NX) else ""
+    str_level = "  " * level
+    description = list(memory_layout.at(addr))[0].data
+    print(
+        f"{str_level} 0x{addr:x} {rw} {user} {pwt} {pcd} {accessed} {nx} {description}",
     )
-    return index << bitpos
 
 
-def check_entry(e: int) -> bool:
-    # 51:M reserved, must be 0
-    # if e & pte_reserved_flags:
-    #    print("invalid entry!\n")
-    #    breakpoint()
-    #    return False
-    if e & _PAGE_PSE:
-        # TODO references a page directly, probably sanity check address?
-        pass
-    if not (e & _PAGE_PRESENT) and e:
-        pass
-        # print("strange entry!\n")
-        # return False
+def dump_page_table(pml4: PageTable, memory: Memory) -> None:
+    bm = ((1 << (51 - 12 + 1)) - 1) << 12
+    for i in range(512):
+        if pml4.entries[i] & _PAGE_PRESENT == 0:
+            continue
 
-    return True
+        # sign extend most significant bit
+        if (i << 39) & (1 << 47):
+            addr = 0xFFFF << 48
+        else:
+            addr = 0
+        addr |= i << (12 + 9 * 3)
+        if pml4.entries[i] & _PAGE_PSE:
+            dump_page_table_entry(pml4.entries[i], addr, 0)
 
-
-def string_page_size(bitpos: pt_addr_bit) -> str:
-    assert (
-        bitpos == pt_addr_bit.PDPT
-        or bitpos == pt_addr_bit.PD
-        or bitpos == pt_addr_bit.PT
-    )
-    pagesize = 1 << bitpos
-    if pagesize == 1024 * 1024 * 1024:
-        return "1GB"
-    elif pagesize == 2 * 1024 * 1024:
-        return "2MB"
-    elif pagesize == 4 * 1024:
-        return "4KB"
-    else:
-        raise RuntimeError("BUG PAGESIZE")
-
-
-def dump_entry(state: State, bitpos: pt_addr_bit) -> bool:
-    str_level = ""
-    ret = True  # continue descending
-
-    baddr = 0  # pointer to state struct with base address of current entry. To be set in this function
-    addr_max = 0  # maximum virtual address described by the current page table entry
-
-    _direct_mapping = False  # entry maps a page directly
-
-    if bitpos == pt_addr_bit.PML4:  # outer level
-        table = state.pml4
-        str_level = "pml4"
-        outer_baddr = 0
-        if pte_addr_part(table.i, pt_addr_bit.PML4) & (1 << 47):  # highest bit set
-            outer_baddr = 0xFFFF << 48
-    elif bitpos == pt_addr_bit.PDPT:
-        assert state.pdpt is not None
-        table = state.pdpt
-        str_level = "  pdpt"
-        outer_baddr = state.pml4.baddr
-    elif bitpos == pt_addr_bit.PD:
-        assert state.pd is not None and state.pdpt is not None
-        table = state.pd
-        str_level = "      pd"
-        assert (state.pml4.baddr | state.pdpt.baddr) == state.pdpt.baddr
-        outer_baddr = state.pdpt.baddr
-    elif bitpos == pt_addr_bit.PT:  # final level
-        assert (
-            state.pml4.baddr is not None
-            and state.pdpt is not None
-            and state.pd is not None
-            and state.pt is not None
-        )
-        table = state.pt
-        str_level = "        pt"
-        assert (state.pml4.baddr | state.pdpt.baddr | state.pd.baddr) == state.pd.baddr
-        outer_baddr = state.pd.baddr
-
-    e = table.entries[table.i]
-
-    assert check_entry(e)
-
-    if not (e & _PAGE_PRESENT):
-        # skip page which is marked not present. Do not emit any output.
-        return False
-
-    table.baddr = outer_baddr | pte_addr_part(table.i, bitpos)
-    assert outer_baddr & pte_addr_part(table.i, bitpos) == 0  # no overlapping bits
-    # assert (
-    #    state.pdpt is not None
-    #    and (state.pml4.baddr | state.pdpt.baddr) & state.pml4.baddr == state.pml4.baddr
-    # )  # no overlapping bits
-    addr_max = bitmask_numbits(bitpos)
-    # assert (state.pml4.baddr & addr_max) == 0  # no overlapping bits
-    # assert (state.pdpt.baddr & addr_max) == 0  # no overlapping bits
-    addr_max |= table.baddr
-
-    if (e & _PAGE_PSE) or bitpos == pt_addr_bit.PT:
-        # PSE for 2MB or 1GB direct mapping bitpos == PT, then the _PAGE_PSE bit
-        # is the PAT bit. But for 4k pages, we always have a direct mapping
-        _direct_mapping = True
-        ret = False  # do not descend to any deeper page tables!
-
-    if state.last_addr + 1 == table.baddr and state.last_flags == entry_extract_flags(
-        e
-    ):
-        # don't print consecutive similar mappings
-        state.skipped += 1
-    else:
-        if state.skipped:
-            print(
-                f"{str_level} skipped {state.skipped} following entries (til {state.last_addr:x})"
-            )
-        state.skipped = 0
-        rw = "W" if (e & _PAGE_RW) else "R"
-        user = "U" if (e & _PAGE_USER) else "K"
-        pwt = "PWT" if (e & _PAGE_PWT) else ""
-        pcd = "PCD" if (e & _PAGE_PCD) else ""
-        accessed = "A" if (e & _PAGE_ACCESSED) else ""
-        nx = "NX" if (e & _PAGE_NX) else ""
-        print(
-            f"{str_level} {baddr} {addr_max:x} {rw} {user} {pwt} {pcd} {accessed} {nx}",
-            end="",
-        )
-        if _direct_mapping:
-            print(f" -> {string_page_size(bitpos)} page", end="")
-        print()
-    state.entries += 1
-
-    state.last_addr = addr_max
-    state.last_flags = entry_extract_flags(e)
-
-    return ret
-
-
-def dump_page_table(core: ElfCore, memory: Memory) -> None:
-    sregs = core.special_regs[0]
-    # https://software.intel.com/sites/default/files/managed/39/c5/325462-sdm-vol-1-2abcd-3abcd.pdf pp.2783 March 2017, version 062
-
-    # Chap 3.2.1 64-Bit Mode Execution Environment. Control registers expand to 64 bits
-    cr0 = sregs.cr0
-    cr3 = sregs.cr3
-    cr4 = sregs.cr4
-    ia32_efer = core.msrs[0][0].data
-
-    if not ia32_efer & EFER_NX:
-        print("No IA32_EFER.NXE?????")
-
-    print(f"cr3: 0x{cr3:x}")
-    #  reserved
-    if cr3 & 0xFFFFFFFFFFFFFFFF << x86_phys_bits:
-        print("c3 looks shady")
-
-    if cr3 & X86_CR3_PWT or cr3 & X86_CR3_PCD:
-        print("unexpected options in cr3")
-
-    if (
-        cr0 & X86_CR0_PG
-        or cr4 & X86_CR4_PAE
-        and ia32_efer & EFER_LME
-        or not (cr4 & X86_CR4_PCIDE)
-    ):
-        print("paging according to Tab 4-12 p. 2783 intel dev manual (March 2017)\n")
-    else:
-        raise RuntimeError("unknown paging setup")
-    if not (cr4 & X86_CR4_PKE):
-        print("No protection keys enabled (this is normal)")
-
-    state = State(memory, cr3)
-    print(f"page table in virtual memory at 0x{state.pml4.baddr:x}")
-    if is_page_aligned(cr3):  # TODO ?
-        raise RuntimeError("invalid addr!")
-
-    #  4 nested for loops to walk 4 levels of pages walk the outermost page table
-    for i in range(0, PAGE_TABLE_SIZE):
-        state.pml4.i = i
-        if dump_entry(state, pt_addr_bit.PML4):
-            # walk next level
-            state.pdpt = state.next_page_table(state.pml4.entries[state.pml4.i])
-            state.pdpt.i = i
-            for i in range(0, PAGE_TABLE_SIZE):
-                # walk next level
-                state.pdpt.i = i
-                if dump_entry(state, pt_addr_bit.PDPT):
-                    state.pd = state.next_page_table(state.pdpt.entries[state.pdpt.i])
-                    for i in range(0, PAGE_TABLE_SIZE):
-                        state.pd.i = i
-                        if dump_entry(state, pt_addr_bit.PD):
-                            # print final level here
-                            state.pt = state.next_page_table(
-                                state.pd.entries[state.pd.i]
-                            )
-                            for i in range(0, PAGE_TABLE_SIZE):
-                                state.pt.i = i
-                                if dump_entry(state, pt_addr_bit.PT):
-                                    raise RuntimeError("we cannot go deeper!")
-                            #  reset pt entries in state for assertions
-                            state.pt = None
-                    # reset pd entries in state for assertions
-                    state.pd = None
-            # reset pdpt entries in state for assertions
-            state.pdpt = None
-    print(f"entries: {state.entries}")
+        pdt = page_table(memory, pml4.entries[i] & bm)
+        for j in range(512):
+            if pdt.entries[j] & _PAGE_PRESENT == 0:
+                continue
+            addr |= j << (12 + 9 * 2)
+            if pdt.entries[j] & _PAGE_PSE:
+                dump_page_table_entry(pdt.entries[j], addr, 1)
+                continue
+            pd = page_table(memory, pdt.entries[j] & bm)
+            for k in range(512):
+                if pd.entries[k] & _PAGE_PRESENT == 0:
+                    continue
+                addr |= k << (12 + 9 * 1)
+                if pd.entries[j] & _PAGE_PSE:
+                    dump_page_table_entry(pd.entries[k], addr, 2)
+                    continue
+                pt = page_table(memory, pd.entries[k] & bm)
+                for l in range(512):
+                    if pt.entries[l] & _PAGE_PRESENT == 0:
+                        continue
+                    addr |= l << 12
+                    dump_page_table_entry(pt.entries[l], addr, 3)
 
 
 # TODO: x86_64 specific
@@ -438,6 +188,13 @@ memory_layout = IntervalTree(
 )
 
 
+def get_page_table_addr(sregs: KVMSRegs) -> int:
+    if sregs.cr4 & X86_CR4_PCIDE:
+        return sregs.cr3 & 0x000FFFFFFFFFF000
+    else:
+        return sregs.cr3
+
+
 def inspect_coredump(fd: IO[bytes]) -> None:
     core = ElfCore(fd)
     vm_segment = core.find_segment_by_addr(PHYS_LOAD_ADDR)
@@ -445,13 +202,19 @@ def inspect_coredump(fd: IO[bytes]) -> None:
     mem = core.map_segment(vm_segment)
     start_addr, end_addr = find_ksymtab_strings(mem)
     print(f"found ksymtab at 0x{start_addr:x}:0x{end_addr:x}")
-    sregs = core.special_regs[0]
-    cr3 = sregs.cr3
-    page_table_segment = core.find_segment_by_addr(cr3)
-    assert page_table_segment is not None
+
+    pt_addr = get_page_table_addr(core.special_regs[0])
+    pt_segment = core.find_segment_by_addr(pt_addr)
+    assert pt_segment is not None
     # for simplicity we assume that the page table is also in this main vm allocation
-    assert vm_segment.header == page_table_segment.header
-    dump_page_table(core, mem)
+    assert vm_segment.header == pt_segment.header
+    cpl = core.regs[0].cs & 3
+    if cpl == 0 or cpl == 1:
+        print("program run in privileged mode")
+    else:  # cpl == 3:
+        print("program runs userspace")
+    pml4 = page_table(mem, pt_addr)
+    dump_page_table(pml4, mem)
 
 
 def main() -> None:
