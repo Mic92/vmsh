@@ -9,6 +9,7 @@ linux_rev := "v5.11"
 kernel_fhs := `nix-build --no-out-link nix/kernel-fhs.nix` + "/bin/linux-kernel-build"
 
 qemu_pid := `pgrep -u $USER qemu-system | awk '{print $1}'`
+qemu_ssh_port := "2222"
 
 lint:
   flake8 tests
@@ -79,7 +80,7 @@ qemu: build-linux nixos-image
     -hda {{linux_dir}}/nixos.qcow2 \
     -append "root=/dev/sda console=ttyS0 nokaslr" \
     -net nic,netdev=user.0,model=virtio \
-    -netdev user,id=user.0,hostfwd=tcp::2222-:22 \
+    -netdev user,id=user.0,hostfwd=tcp::{{qemu_ssh_port}}-:22 \
     -m 512M \
     -cpu host \
     -virtfs local,path={{invocation_directory()}}/..,security_model=none,mount_tag=home \
@@ -87,8 +88,16 @@ qemu: build-linux nixos-image
     -nographic -enable-kvm \
     -s
 
+# SSH into vm started by `just qemu`
+ssh-qemu $COMMAND="":
+  ssh -i {{invocation_directory()}}/nix/ssh_key \
+      -o StrictHostKeyChecking=no \
+      -o UserKnownHostsFile=/dev/null \
+      root@localhost \
+      -p {{qemu_ssh_port}} "$COMMAND"
+
 nested-qemu: nested-nixos-image
-  ssh -i {{invocation_directory()}}/nix/ssh_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@localhost -p 2222 qemu-nested
+  just ssh-qemu qemu-nested
 
 # Build debug kernel module for VM using kernel build by `just build-linux`
 build-debug-kernel-mod:
@@ -98,10 +107,7 @@ build-debug-kernel-mod:
 
 # Load debug kernel module into VM started by `just qemu` using ssh
 load-debug-kernel-mod: build-debug-kernel-mod
-  ssh -i {{invocation_directory()}}/nix/ssh_key \
-    -o StrictHostKeyChecking=no \
-    -o UserKnownHostsFile=/dev/null \
-    root@localhost -p 2222 "rmmod debug-kernel-mod; insmod /mnt/vmsh/tests/debug-kernel-mod/debug-kernel-mod.ko && dmesg"
+  just ssh-qemu "rmmod debug-kernel-mod; insmod /mnt/vmsh/tests/debug-kernel-mod/debug-kernel-mod.ko && dmesg"
 
 inspect-qemu:
   cargo run -- inspect "{{qemu_pid}}"
