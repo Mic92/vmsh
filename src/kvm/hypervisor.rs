@@ -1,3 +1,4 @@
+use crate::inject_syscall;
 use kvm_bindings as kvmb;
 use libc::{c_int, c_void};
 use log::warn;
@@ -416,8 +417,15 @@ impl Hypervisor {
 
     /// Expects Self.resumed()-ed
     pub fn log_kvm_exits(&self) -> Result<()> {
+        let injector = inject_syscall::attach(self.pid)?;
+        println!("hv pid: {}", injector.getpid()?);
+
+        //let mut kvm_run = KvmRunWrapper::attach(self.pid, &self.vcpu_maps)?;
+        let mut kvm_run = KvmRunWrapper::from_tracer(inject_syscall::into_tracer(
+            injector,
+            self.vcpu_maps[0].clone(),
+        )?)?;
         let value: [u8; 2] = 0xDEADu16.to_ne_bytes();
-        let mut kvm_run = KvmRunWrapper::attach(self.pid, &self.vcpu_maps)?;
         println!("attached");
         for _i in 0..100000 {
             //println!("{}", _i);
