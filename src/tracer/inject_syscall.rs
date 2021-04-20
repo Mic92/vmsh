@@ -8,9 +8,9 @@ use simple_error::try_with;
 use std::os::unix::prelude::RawFd;
 
 use crate::cpu::{self, Regs};
-use crate::proc::Mapping;
-use crate::ptrace;
 use crate::result::Result;
+use crate::tracer::proc::Mapping;
+use crate::tracer::ptrace;
 use crate::tracer::Tracer;
 
 pub struct Process {

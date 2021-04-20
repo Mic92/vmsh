@@ -9,9 +9,9 @@ use std::fs;
 use std::{mem, ptr};
 
 use crate::cpu::Regs;
-use crate::proc;
-use crate::ptrace_syscall_info::{get_syscall_info, SyscallInfo};
 use crate::result::Result;
+use crate::tracer::proc;
+use crate::tracer::ptrace_syscall_info::{get_syscall_info, SyscallInfo};
 
 pub struct Thread {
     pub tid: Pid,

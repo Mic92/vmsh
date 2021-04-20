@@ -6,13 +6,13 @@ use std::os::unix::prelude::RawFd;
 use std::ptr;
 
 use crate::cpu;
-use crate::inject_syscall;
-use crate::inject_syscall::Process as Injectee;
 use crate::kvm::hypervisor::{HvMem, VCPU};
 use crate::kvm::ioctls::KVM_CHECK_EXTENSION;
 use crate::kvm::memslots::{get_maps, get_vcpu_maps};
-use crate::proc::Mapping;
 use crate::result::Result;
+use crate::tracer::inject_syscall;
+use crate::tracer::inject_syscall::Process as Injectee;
+use crate::tracer::proc::Mapping;
 
 /// In theory this is dynamic however for for simplicity we limit it to 1 entry to not have to rewrite our vm allocation stack
 #[repr(C)]

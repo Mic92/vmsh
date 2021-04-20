@@ -9,9 +9,9 @@ use std::fmt;
 
 use crate::kvm::hypervisor;
 use crate::kvm::ioctls;
-use crate::proc::Mapping;
-use crate::ptrace;
 use crate::result::Result;
+use crate::tracer::proc::Mapping;
+use crate::tracer::ptrace;
 
 type MmioRwRaw = kvmb::kvm_run__bindgen_ty_1__bindgen_ty_6;
 

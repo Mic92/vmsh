@@ -1,4 +1,3 @@
-use crate::proc::openpid;
 use bcc::perf_event::PerfMapBuilder;
 use bcc::{BPFBuilder, Kprobe, BPF};
 use core::slice::from_raw_parts as make_slice;
@@ -12,8 +11,9 @@ use std::time::Duration;
 use std::{fmt, ptr};
 
 use crate::kvm::hypervisor;
-use crate::proc::{self, Mapping};
 use crate::result::Result;
+use crate::tracer::proc::openpid;
+use crate::tracer::proc::{self, Mapping};
 use crate::{kvm::tracee::Tracee, page_math::page_size};
 
 #[derive(Clone, Debug)]

@@ -1,4 +1,4 @@
-use crate::inject_syscall;
+use crate::tracer::inject_syscall;
 use kvm_bindings as kvmb;
 use libc::{c_int, c_void};
 use log::warn;
@@ -19,9 +19,9 @@ use crate::kvm::fd_transfer;
 use crate::kvm::ioctls;
 use crate::kvm::tracee::{kvm_msrs, Tracee};
 use crate::page_math;
-use crate::proc::{openpid, Mapping, PidHandle};
 use crate::result::Result;
-use crate::wrap_syscall::KvmRunWrapper;
+use crate::tracer::proc::{openpid, Mapping, PidHandle};
+use crate::tracer::wrap_syscall::KvmRunWrapper;
 
 /// # Safety
 ///
