@@ -192,7 +192,7 @@ impl Hypervisor {
             self.tracee.write(),
             "cannot obtain tracee write lock: poinsoned"
         );
-        tracee.detach();
+        let _ = tracee.detach();
         Ok(())
     }
 
@@ -415,21 +415,31 @@ impl Hypervisor {
         Ok(-1)
     }
 
-    /// Expects Self.resumed()-ed
+    /// Can be called regardless of de/attached state.
     pub fn log_kvm_exits(&self) -> Result<()> {
-        let injector = inject_syscall::attach(self.pid)?;
-        println!("hv pid: {}", injector.getpid()?);
+        let mut tracee = try_with!(
+            self.tracee.write(),
+            "cannot obtain tracee read lock: poinsoned"
+        );
+        let (was_attached, mut wrapper) = match tracee.detach() {
+            Some(injector) => {
+                let wrapper = KvmRunWrapper::from_tracer(inject_syscall::into_tracer(
+                    injector,
+                    self.vcpu_maps[0].clone(),
+                )?)?;
+                (true, wrapper)
+            }
+            None => {
+                let wrapper = KvmRunWrapper::attach(self.pid, &self.vcpu_maps)?;
+                (false, wrapper)
+            }
+        };
 
-        //let mut kvm_run = KvmRunWrapper::attach(self.pid, &self.vcpu_maps)?;
-        let mut kvm_run = KvmRunWrapper::from_tracer(inject_syscall::into_tracer(
-            injector,
-            self.vcpu_maps[0].clone(),
-        )?)?;
         let value: [u8; 2] = 0xDEADu16.to_ne_bytes();
         println!("attached");
         for _i in 0..100000 {
             //println!("{}", _i);
-            let mut mmio = kvm_run.wait_for_ioctl()?;
+            let mut mmio = wrapper.wait_for_ioctl()?;
             if let Some(mmio) = &mut mmio {
                 println!("kvm exit: {}", mmio);
                 if !mmio.is_write {
@@ -438,6 +448,11 @@ impl Hypervisor {
             }
         }
 
+        if was_attached {
+            let err = "cannot re-attach injector after having detached it favour of KvmRunWrapper";
+            let injector = try_with!(inject_syscall::from_tracer(wrapper.into_tracer()), &err);
+            try_with!(tracee.attach_to(injector), &err);
+        }
         Ok(())
     }
 

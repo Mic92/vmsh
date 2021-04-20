@@ -7,10 +7,8 @@ use simple_error::bail;
 use simple_error::try_with;
 use std::fmt;
 
-use crate::inject_syscall::Process;
 use crate::kvm::hypervisor;
 use crate::kvm::ioctls;
-use crate::kvm::memslots::get_vcpu_maps;
 use crate::proc::Mapping;
 use crate::ptrace;
 use crate::result::Result;

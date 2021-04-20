@@ -149,7 +149,6 @@ macro_rules! syscall_args {
     };
 }
 
-use crate::wrap_syscall::KvmRunWrapper;
 impl Process {
     pub fn ioctl(&self, fd: RawFd, request: c_ulong, arg: c_ulong) -> Result<c_int> {
         let args = syscall_args!(
@@ -315,7 +314,7 @@ impl Process {
         }
     }
 
-    fn main_thread(&self) -> &ptrace::Thread {
+    pub fn main_thread(&self) -> &ptrace::Thread {
         &(self.threads.as_ref().unwrap()[self.process_idx])
     }
 }

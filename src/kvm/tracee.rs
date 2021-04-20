@@ -1,7 +1,7 @@
 use kvm_bindings as kvmb;
 use libc::{c_int, c_ulong, c_void};
 use nix::unistd::Pid;
-use simple_error::{simple_error, try_with};
+use simple_error::{bail, simple_error, try_with};
 use std::os::unix::prelude::RawFd;
 use std::ptr;
 
@@ -55,8 +55,26 @@ impl Tracee {
         Ok(())
     }
 
-    pub fn detach(&mut self) {
-        self.proc = None;
+    /// See attach()
+    pub fn attach_to(&mut self, injector: Injectee) -> Result<()> {
+        let inj_pid = injector.main_thread().tid;
+        if self.pid != inj_pid {
+            bail!(
+                "cannot attach Tracee {} using a tracer on {}",
+                self.pid,
+                inj_pid
+            );
+        }
+        if self.proc.is_some() {
+            bail!("cannot attatch tracee because it is already attach to something else");
+        }
+
+        self.proc = Some(injector);
+        Ok(())
+    }
+
+    pub fn detach(&mut self) -> Option<Injectee> {
+        self.proc.take()
     }
 
     pub fn try_get_proc(&self) -> Result<&Injectee> {
