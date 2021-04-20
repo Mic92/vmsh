@@ -1,3 +1,4 @@
+use crate::tracer::inject_syscall;
 use kvm_bindings as kvmb;
 use libc::{c_int, c_void};
 use log::warn;
@@ -18,9 +19,9 @@ use crate::kvm::fd_transfer;
 use crate::kvm::ioctls;
 use crate::kvm::tracee::{kvm_msrs, Tracee};
 use crate::page_math;
-use crate::proc::{openpid, Mapping, PidHandle};
 use crate::result::Result;
-use crate::wrap_syscall::KvmRunWrapper;
+use crate::tracer::proc::{openpid, Mapping, PidHandle};
+use crate::tracer::wrap_syscall::KvmRunWrapper;
 
 /// # Safety
 ///
@@ -191,7 +192,7 @@ impl Hypervisor {
             self.tracee.write(),
             "cannot obtain tracee write lock: poinsoned"
         );
-        tracee.detach();
+        let _ = tracee.detach();
         Ok(())
     }
 
@@ -201,6 +202,38 @@ impl Hypervisor {
             "cannot obtain tracee write lock: poinsoned"
         );
         tracee.attach()?;
+        Ok(())
+    }
+
+    /// run code while having full control over ioctl(KVM_RUN)
+    /// Can be called regardless of de/attached state.
+    pub fn kvmrun_wrapped(&self, f: impl Fn(&mut KvmRunWrapper) -> Result<()>) -> Result<()> {
+        let mut tracee = try_with!(
+            self.tracee.write(),
+            "cannot obtain tracee read lock: poinsoned"
+        );
+        let (was_attached, mut wrapper) = match tracee.detach() {
+            Some(injector) => {
+                let wrapper = KvmRunWrapper::from_tracer(inject_syscall::into_tracer(
+                    injector,
+                    self.vcpu_maps[0].clone(),
+                )?)?;
+                (true, wrapper)
+            }
+            None => {
+                let wrapper = KvmRunWrapper::attach(self.pid, &self.vcpu_maps)?;
+                (false, wrapper)
+            }
+        };
+
+        try_with!(f(&mut wrapper), "closure on KvmRunWrapper failed");
+
+        if was_attached {
+            let err = "cannot re-attach injector after having detached it favour of KvmRunWrapper";
+            let injector = try_with!(inject_syscall::from_tracer(wrapper.into_tracer()), &err);
+            try_with!(tracee.attach_to(injector), &err);
+        }
+
         Ok(())
     }
 
@@ -414,21 +447,24 @@ impl Hypervisor {
         Ok(-1)
     }
 
-    /// Expects Self.resumed()-ed
+    /// Can be called regardless of de/attached state.
     pub fn log_kvm_exits(&self) -> Result<()> {
-        let value: [u8; 2] = 0xDEADu16.to_ne_bytes();
-        let mut kvm_run = KvmRunWrapper::attach(self.pid, &self.vcpu_maps)?;
-        println!("attached");
-        for _i in 0..100000 {
-            //println!("{}", _i);
-            let mut mmio = kvm_run.wait_for_ioctl()?;
-            if let Some(mmio) = &mut mmio {
-                println!("kvm exit: {}", mmio);
-                if !mmio.is_write {
-                    mmio.answer_read(&value)?;
+        self.kvmrun_wrapped(|wrapper: &mut KvmRunWrapper| {
+            let value: [u8; 2] = 0xDEADu16.to_ne_bytes();
+            println!("attached");
+
+            for _i in 0..100000 {
+                let mut mmio = wrapper.wait_for_ioctl()?;
+                if let Some(mmio) = &mut mmio {
+                    println!("kvm exit: {}", mmio);
+                    if !mmio.is_write {
+                        mmio.answer_read(&value)?;
+                    }
                 }
             }
-        }
+
+            Ok(())
+        })?;
 
         Ok(())
     }

@@ -8,19 +8,21 @@ use simple_error::try_with;
 use std::os::unix::prelude::RawFd;
 
 use crate::cpu::{self, Regs};
-use crate::ptrace;
 use crate::result::Result;
+use crate::tracer::proc::Mapping;
+use crate::tracer::ptrace;
+use crate::tracer::Tracer;
 
 pub struct Process {
     process_idx: usize,
     saved_regs: Regs,
     saved_text: c_long,
-    threads: Vec<ptrace::Thread>,
+    /// Must never be None during operation. Only deinit() (called by drop) make take() this.
+    threads: Option<Vec<ptrace::Thread>>,
 }
 
-pub fn attach(pid: Pid) -> Result<Process> {
-    let (threads, process_idx) = ptrace::attach_all_threads(pid)?;
-
+/// save and overwrite main thread state
+fn init(threads: &[ptrace::Thread], process_idx: usize) -> Result<(Regs, c_long)> {
     let saved_regs = try_with!(
         threads[process_idx].getregs(),
         "cannot get registers for main process ({})",
@@ -36,11 +38,60 @@ pub fn attach(pid: Pid) -> Result<Process> {
         "cannot patch syscall instruction"
     );
 
+    Ok((saved_regs, saved_text))
+}
+
+/// called by the destructor, may be called multiple times.
+/// First call: return Some(_). From now on no further operations must be done on this object.
+/// Second call: return None
+fn deinit(p: &mut Process) -> Option<Vec<ptrace::Thread>> {
+    match &mut p.threads {
+        // may have been take()en already
+        Some(threads) => {
+            let main_thread = &threads[p.process_idx];
+            let _ = unsafe {
+                main_thread.write(
+                    p.saved_regs.ip() as *mut c_void,
+                    p.saved_text as *mut c_void,
+                )
+            };
+            let _ = main_thread.setregs(&p.saved_regs);
+            Some(p.threads.take().unwrap())
+        }
+        None => None,
+    }
+}
+
+pub fn from_tracer(t: Tracer) -> Result<Process> {
+    let (saved_regs, saved_text) = init(&t.threads, t.process_idx)?;
+
+    Ok(Process {
+        process_idx: t.process_idx,
+        saved_regs,
+        saved_text,
+        threads: Some(t.threads),
+    })
+}
+
+pub fn into_tracer(mut p: Process, vcpu_map: Mapping) -> Result<Tracer> {
+    let process_idx = p.process_idx;
+    let threads = deinit(&mut p).expect("Process was deinited before it was dropped!");
+    Ok(Tracer {
+        process_idx,
+        threads,
+        vcpu_map,
+    })
+}
+
+pub fn attach(pid: Pid) -> Result<Process> {
+    let (threads, process_idx) = ptrace::attach_all_threads(pid)?;
+    let (saved_regs, saved_text) = init(&threads, process_idx)?;
+
     Ok(Process {
         process_idx,
         saved_regs,
         saved_text,
-        threads,
+        threads: Some(threads),
     })
 }
 
@@ -263,20 +314,14 @@ impl Process {
         }
     }
 
-    fn main_thread(&self) -> &ptrace::Thread {
-        &self.threads[self.process_idx]
+    pub fn main_thread(&self) -> &ptrace::Thread {
+        &(self.threads.as_ref().unwrap()[self.process_idx])
     }
 }
 
 impl Drop for Process {
     fn drop(&mut self) {
-        let _ = unsafe {
-            self.main_thread().write(
-                self.saved_regs.ip() as *mut c_void,
-                self.saved_text as *mut c_void,
-            )
-        };
-        let _ = self.main_thread().setregs(&self.saved_regs);
+        let _ = deinit(self); // its ok if it was already deinited
     }
 }
 

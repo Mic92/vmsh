@@ -21,7 +21,7 @@ use crate::elf::{
 use crate::kvm::hypervisor::Hypervisor;
 use crate::page_math::{page_align, page_size};
 use crate::result::Result;
-use crate::{kvm, proc::Mapping};
+use crate::{kvm, tracer::proc::Mapping};
 
 pub struct CoredumpOptions {
     pub pid: Pid,

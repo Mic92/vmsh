@@ -1,3 +1,4 @@
+use crate::tracer::Tracer;
 use kvm_bindings as kvmb;
 use nix::sys::signal::Signal;
 use nix::sys::wait::{waitpid, WaitStatus};
@@ -8,10 +9,9 @@ use std::fmt;
 
 use crate::kvm::hypervisor;
 use crate::kvm::ioctls;
-use crate::kvm::memslots::get_vcpu_maps;
-use crate::proc::Mapping;
-use crate::ptrace;
 use crate::result::Result;
+use crate::tracer::proc::Mapping;
+use crate::tracer::ptrace;
 
 type MmioRwRaw = kvmb::kvm_run__bindgen_ty_1__bindgen_ty_6;
 
@@ -163,13 +163,32 @@ impl KvmRunWrapper {
             })
             .collect();
 
-        for t in &threads {
-            let maps = get_vcpu_maps(t.ptthread.tid)?;
-            println!("thread {} vcpu0 map: {:?}", t.ptthread.tid, maps[0]);
-            assert_eq!(vcpu_maps[0].start, maps[0].start);
-        }
         Ok(KvmRunWrapper {
             process_idx,
+            threads,
+        })
+    }
+
+    pub fn into_tracer(self) -> Tracer {
+        let vcpu_map = self.threads[0].vcpu_map.clone();
+        let threads = self.threads.into_iter().map(|t| t.ptthread).collect();
+        Tracer {
+            process_idx: self.process_idx,
+            threads,
+            vcpu_map,
+        }
+    }
+
+    pub fn from_tracer(tracer: Tracer) -> Result<Self> {
+        let vcpu_map = tracer.vcpu_map;
+        let threads: Vec<Thread> = tracer
+            .threads
+            .into_iter()
+            .map(|t| Thread::new(t, vcpu_map.clone()))
+            .collect();
+
+        Ok(KvmRunWrapper {
+            process_idx: tracer.process_idx,
             threads,
         })
     }
