@@ -79,7 +79,7 @@ pub fn into_tracer(mut p: Process, vcpu_map: Mapping) -> Result<Tracer> {
     Ok(Tracer {
         process_idx,
         threads,
-        vcpu_map: vcpu_map,
+        vcpu_map,
     })
 }
 
