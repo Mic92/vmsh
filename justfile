@@ -48,6 +48,8 @@ configure-linux: clone-linux
     {{kernel_fhs}} "scripts/config --set-val IKHEADERS y"
     {{kernel_fhs}} "scripts/config --set-val VIRTIO_MMIO m"
     {{kernel_fhs}} "scripts/config --set-val VIRTIO_MMIO_CMDLINE_DEVICES y"
+    {{kernel_fhs}} "scripts/config --set-val PTDUMP_CORE y"
+    {{kernel_fhs}} "scripts/config --set-val PTDUMP_DEBUGFS y"
   fi
 
 sign-drone:
