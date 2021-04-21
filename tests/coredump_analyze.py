@@ -77,7 +77,12 @@ def page_table(mem: Memory, addr: int) -> PageTable:
     return PageTable(mem[addr:end])
 
 
-def dump_page_table_entry(e: int, addr: int, level: int) -> None:
+PHYS_ADDR_MASK = 0xFFFFFFFFFF000
+
+
+def dump_page_table_entry(
+    e: int, virt_addr: int, level: int, j: int, k: int, l: int
+) -> None:
     rw = "W" if (e & _PAGE_RW) else "R"
     user = "U" if (e & _PAGE_USER) else "K"
     pwt = "PWT" if (e & _PAGE_PWT) else ""
@@ -85,49 +90,53 @@ def dump_page_table_entry(e: int, addr: int, level: int) -> None:
     accessed = "A" if (e & _PAGE_ACCESSED) else ""
     nx = "NX" if (e & _PAGE_NX) else ""
     str_level = "  " * level
-    description = list(memory_layout.at(addr))[0].data
+    phys_addr = e & PHYS_ADDR_MASK
+
+    if level >= 1:
+        virt_addr |= j << (12 + 9 * 2)
+    if level >= 2:
+        virt_addr |= k << (12 + 9 * 1)
+    if level >= 3:
+        virt_addr |= l << 12
+
+    if virt_addr >> 47:
+        virt_addr |= 0xFFFF << 48
+
+    description = list(memory_layout.at(virt_addr))[0].data
     print(
-        f"{str_level} 0x{addr:x} {rw} {user} {pwt} {pcd} {accessed} {nx} {description}",
+        f"{str_level} 0x{phys_addr:x} -> 0x{virt_addr:x} {rw} {user} {pwt} {pcd} {accessed} {nx} {description}",
     )
 
 
 def dump_page_table(pml4: PageTable, memory: Memory) -> None:
-    bm = ((1 << (51 - 12 + 1)) - 1) << 12
     for i in range(512):
         if pml4.entries[i] & _PAGE_PRESENT == 0:
             continue
 
         # sign extend most significant bit
-        if (i << 39) & (1 << 47):
-            addr = 0xFFFF << 48
-        else:
-            addr = 0
-        addr |= i << (12 + 9 * 3)
-        if pml4.entries[i] & _PAGE_PSE:
-            dump_page_table_entry(pml4.entries[i], addr, 0)
+        virt_addr = i << (12 + 9 * 3)
 
-        pdt = page_table(memory, pml4.entries[i] & bm)
+        if pml4.entries[i] & _PAGE_PSE:
+            dump_page_table_entry(pml4.entries[i], virt_addr, 0, 0, 0, 0)
+
+        pdt = page_table(memory, pml4.entries[i] & PHYS_ADDR_MASK)
         for j in range(512):
             if pdt.entries[j] & _PAGE_PRESENT == 0:
                 continue
-            addr |= j << (12 + 9 * 2)
             if pdt.entries[j] & _PAGE_PSE:
-                dump_page_table_entry(pdt.entries[j], addr, 1)
+                dump_page_table_entry(pdt.entries[j], virt_addr, 1, j, 0, 0)
                 continue
-            pd = page_table(memory, pdt.entries[j] & bm)
+            pd = page_table(memory, pdt.entries[j] & PHYS_ADDR_MASK)
             for k in range(512):
                 if pd.entries[k] & _PAGE_PRESENT == 0:
                     continue
-                addr |= k << (12 + 9 * 1)
                 if pd.entries[j] & _PAGE_PSE:
-                    dump_page_table_entry(pd.entries[k], addr, 2)
+                    dump_page_table_entry(pd.entries[k], virt_addr, 2, j, k, 0)
                     continue
-                pt = page_table(memory, pd.entries[k] & bm)
+                pt = page_table(memory, pd.entries[k] & PHYS_ADDR_MASK)
                 for l in range(512):
-                    if pt.entries[l] & _PAGE_PRESENT == 0:
-                        continue
-                    addr |= l << 12
-                    dump_page_table_entry(pt.entries[l], addr, 3)
+                    if pt.entries[l] & _PAGE_PRESENT:
+                        dump_page_table_entry(pt.entries[l], virt_addr, 3, j, k, l)
 
 
 # TODO: x86_64 specific
@@ -190,7 +199,7 @@ memory_layout = IntervalTree(
 
 def get_page_table_addr(sregs: KVMSRegs) -> int:
     if sregs.cr4 & X86_CR4_PCIDE:
-        return sregs.cr3 & 0x000FFFFFFFFFF000
+        return sregs.cr3 & PHYS_ADDR_MASK
     else:
         return sregs.cr3
 
@@ -213,6 +222,7 @@ def inspect_coredump(fd: IO[bytes]) -> None:
         print("program run in privileged mode")
     else:  # cpl == 3:
         print("program runs userspace")
+    print(f"rip=0x{core.regs[0].rip:x}")
     pml4 = page_table(mem, pt_addr)
     dump_page_table(pml4, mem)
 
