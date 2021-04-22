@@ -7,7 +7,8 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "tests"))
 
 import ctypes as ct
 import sys
-from typing import IO, Tuple
+from typing import IO, Tuple, Optional, Iterator
+from dataclasses import dataclass
 
 from coredump import ElfCore, Memory, KVMSRegs
 from cpu_flags import (
@@ -65,78 +66,97 @@ PAGE_TABLE_SIZE = 512
 PageTableEntries = ct.c_uint64 * PAGE_TABLE_SIZE
 
 
-class PageTable:
-    def __init__(self, mem: Memory) -> None:
-        self.entries = PageTableEntries.from_buffer_copy(mem.data)
-
-
-def page_table(mem: Memory, addr: int) -> PageTable:
-    if addr == 0:
-        breakpoint()
+def page_table(
+    mem: Memory, addr: int, virt_addr: int = 0, level: int = 0
+) -> "PageTable":
     end = addr + ct.sizeof(PageTableEntries)
-    return PageTable(mem[addr:end])
+    entries = PageTableEntries.from_buffer_copy(mem[addr:end].data)
+    return PageTable(mem, entries, virt_addr, level)
+
+
+@dataclass
+class PageTableEntry:
+    value: int
+    virt_addr: int
+    level: int
+
+    def page_table(self, mem: Memory) -> "PageTable":
+        assert self.level >= 0 and self.level < 3 and self.value & _PAGE_PRESENT
+        return page_table(mem, self.phys_addr, self.virt_addr, self.level + 1)
+
+    @property
+    def phys_addr(self) -> int:
+        return self.value & PHYS_ADDR_MASK
+
+    def __repr__(self) -> str:
+        v = self.value
+        rw = "W" if (v & _PAGE_RW) else "R"
+        user = "U" if (v & _PAGE_USER) else "K"
+        pwt = "PWT" if (v & _PAGE_PWT) else ""
+        pcd = "PCD" if (v & _PAGE_PCD) else ""
+        accessed = "A" if (v & _PAGE_ACCESSED) else ""
+        nx = "NX" if (v & _PAGE_NX) else ""
+
+        ranges = list(memory_layout.at(self.virt_addr))
+        if len(ranges) == 0:
+            breakpoint()
+        description = ranges[0].data
+
+        return f"0x{self.phys_addr:x} -> 0x{self.virt_addr:x} {rw} {user} {pwt} {pcd} {accessed} {nx} {description}"
+
+
+def get_shift(level: int) -> int:
+    assert level >= 0 and level <= 3
+    return 12 + 9 * (3 - level)
+
+
+def get_index(virt: int, level: int) -> int:
+    return virt >> get_shift(level) & 0x1FF
+
+
+class PageTable:
+    def __init__(
+        self,
+        mem: Memory,
+        entries: "ct.Array[ct.c_uint64]",
+        virt_addr_prefix: int,
+        level: int,
+    ) -> None:
+        self.mem = mem
+        self.entries = entries
+        self.level = level
+        self.virt_addr_prefix = virt_addr_prefix
+
+    def __getitem__(self, idx: int) -> Optional[PageTableEntry]:
+        e = self.entries[idx]
+        if e & _PAGE_PRESENT == 0:
+            return None
+        virt_addr = self.virt_addr_prefix + (idx << get_shift(self.level))
+
+        # sign extend most significant bit
+        if virt_addr >> 47:
+            virt_addr |= 0xFFFF << 48
+        return PageTableEntry(e, virt_addr, self.level)
+
+    def __iter__(self) -> Iterator[PageTableEntry]:
+        for i in range(512):
+            e = self[i]
+            if not e:
+                continue
+            if self.level == 4 or e.value & _PAGE_PSE:
+                yield e
+                continue
+            if self.level < 3:
+                for e in e.page_table(self.mem):
+                    yield e
 
 
 PHYS_ADDR_MASK = 0xFFFFFFFFFF000
 
 
-def dump_page_table_entry(
-    e: int, virt_addr: int, level: int, j: int, k: int, l: int
-) -> None:
-    rw = "W" if (e & _PAGE_RW) else "R"
-    user = "U" if (e & _PAGE_USER) else "K"
-    pwt = "PWT" if (e & _PAGE_PWT) else ""
-    pcd = "PCD" if (e & _PAGE_PCD) else ""
-    accessed = "A" if (e & _PAGE_ACCESSED) else ""
-    nx = "NX" if (e & _PAGE_NX) else ""
-    str_level = "  " * level
-    phys_addr = e & PHYS_ADDR_MASK
-
-    if level >= 1:
-        virt_addr |= j << (12 + 9 * 2)
-    if level >= 2:
-        virt_addr |= k << (12 + 9 * 1)
-    if level >= 3:
-        virt_addr |= l << 12
-
-    if virt_addr >> 47:
-        virt_addr |= 0xFFFF << 48
-
-    description = list(memory_layout.at(virt_addr))[0].data
-    print(
-        f"{str_level} 0x{phys_addr:x} -> 0x{virt_addr:x} {rw} {user} {pwt} {pcd} {accessed} {nx} {description}",
-    )
-
-
-def dump_page_table(pml4: PageTable, memory: Memory) -> None:
-    for i in range(512):
-        if pml4.entries[i] & _PAGE_PRESENT == 0:
-            continue
-
-        # sign extend most significant bit
-        virt_addr = i << (12 + 9 * 3)
-
-        if pml4.entries[i] & _PAGE_PSE:
-            dump_page_table_entry(pml4.entries[i], virt_addr, 0, 0, 0, 0)
-
-        pdt = page_table(memory, pml4.entries[i] & PHYS_ADDR_MASK)
-        for j in range(512):
-            if pdt.entries[j] & _PAGE_PRESENT == 0:
-                continue
-            if pdt.entries[j] & _PAGE_PSE:
-                dump_page_table_entry(pdt.entries[j], virt_addr, 1, j, 0, 0)
-                continue
-            pd = page_table(memory, pdt.entries[j] & PHYS_ADDR_MASK)
-            for k in range(512):
-                if pd.entries[k] & _PAGE_PRESENT == 0:
-                    continue
-                if pd.entries[j] & _PAGE_PSE:
-                    dump_page_table_entry(pd.entries[k], virt_addr, 2, j, k, 0)
-                    continue
-                pt = page_table(memory, pd.entries[k] & PHYS_ADDR_MASK)
-                for l in range(512):
-                    if pt.entries[l] & _PAGE_PRESENT:
-                        dump_page_table_entry(pt.entries[l], virt_addr, 3, j, k, l)
+def dump_page_table(pml4: PageTable) -> None:
+    for e in pml4:
+        print("  " * e.level + str(e))
 
 
 # TODO: x86_64 specific
@@ -196,6 +216,8 @@ memory_layout = IntervalTree(
     ]
 )
 
+LinuxKernelKaslrRange = Interval(0xFFFFFFFF80000000, 0xFFFFFFFFC0000000)
+
 
 def get_page_table_addr(sregs: KVMSRegs) -> int:
     if sregs.cr4 & X86_CR4_PCIDE:
@@ -204,13 +226,22 @@ def get_page_table_addr(sregs: KVMSRegs) -> int:
         return sregs.cr3
 
 
+def find_kalsr_offset(
+    pml4: PageTable, mem: Memory, mem_range: Interval
+) -> Optional[int]:
+    i = get_index(mem_range.begin, 4)
+    print(i)
+    return None
+    # TODO
+
+
 def inspect_coredump(fd: IO[bytes]) -> None:
     core = ElfCore(fd)
     vm_segment = core.find_segment_by_addr(PHYS_LOAD_ADDR)
     assert vm_segment is not None, "cannot find physical memory of VM in coredump"
     mem = core.map_segment(vm_segment)
     start_addr, end_addr = find_ksymtab_strings(mem)
-    print(f"found ksymtab at 0x{start_addr:x}:0x{end_addr:x}")
+    print(f"found ksymtab at physical 0x{start_addr:x}:0x{end_addr:x}")
 
     pt_addr = get_page_table_addr(core.special_regs[0])
     pt_segment = core.find_segment_by_addr(pt_addr)
@@ -224,7 +255,11 @@ def inspect_coredump(fd: IO[bytes]) -> None:
         print("program runs userspace")
     print(f"rip=0x{core.regs[0].rip:x}")
     pml4 = page_table(mem, pt_addr)
-    dump_page_table(pml4, mem)
+    dump_page_table(pml4)
+    # find_kalsr_offset(pml4, mem, LinuxKernelKaslrRange)
+
+    # 0xffffffff80000000–0xffffffffc0000000
+    # dump_page_table(pml4, mem)
 
 
 def main() -> None:
