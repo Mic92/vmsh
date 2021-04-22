@@ -59,6 +59,7 @@ class Memory(Iterable):
 
     def __getitem__(self, key: Union[int, slice]) -> Union[int, "Memory"]:
         if isinstance(key, slice):
+            assert key.start >= self.offset and key.start < key.stop
             d = self.data[key.start - self.offset : key.stop - self.offset : key.step]
             return Memory(d, key.start)
         elif isinstance(key, int):
