@@ -55,7 +55,7 @@ impl MmioRw {
         &self.data[..self.len]
     }
 
-    pub fn data_mut(&mut self) -> &mut [u8] {
+    fn data_mut(&mut self) -> &mut [u8] {
         &mut self.data[..self.len]
     }
 

@@ -1,9 +1,18 @@
+use crate::device;
+use crate::device::virtio::block;
 use crate::device::virtio::{CommonArgs, MmioConfig};
+use crate::device::Block;
+use crate::device::Device;
 use crate::result::Result;
 use crate::tracer::wrap_syscall::{KvmRunWrapper, MmioRw};
-use simple_error::{bail, try_with};
-use vm_device::bus::MmioRange;
+use simple_error::{bail, map_err_with, try_with};
+use std::sync::{Arc, Mutex};
+use vm_device::bus::{Bus, BusManager, MmioAddress, MmioRange};
 use vm_device::device_manager::MmioManager;
+use vm_device::DeviceMmio;
+use vm_memory::GuestMemoryMmap;
+use vm_virtio::device::{VirtioDevice, WithDriverSelect};
+use vm_virtio::Queue;
 
 // Required by the Virtio MMIO device register layout at offset 0 from base. Turns out this
 // is actually the ASCII sequence for "virt" (in little endian ordering).
@@ -16,6 +25,69 @@ const MMIO_VERSION: u32 = 2;
 // we leave it like that, or should we use the VENDOR_ID value for PCI Virtio devices? It looks
 // like the standard doesn't say anything regarding an actual VENDOR_ID value for MMIO devices.
 const VENDOR_ID: u32 = 0;
+
+type MmioPirateBus<D> = Bus<MmioAddress, D>;
+
+/// Replacement for vm_device::device_manager::IoManager.
+/// Can implement MmioManager via vm_device::device_manager::MmioManager.
+pub struct IoPirate {
+    /// mmio device spaces typically accessed by VM exit mmio
+    mmio_bus: MmioPirateBus<Arc<dyn DeviceMmio + Send + Sync>>,
+}
+
+impl IoPirate {
+    pub fn new() -> IoPirate {
+        IoPirate {
+            mmio_bus: Bus::new(),
+        }
+    }
+
+    pub fn register_mmio_device(
+        &mut self,
+        range: MmioRange,
+        blkdev: Arc<Mutex<Block>>,
+    ) -> Result<()> {
+        map_err_with!(
+            self.mmio_bus.register(range, blkdev),
+            "cannot register mmio device on MmioPirateBus"
+        );
+        Ok(())
+    }
+
+    // mmio_read
+    pub fn handle_mmio_rw(&mut self, mmio_rw: &mut MmioRw) -> Result<()> {
+        if mmio_rw.is_write {
+            map_err_with!(
+                self.mmio_write(MmioAddress(mmio_rw.addr), mmio_rw.data()),
+                "write to mmio device (0x{:x}) failed",
+                mmio_rw.addr
+            );
+        } else {
+            let mut data = [0u8; 8];
+            map_err_with!(
+                self.mmio_read(MmioAddress(mmio_rw.addr), &mut data),
+                "write to mmio device (0x{:x}) failed",
+                mmio_rw.addr
+            );
+            mmio_rw.answer_read(&data)?;
+        }
+        unimplemented!();
+        Ok(())
+    }
+}
+
+// Enables the automatic implementation of `MmioManager` for `IoManager`.
+impl BusManager<MmioAddress> for IoPirate {
+    type D = Arc<dyn DeviceMmio + Send + Sync>;
+
+    fn bus(&self) -> &MmioPirateBus<Arc<dyn DeviceMmio + Send + Sync>> {
+        &self.mmio_bus
+    }
+
+    fn bus_mut(&mut self) -> &mut MmioPirateBus<Arc<dyn DeviceMmio + Send + Sync>> {
+        &mut self.mmio_bus
+    }
+}
 
 /// padX fields are reserved for future use.
 #[derive(Copy, Clone, Debug)]
@@ -58,14 +130,6 @@ pub struct MmioDeviceSpace {
     pub config_generation: u32,
     // optional additional config space: config: [u8; n]
 }
-
-use crate::device::virtio::block;
-use std::sync::Arc;
-use vm_memory::GuestMemoryMmap;
-use vm_virtio::device::{VirtioDevice, WithDriverSelect};
-use vm_virtio::Queue;
-
-type Block = block::Block<Arc<GuestMemoryMmap>>;
 
 impl MmioDeviceSpace {
     pub fn new(device: &Block) -> MmioDeviceSpace {

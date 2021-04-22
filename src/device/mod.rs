@@ -1,7 +1,7 @@
-mod mmio;
+pub mod mmio;
 mod virtio;
 
-use crate::device::mmio::MmioDeviceSpace;
+use crate::device::mmio::{IoPirate, MmioDeviceSpace};
 use crate::device::virtio::block::{self, BlockArgs};
 use crate::device::virtio::{CommonArgs, MmioConfig};
 use crate::kvm::hypervisor::{Hypervisor, VmMem};
@@ -13,6 +13,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use vm_device::bus::{MmioAddress, MmioRange};
 use vm_device::device_manager::IoManager;
+use vm_device::device_manager::MmioManager;
 use vm_device::resources::ResourceConstraint;
 use vm_memory::guest_memory::GuestAddress;
 use vm_memory::mmap::MmapRegion;
@@ -69,10 +70,11 @@ fn convert(mappings: &[Mapping]) -> Result<GuestMemoryMmap> {
 #[allow(dead_code)] // FIXME
 pub struct Device {
     vmm: Arc<Hypervisor>,
-    pub blkdev: Arc<Mutex<Block>>,
+    pub blkdev: Arc<Mutex<Block>>, // FIXME this is an Arc Mutex Arc Mutex Block
     /// None if not attached to the Hv
     pub mmio_device_mem: Option<VmMem<MmioDeviceSpace>>,
     pub mmio_device_space: MmioDeviceSpace,
+    pub mmio_mgr: Arc<Mutex<IoPirate>>,
 }
 
 impl Device {
@@ -89,8 +91,11 @@ impl Device {
 
         // TODO is there more we have to do with this mgr?
         let device_manager = Arc::new(Mutex::new(IoManager::new()));
+        let _guard = device_manager.lock().unwrap();
+        // IoManager replacement:
+        let device_manager = Arc::new(Mutex::new(IoPirate::new()));
         let guard = device_manager.lock().unwrap();
-        //let mmio_mgr = IoPirate::new();
+        guard.mmio_device(MmioAddress(MMIO_MEM_START));
 
         let mut event_manager = try_with!(
             EventManager::<Arc<Mutex<dyn MutEventSubscriber + Send>>>::new(),
@@ -119,7 +124,7 @@ impl Device {
             Err(e) => bail!("cannot create block device: {:?}", e),
         };
 
-        // create device space (replaces IoManager?)
+        // create device space
         let mmio_dev_space;
         {
             let blkdev = blkdev.clone();
@@ -127,14 +132,15 @@ impl Device {
             mmio_dev_space = MmioDeviceSpace::new(&blkdev);
         }
 
-        let device = Device {
+        let mut device = Device {
             vmm: vmm.clone(),
             blkdev,
             mmio_device_mem: None,
             mmio_device_space: mmio_dev_space,
+            mmio_mgr: device_manager,
         };
 
-        //device.attach_device_space()?;
+        device.attach_device_space()?;
         Ok(device)
     }
 
