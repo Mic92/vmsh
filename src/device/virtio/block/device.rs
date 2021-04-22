@@ -35,8 +35,7 @@ use super::{build_config_space, BlockArgs, Error, Result};
 // type, and then separate concrete instantiations for `MmioConfig` and `PciConfig`.
 pub struct Block<M: GuestAddressSpace> {
     virtio_cfg: VirtioConfig<M>,
-    #[allow(dead_code)] // FIXME
-    mmio_cfg: MmioConfig,
+    pub mmio_cfg: MmioConfig,
     endpoint: RemoteEndpoint<Arc<Mutex<dyn MutEventSubscriber + Send>>>,
     #[allow(dead_code)] // FIXME
     vmm: Arc<Hypervisor>,
