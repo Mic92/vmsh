@@ -8,7 +8,7 @@ use crate::kvm::hypervisor::{Hypervisor, VmMem};
 use crate::result::Result;
 use crate::tracer::proc::Mapping;
 use event_manager::{EventManager, MutEventSubscriber};
-use simple_error::{bail, try_with};
+use simple_error::{bail, map_err_with, try_with};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use vm_device::bus::{MmioAddress, MmioRange};
@@ -70,7 +70,7 @@ fn convert(mappings: &[Mapping]) -> Result<GuestMemoryMmap> {
 #[allow(dead_code)] // FIXME
 pub struct Device {
     vmm: Arc<Hypervisor>,
-    pub blkdev: Arc<Mutex<Block>>, // FIXME this is an Arc Mutex Arc Mutex Block
+    pub blkdev: Arc<Mutex<Block>>,
     /// None if not attached to the Hv
     pub mmio_device_mem: Option<VmMem<MmioDeviceSpace>>,
     pub mmio_device_space: MmioDeviceSpace,
@@ -127,7 +127,6 @@ impl Device {
         // create device space
         let mmio_dev_space;
         {
-            let blkdev = blkdev.clone();
             let blkdev = blkdev.lock().unwrap();
             mmio_dev_space = MmioDeviceSpace::new(&blkdev);
         }
@@ -140,7 +139,7 @@ impl Device {
             mmio_mgr: device_manager,
         };
 
-        device.attach_device_space()?;
+        //device.attach_device_space()?;
         Ok(device)
     }
 

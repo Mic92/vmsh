@@ -64,14 +64,15 @@ impl IoPirate {
             );
         } else {
             let mut data = [0u8; 8];
+            let len = mmio_rw.data().len();
+            let slice = &mut data[0..len];
             map_err_with!(
-                self.mmio_read(MmioAddress(mmio_rw.addr), &mut data),
+                self.mmio_read(MmioAddress(mmio_rw.addr), slice),
                 "write to mmio device (0x{:x}) failed",
                 mmio_rw.addr
             );
-            mmio_rw.answer_read(&data)?;
+            mmio_rw.answer_read(&slice)?;
         }
-        unimplemented!();
         Ok(())
     }
 }

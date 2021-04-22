@@ -14,6 +14,7 @@ use crate::tracer::proc::Mapping;
 use crate::tracer::ptrace;
 
 type MmioRwRaw = kvmb::kvm_run__bindgen_ty_1__bindgen_ty_6;
+const MMIO_RW_DATA_MAX: usize = 8;
 
 pub struct MmioRw {
     /// address in the guest physical memory

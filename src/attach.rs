@@ -21,15 +21,18 @@ pub fn attach(opts: &InspectOptions) -> Result<()> {
     vm.stop()?;
 
     let device = try_with!(Device::new(&vm), "cannot create vm");
-    println!("pause");
+    vm.resume()?; // TODO remove?!
+    println!("mmio dev attached");
 
     {
         let mut mmio_mgr = device.mmio_mgr.lock().unwrap();
 
         vm.kvmrun_wrapped(|wrapper: &mut KvmRunWrapper| {
-            let blkdev = device.blkdev.clone();
-            let blkdev = &try_with!(blkdev.lock(), "TODO");
-            let mmio_space = blkdev.mmio_cfg.range;
+            let mmio_space = {
+                let blkdev = device.blkdev.clone();
+                let blkdev = &try_with!(blkdev.lock(), "TODO");
+                blkdev.mmio_cfg.range
+            };
 
             loop {
                 let mut kvm_exit =
@@ -43,6 +46,7 @@ pub fn attach(opts: &InspectOptions) -> Result<()> {
                         // do nothing, just continue to ingore and pass to hv
                     }
                     if device.mmio_device_space.queue_ready == 0x1 {
+                        println!("queue ready. break.");
                         break;
                     }
                 }
@@ -52,9 +56,9 @@ pub fn attach(opts: &InspectOptions) -> Result<()> {
         })?;
     }
 
-    vm.resume()?;
     device.create();
     device.create();
+    println!("pause");
     nix::unistd::pause();
     Ok(())
 }
