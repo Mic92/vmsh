@@ -14,12 +14,13 @@ use crate::tracer::proc::Mapping;
 use crate::tracer::ptrace;
 
 type MmioRwRaw = kvmb::kvm_run__bindgen_ty_1__bindgen_ty_6;
+pub const MMIO_RW_DATA_MAX: usize = 8;
 
 pub struct MmioRw {
     /// address in the guest physical memory
     pub addr: u64,
     pub is_write: bool,
-    data: [u8; 8],
+    data: [u8; MMIO_RW_DATA_MAX],
     len: usize,
     pid: Pid,
     vcpu_map: Mapping,
@@ -55,7 +56,7 @@ impl MmioRw {
         &self.data[..self.len]
     }
 
-    pub fn data_mut(&mut self) -> &mut [u8] {
+    fn data_mut(&mut self) -> &mut [u8] {
         &mut self.data[..self.len]
     }
 
@@ -83,7 +84,7 @@ impl MmioRw {
         // safe because those pointers will not be used in our process :) and additionally Self::new
         // may or may not perform vcpu_map size assertions.
         let mmio_ptr: *mut MmioRwRaw = unsafe { &mut ((*kvm_run_ptr).__bindgen_anon_1.mmio) };
-        let data_ptr: *mut [u8; 8] = unsafe { &mut ((*mmio_ptr).data) };
+        let data_ptr: *mut [u8; MMIO_RW_DATA_MAX] = unsafe { &mut ((*mmio_ptr).data) };
         hypervisor::process_write(self.pid, data_ptr as *mut libc::c_void, &self.data)?;
 
         // guess who will never know that this was a mmio read

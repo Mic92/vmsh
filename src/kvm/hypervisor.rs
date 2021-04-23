@@ -207,7 +207,10 @@ impl Hypervisor {
 
     /// run code while having full control over ioctl(KVM_RUN)
     /// Can be called regardless of de/attached state.
-    pub fn kvmrun_wrapped(&self, f: impl Fn(&mut KvmRunWrapper) -> Result<()>) -> Result<()> {
+    pub fn kvmrun_wrapped(
+        &self,
+        mut f: impl FnMut(&mut KvmRunWrapper) -> Result<()>,
+    ) -> Result<()> {
         let mut tracee = try_with!(
             self.tracee.write(),
             "cannot obtain tracee read lock: poinsoned"

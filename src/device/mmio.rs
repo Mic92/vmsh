@@ -1,3 +1,14 @@
+use crate::device::Block;
+use crate::result::Result;
+use crate::tracer::wrap_syscall::{MmioRw, MMIO_RW_DATA_MAX};
+use simple_error::map_err_with;
+use std::sync::{Arc, Mutex};
+use vm_device::bus::{Bus, BusManager, MmioAddress, MmioRange};
+use vm_device::device_manager::MmioManager;
+use vm_device::DeviceMmio;
+use vm_virtio::device::{VirtioDevice, WithDriverSelect};
+use vm_virtio::Queue;
+
 // Required by the Virtio MMIO device register layout at offset 0 from base. Turns out this
 // is actually the ASCII sequence for "virt" (in little endian ordering).
 const MMIO_MAGIC_VALUE: u32 = 0x7472_6976;
@@ -10,55 +21,110 @@ const MMIO_VERSION: u32 = 2;
 // like the standard doesn't say anything regarding an actual VENDOR_ID value for MMIO devices.
 const VENDOR_ID: u32 = 0;
 
+type MmioPirateBus<D> = Bus<MmioAddress, D>;
+
+/// Replacement for vm_device::device_manager::IoManager.
+/// Can implement MmioManager via vm_device::device_manager::MmioManager.
+pub struct IoPirate {
+    /// mmio device spaces typically accessed by VM exit mmio
+    mmio_bus: MmioPirateBus<Arc<dyn DeviceMmio + Send + Sync>>,
+}
+
+impl IoPirate {
+    pub fn new() -> IoPirate {
+        IoPirate {
+            mmio_bus: Bus::new(),
+        }
+    }
+
+    pub fn register_mmio_device(
+        &mut self,
+        range: MmioRange,
+        blkdev: Arc<Mutex<Block>>,
+    ) -> Result<()> {
+        map_err_with!(
+            self.mmio_bus.register(range, blkdev),
+            "cannot register mmio device on MmioPirateBus"
+        )?;
+        Ok(())
+    }
+
+    pub fn handle_mmio_rw(&mut self, mmio_rw: &mut MmioRw) -> Result<()> {
+        if mmio_rw.is_write {
+            map_err_with!(
+                self.mmio_write(MmioAddress(mmio_rw.addr), mmio_rw.data()),
+                "write to mmio device (0x{:x}) failed",
+                mmio_rw.addr
+            )?;
+        } else {
+            let mut data = [0u8; MMIO_RW_DATA_MAX];
+            let len = mmio_rw.data().len();
+            let slice = &mut data[0..len];
+            map_err_with!(
+                self.mmio_read(MmioAddress(mmio_rw.addr), slice),
+                "write to mmio device (0x{:x}) failed",
+                mmio_rw.addr
+            )?;
+            mmio_rw.answer_read(&slice)?;
+        }
+        Ok(())
+    }
+}
+
+// Enables the automatic implementation of `MmioManager` for `IoManager`.
+impl BusManager<MmioAddress> for IoPirate {
+    type D = Arc<dyn DeviceMmio + Send + Sync>;
+
+    fn bus(&self) -> &MmioPirateBus<Arc<dyn DeviceMmio + Send + Sync>> {
+        &self.mmio_bus
+    }
+
+    fn bus_mut(&mut self) -> &mut MmioPirateBus<Arc<dyn DeviceMmio + Send + Sync>> {
+        &mut self.mmio_bus
+    }
+}
+
 /// padX fields are reserved for future use.
 #[derive(Copy, Clone, Debug)]
 #[repr(C)] // actually we want packed. Because that has undefined behaviour in rust 2018 we hope that C is effectively the same.
 pub struct MmioDeviceSpace {
-    magic_value: u32,
-    version: u32,
-    device_id: u32,
-    vendor_id: u32,
-    device_features: u32,
-    device_features_sel: u32,
+    pub magic_value: u32,
+    pub version: u32,
+    pub device_id: u32,
+    pub vendor_id: u32,
+    pub device_features: u32,
+    pub device_features_sel: u32,
     pad1: [u32; 2],
-    driver_features: u32,
+    pub driver_features: u32,
     /// beyond 32bit there are further feature bits reserved for future use
-    driver_features_sel: u32,
+    pub driver_features_sel: u32,
     pad2: [u32; 2],
-    queue_sel: u32,
-    queue_num_max: u32,
-    queue_num: u32,
+    pub queue_sel: u32,
+    pub queue_num_max: u32,
+    pub queue_num: u32,
     pad3: [u32; 2],
-    queue_ready: u32,
+    pub queue_ready: u32,
     pad4: [u32; 2],
-    queue_notify: u32,
+    pub queue_notify: u32,
     pad5: [u32; 3],
-    interrupt_status: u32,
-    interrupt_ack: u32,
+    pub interrupt_status: u32,
+    pub interrupt_ack: u32,
     pad6: [u32; 2],
-    status: u32,
+    pub status: u32,
     pad7: [u32; 3],
     /// 64bit phys addr
-    queue_desc_low: u32,
-    queue_desc_high: u32,
+    pub queue_desc_low: u32,
+    pub queue_desc_high: u32,
     pad8: [u32; 2],
-    queue_driver_low: u32,
-    queue_driver_high: u32,
+    pub queue_driver_low: u32,
+    pub queue_driver_high: u32,
     pad9: [u32; 2],
-    queue_device_low: u32,
-    queue_device_high: u32,
+    pub queue_device_low: u32,
+    pub queue_device_high: u32,
     pad10: [u32; 21],
-    config_generation: u32,
+    pub config_generation: u32,
     // optional additional config space: config: [u8; n]
 }
-
-use crate::device::virtio::block;
-use std::sync::Arc;
-use vm_memory::GuestMemoryMmap;
-use vm_virtio::device::{VirtioDevice, WithDriverSelect};
-use vm_virtio::Queue;
-
-type Block = block::Block<Arc<GuestMemoryMmap>>;
 
 impl MmioDeviceSpace {
     pub fn new(device: &Block) -> MmioDeviceSpace {
