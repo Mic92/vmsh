@@ -5,7 +5,7 @@ use vm_device::bus::MmioAddress;
 
 use crate::device::Device;
 use crate::inspect::InspectOptions;
-use crate::kvm;
+use crate::kvm::{self, hypervisor::Hypervisor};
 use crate::tracer::wrap_syscall::KvmRunWrapper;
 
 pub fn attach(opts: &InspectOptions) -> Result<()> {
@@ -19,44 +19,49 @@ pub fn attach(opts: &InspectOptions) -> Result<()> {
     vm.stop()?;
 
     let device = try_with!(Device::new(&vm), "cannot create vm");
-    vm.resume()?; // TODO remove?!
     println!("mmio dev attached");
 
-    {
-        let mut mmio_mgr = device.mmio_mgr.lock().unwrap();
-
-        vm.kvmrun_wrapped(|wrapper: &mut KvmRunWrapper| {
-            let mmio_space = {
-                let blkdev = device.blkdev.clone();
-                let blkdev = &try_with!(blkdev.lock(), "TODO");
-                blkdev.mmio_cfg.range
-            };
-
-            loop {
-                let mut kvm_exit =
-                    try_with!(wrapper.wait_for_ioctl(), "failed to wait for vmm exit_mmio");
-                if let Some(mmio_rw) = &mut kvm_exit {
-                    let addr = MmioAddress(mmio_rw.addr);
-                    if mmio_space.base() <= addr && addr <= mmio_space.last() {
-                        // intercept op
-                        try_with!(mmio_mgr.handle_mmio_rw(mmio_rw), "failed to handle MmioRw");
-                    } else {
-                        // do nothing, just continue to ingore and pass to hv
-                    }
-                    if device.mmio_device_space.queue_ready == 0x1 {
-                        println!("queue ready. break.");
-                        break;
-                    }
-                }
-            }
-
-            Ok(())
-        })?;
-    }
+    try_with!(
+        run_kvm_wrapped(&vm, &device),
+        "device init stage with KvmRunWrapper failed"
+    );
 
     device.create();
     device.create();
     println!("pause");
     nix::unistd::pause();
+    Ok(())
+}
+
+fn run_kvm_wrapped(vm: &Arc<Hypervisor>, device: &Device) -> Result<()> {
+    let mut mmio_mgr = device.mmio_mgr.lock().unwrap();
+
+    vm.kvmrun_wrapped(|wrapper: &mut KvmRunWrapper| {
+        let mmio_space = {
+            let blkdev = device.blkdev.clone();
+            let blkdev = &try_with!(blkdev.lock(), "TODO");
+            blkdev.mmio_cfg.range
+        };
+
+        loop {
+            let mut kvm_exit =
+                try_with!(wrapper.wait_for_ioctl(), "failed to wait for vmm exit_mmio");
+            if let Some(mmio_rw) = &mut kvm_exit {
+                let addr = MmioAddress(mmio_rw.addr);
+                if mmio_space.base() <= addr && addr <= mmio_space.last() {
+                    // intercept op
+                    try_with!(mmio_mgr.handle_mmio_rw(mmio_rw), "failed to handle MmioRw");
+                } else {
+                    // do nothing, just continue to ingore and pass to hv
+                }
+                if device.mmio_device_space.queue_ready == 0x1 {
+                    println!("queue ready. break.");
+                    break;
+                }
+            }
+        }
+
+        Ok(())
+    })?;
     Ok(())
 }

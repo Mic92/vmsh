@@ -49,7 +49,6 @@ impl IoPirate {
         Ok(())
     }
 
-    // mmio_read
     pub fn handle_mmio_rw(&mut self, mmio_rw: &mut MmioRw) -> Result<()> {
         if mmio_rw.is_write {
             map_err_with!(
