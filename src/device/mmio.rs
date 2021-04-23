@@ -1,16 +1,11 @@
-use crate::device;
-use crate::device::virtio::block;
-use crate::device::virtio::{CommonArgs, MmioConfig};
 use crate::device::Block;
-use crate::device::Device;
 use crate::result::Result;
-use crate::tracer::wrap_syscall::{KvmRunWrapper, MmioRw};
-use simple_error::{bail, map_err_with, try_with};
+use crate::tracer::wrap_syscall::{MmioRw, MMIO_RW_DATA_MAX};
+use simple_error::map_err_with;
 use std::sync::{Arc, Mutex};
 use vm_device::bus::{Bus, BusManager, MmioAddress, MmioRange};
 use vm_device::device_manager::MmioManager;
 use vm_device::DeviceMmio;
-use vm_memory::GuestMemoryMmap;
 use vm_virtio::device::{VirtioDevice, WithDriverSelect};
 use vm_virtio::Queue;
 
@@ -50,7 +45,7 @@ impl IoPirate {
         map_err_with!(
             self.mmio_bus.register(range, blkdev),
             "cannot register mmio device on MmioPirateBus"
-        );
+        )?;
         Ok(())
     }
 
@@ -61,16 +56,16 @@ impl IoPirate {
                 self.mmio_write(MmioAddress(mmio_rw.addr), mmio_rw.data()),
                 "write to mmio device (0x{:x}) failed",
                 mmio_rw.addr
-            );
+            )?;
         } else {
-            let mut data = [0u8; 8];
+            let mut data = [0u8; MMIO_RW_DATA_MAX];
             let len = mmio_rw.data().len();
             let slice = &mut data[0..len];
             map_err_with!(
                 self.mmio_read(MmioAddress(mmio_rw.addr), slice),
                 "write to mmio device (0x{:x}) failed",
                 mmio_rw.addr
-            );
+            )?;
             mmio_rw.answer_read(&slice)?;
         }
         Ok(())

@@ -42,12 +42,21 @@ def test_virtio_device_space(helpers: conftest.Helpers) -> None:
             res = vm.ssh_cmd(["dmesg"])
             print("stdout:\n", res.stdout)
 
-            assert (
-                res.stdout.find("virtio_mmio: unknown parameter 'device' ignored") < 0
-            )
+            # with DeviceMmioSpace instead of KvmRunWrapper:
+            # assert (
+            #     res.stdout.find("virtio_mmio: unknown parameter 'device' ignored") < 0
+            # )
+            # assert (
+            #     res.stdout.find(
+            #         "New virtio-mmio devices (version 2) must provide VIRTIO_F_VERSION_1 feature!"
+            #     )
+            #     >= 0
+            # )
+
+            # with KvmRunWrapper:
             assert (
                 res.stdout.find(
-                    "New virtio-mmio devices (version 2) must provide VIRTIO_F_VERSION_1 feature!"
+                    "virtio_blk virtio3: [vdb] 0 512-byte logical blocks (0 B/0 B)"
                 )
-                >= 0
+                > 0
             )

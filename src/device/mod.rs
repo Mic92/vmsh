@@ -8,7 +8,7 @@ use crate::kvm::hypervisor::{Hypervisor, VmMem};
 use crate::result::Result;
 use crate::tracer::proc::Mapping;
 use event_manager::{EventManager, MutEventSubscriber};
-use simple_error::{bail, map_err_with, try_with};
+use simple_error::{bail, try_with};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use vm_device::bus::{MmioAddress, MmioRange};
@@ -131,7 +131,7 @@ impl Device {
             mmio_dev_space = MmioDeviceSpace::new(&blkdev);
         }
 
-        let mut device = Device {
+        let device = Device {
             vmm: vmm.clone(),
             blkdev,
             mmio_device_mem: None,

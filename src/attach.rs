@@ -3,12 +3,10 @@ use simple_error::try_with;
 use std::sync::Arc;
 use vm_device::bus::MmioAddress;
 
-use crate::device::mmio::IoPirate;
-use crate::device::Block;
 use crate::device::Device;
 use crate::inspect::InspectOptions;
 use crate::kvm;
-use crate::tracer::wrap_syscall::{KvmRunWrapper, MmioRw};
+use crate::tracer::wrap_syscall::KvmRunWrapper;
 
 pub fn attach(opts: &InspectOptions) -> Result<()> {
     println!("attaching");
