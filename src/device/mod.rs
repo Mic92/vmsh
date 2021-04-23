@@ -93,7 +93,7 @@ impl Device {
         let device_manager = Arc::new(Mutex::new(IoManager::new()));
         let _guard = device_manager.lock().unwrap();
         // IoManager replacement:
-        let device_manager = Arc::new(Mutex::new(IoPirate::new()));
+        let device_manager = Arc::new(Mutex::new(IoPirate::default()));
         let guard = device_manager.lock().unwrap();
         guard.mmio_device(MmioAddress(MMIO_MEM_START));
 
