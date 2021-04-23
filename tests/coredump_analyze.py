@@ -98,8 +98,6 @@ class PageTableEntry:
         nx = "NX" if (v & _PAGE_NX) else ""
 
         ranges = list(memory_layout.at(self.virt_addr))
-        if len(ranges) == 0:
-            breakpoint()
         description = ranges[0].data
 
         return f"0x{self.phys_addr:x} -> 0x{self.virt_addr:x} {rw} {user} {pwt} {pcd} {accessed} {nx} {description}"
@@ -216,7 +214,7 @@ memory_layout = IntervalTree(
     ]
 )
 
-LinuxKernelKaslrRange = Interval(0xFFFFFFFF80000000, 0xFFFFFFFFC0000000)
+LINUX_KERNEL_KASLR_RANGE = Interval(0xFFFFFFFF80000000, 0xFFFFFFFFC0000000)
 
 
 def get_page_table_addr(sregs: KVMSRegs) -> int:
@@ -226,13 +224,26 @@ def get_page_table_addr(sregs: KVMSRegs) -> int:
         return sregs.cr3
 
 
-def find_kalsr_offset(
+def find_linux_kernel_offset(
     pml4: PageTable, mem: Memory, mem_range: Interval
-) -> Optional[int]:
-    i = get_index(mem_range.begin, 4)
-    print(i)
-    return None
-    # TODO
+) -> Optional[Interval]:
+    # TODO: skip first level in page tables to speed up the search
+    # i = get_index(mem_range.begin, 0)
+    # pdt = page_table(mem, pml4.entries[i] & PHYS_ADDR_MASK)
+    it = iter(pml4)
+    first = -1
+    for entry in it:
+        if entry.virt_addr >= mem_range.begin:
+            first = entry.virt_addr
+            break
+    if first == -1:
+        return None
+    last = first
+    for entry in it:
+        if entry.virt_addr > mem_range.end:
+            break
+        last = entry.virt_addr
+    return Interval(first, last)
 
 
 def inspect_coredump(fd: IO[bytes]) -> None:
@@ -255,8 +266,13 @@ def inspect_coredump(fd: IO[bytes]) -> None:
         print("program runs userspace")
     print(f"rip=0x{core.regs[0].rip:x}")
     pml4 = page_table(mem, pt_addr)
-    dump_page_table(pml4)
-    # find_kalsr_offset(pml4, mem, LinuxKernelKaslrRange)
+    print("look for kernel in...")
+    offset = find_linux_kernel_offset(pml4, mem, LINUX_KERNEL_KASLR_RANGE)
+    if offset:
+        print(f"Found at {offset.begin:x}:{offset.end:x}")
+    else:
+        print("could not find kernel!")
+        sys.exit(1)
 
     # 0xffffffff80000000–0xffffffffc0000000
     # dump_page_table(pml4, mem)
