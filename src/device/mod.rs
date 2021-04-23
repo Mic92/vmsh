@@ -78,7 +78,7 @@ pub struct Device {
 }
 
 impl Device {
-    pub fn new(vmm: &Arc<Hypervisor>) -> Result<Device> {
+    pub fn new(vmm: &Arc<Hypervisor>, backing: &PathBuf) -> Result<Device> {
         let guest_memory = try_with!(vmm.get_maps(), "cannot get guests memory");
         let mem: Arc<GuestMemoryMmap> = Arc::new(try_with!(
             convert(&guest_memory),
@@ -113,7 +113,7 @@ impl Device {
 
         let args = BlockArgs {
             common,
-            file_path: PathBuf::from("/dev/null"),
+            file_path: backing.to_path_buf(),
             read_only: false,
             root_device: true,
             advertise_flush: true,

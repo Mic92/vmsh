@@ -1,5 +1,7 @@
 use crate::result::Result;
+use nix::unistd::Pid;
 use simple_error::try_with;
+use std::path::PathBuf;
 use std::sync::Arc;
 use vm_device::bus::MmioAddress;
 
@@ -8,7 +10,12 @@ use crate::inspect::InspectOptions;
 use crate::kvm::{self, hypervisor::Hypervisor};
 use crate::tracer::wrap_syscall::KvmRunWrapper;
 
-pub fn attach(opts: &InspectOptions) -> Result<()> {
+pub struct AttachOptions {
+    pub pid: Pid,
+    pub backing: PathBuf,
+}
+
+pub fn attach(opts: &AttachOptions) -> Result<()> {
     println!("attaching");
 
     let vm = Arc::new(try_with!(
@@ -18,7 +25,7 @@ pub fn attach(opts: &InspectOptions) -> Result<()> {
     ));
     vm.stop()?;
 
-    let device = try_with!(Device::new(&vm), "cannot create vm");
+    let device = try_with!(Device::new(&vm, &opts.backing), "cannot create vm");
     println!("mmio dev attached");
 
     try_with!(
