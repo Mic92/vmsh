@@ -75,12 +75,12 @@ notos-image:
 nested-nixos-image: nixos-image
   ln -f "{{linux_dir}}/nixos.qcow2" {{linux_dir}}/nixos-nested.qcow2
 
-# in qemu mount home via: mkdir /mnt && mount -t 9p -o trans=virtio home /mnt
-qemu: build-linux nixos-image
+# run qemu with kernel build by `build-linux` and filesystem image build by `nixos-image`
+qemu EXTRA_CMDLINE="nokalsr": build-linux nixos-image
   qemu-system-x86_64 \
     -kernel {{linux_dir}}/arch/x86/boot/bzImage \
     -hda {{linux_dir}}/nixos.qcow2 \
-    -append "root=/dev/sda console=ttyS0 nokaslr" \
+    -append "root=/dev/sda console=ttyS0 {{EXTRA_CMDLINE}}" \
     -net nic,netdev=user.0,model=virtio \
     -netdev user,id=user.0,hostfwd=tcp::{{qemu_ssh_port}}-:22 \
     -m 512M \
