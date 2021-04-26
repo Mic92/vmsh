@@ -9,7 +9,7 @@ use crate::result::Result;
 use crate::tracer::proc::Mapping;
 use event_manager::{EventManager, MutEventSubscriber};
 use simple_error::{bail, try_with};
-use std::path::PathBuf;
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 use vm_device::bus::{MmioAddress, MmioRange};
 use vm_device::device_manager::IoManager;
@@ -78,7 +78,7 @@ pub struct Device {
 }
 
 impl Device {
-    pub fn new(vmm: &Arc<Hypervisor>, backing: &PathBuf) -> Result<Device> {
+    pub fn new(vmm: &Arc<Hypervisor>, backing: &Path) -> Result<Device> {
         let guest_memory = try_with!(vmm.get_maps(), "cannot get guests memory");
         let mem: Arc<GuestMemoryMmap> = Arc::new(try_with!(
             convert(&guest_memory),
