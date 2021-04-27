@@ -31,19 +31,22 @@ pub fn attach(opts: &AttachOptions) -> Result<()> {
     // instanciate blkdev
     let device = try_with!(Device::new(&vm, &opts.backing), "cannot create vm");
     println!("mmio dev attached");
+    vm.resume()?;
 
     // start monitoring thread
-    let child = blkdev_monitor(&device);
+    //let child = blkdev_monitor(&device);
 
     // run guest until driver has inited
     try_with!(
         run_kvm_wrapped(&vm, &device),
         "device init stage with KvmRunWrapper failed"
     );
+    println!("just after drop");
+    //vm.resume()?;
 
     println!("pause");
     nix::unistd::pause();
-    let _err = child.join();
+    //let _err = child.join();
     Ok(())
 }
 
@@ -97,9 +100,13 @@ fn run_kvm_wrapped(vm: &Arc<Hypervisor>, device: &Device) -> Result<()> {
                 } else {
                     // do nothing, just continue to ingore and pass to hv
                 }
-                if device.mmio_device_space.queue_ready == 0x1 {
-                    println!("queue ready. break.");
-                    break;
+                {
+                    let blkdev = device.blkdev.clone();
+                    let blkdev = &try_with!(blkdev.lock(), "TODO");
+                    if blkdev.selected_queue().map(|q| q.ready).unwrap() {
+                        println!("queue ready. break.");
+                        break;
+                    }
                 }
             }
         }

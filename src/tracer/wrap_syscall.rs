@@ -170,14 +170,16 @@ impl KvmRunWrapper {
         })
     }
 
-    pub fn into_tracer(self) -> Tracer {
+    /// resume all threads and convert self into tracer.
+    pub fn into_tracer(self) -> Result<Tracer> {
+        //try_with!(self.cont(), "cannot continue threads to convert KvmRunWrapper into Tracer");
         let vcpu_map = self.threads[0].vcpu_map.clone();
         let threads = self.threads.into_iter().map(|t| t.ptthread).collect();
-        Tracer {
+        Ok(Tracer {
             process_idx: self.process_idx,
             threads,
             vcpu_map,
-        }
+        })
     }
 
     pub fn from_tracer(tracer: Tracer) -> Result<Self> {
@@ -211,6 +213,40 @@ impl KvmRunWrapper {
         &mut self.threads[self.process_idx]
     }
 
+    pub fn interrupt_wait(&mut self) -> Result<()> {
+        println!("interrupt wait");
+        for thread in &self.threads {
+            if !thread.is_running {
+                println!("not interrupting because already stopped");
+                continue;
+            }
+            println!("interrupt {}", thread.ptthread.tid);
+            thread.ptthread.interrupt()?;
+            println!("waitpid loop");
+            'waitpid: loop {
+                let status = try_with!(waitpid(thread.ptthread.tid, None), "foo");
+                match status {
+                    WaitStatus::PtraceEvent(pid, _signal, event) => {
+                        if pid != thread.ptthread.tid {
+                            continue 'waitpid;
+                        }
+                        if event == libc::PTRACE_EVENT_STOP {
+                            break 'waitpid;
+                        }
+                    }
+                    WaitStatus::Stopped(pid, _signal) => {
+                        if pid != thread.ptthread.tid {
+                            continue 'waitpid;
+                        }
+                        break 'waitpid;
+                    }
+                    _ => {}
+                }
+            }
+        }
+        Ok(())
+    }
+
     // TODO Err if third qemu thread terminates?
     pub fn wait_for_ioctl(&mut self) -> Result<Option<MmioRw>> {
         for thread in &mut self.threads {
@@ -228,6 +264,8 @@ impl KvmRunWrapper {
     /// busy polling on all thread tids
     fn waitpid(&mut self) -> Result<WaitStatus> {
         // Options to waitpid on many pids at the same time:
+        //
+        // - wait with multiple threads. Events into queue and poll on queue.
         //
         // - waitpid(WNOHANG): async waitpid, busy polling
         //
@@ -311,10 +349,10 @@ impl KvmRunWrapper {
         }
 
         if thread.in_syscall {
-            //println!("kvm-run enter");
+            println!("kvm-run enter {}", pid);
             return Ok(None);
         } else {
-            //println!("kvm-run exit.");
+            println!("kvm-run exit {}", pid);
             if regs.syscall_ret() != 0 {
                 log::warn!("wrap_syscall: ioctl(KVM_RUN) failed.");
                 // hope that hypervisor handles it correctly

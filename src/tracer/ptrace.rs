@@ -35,6 +35,19 @@ fn setregs(pid: Pid, regs: &Regs) -> nix::Result<()> {
     Errno::result(res).map(drop)
 }
 
+/// Stop tracee while being attached, as with `ptrace(PTRACE_INTERRUPT, ...)`
+fn interrupt(pid: Pid) -> nix::Result<()> {
+    let res = unsafe {
+        libc::ptrace(
+            Request::PTRACE_INTERRUPT as RequestType,
+            libc::pid_t::from(pid),
+            ptr::null_mut::<c_void>(),
+            ptr::null_mut::<c_void>(),
+        )
+    };
+    Errno::result(res).map(drop)
+}
+
 /// Function for ptrace requests that return values from the data field.
 /// Some ptrace get requests populate structs or larger elements than `c_long`
 /// and therefore use the data field to return values. This function handles these
@@ -64,6 +77,14 @@ impl Thread {
             getregs(self.tid),
             "cannot get registers with ptrace"
         ))
+    }
+
+    pub fn interrupt(&self) -> Result<()> {
+        try_with!(
+            interrupt(self.tid),
+            "cannot stop/interrupt tracee with ptrace"
+        );
+        Ok(())
     }
 
     pub fn syscall(&self) -> Result<()> {
@@ -110,7 +131,16 @@ impl Thread {
 }
 
 pub fn attach(tid: Pid) -> Result<Thread> {
-    try_with!(ptrace::attach(tid), "cannot attach to process");
+    println!("!!!!!!!!!!!!!!!!!!! attached {}", tid);
+    // TODO rename function
+    // seize seems to be more modern and versatile: stop tracees while running and detach while
+    // even while running
+    // try_with!(ptrace::attach(tid), "cannot attach to process");
+    try_with!(
+        ptrace::seize(tid, ptrace::Options::empty()),
+        "cannot seize the process"
+    );
+    try_with!(interrupt(tid), "cannot interrupt/stop the tracee");
     Ok(Thread { tid })
 }
 
@@ -145,6 +175,12 @@ pub fn attach_all_threads(pid: Pid) -> Result<(Vec<Thread>, usize)> {
 
 impl Drop for Thread {
     fn drop(&mut self) {
-        let _ = ptrace::detach(self.tid, None);
+        //std::thread::sleep(std::time::Duration::from_millis(1000));
+        println!("!!!!!!!!!!!!!!!!!!! dropped {}", self.tid);
+        if let Err(e) = ptrace::detach(self.tid, None) {
+            eprintln!("Cannot ptrace::detach from {}", self.tid);
+            log::warn!("Cannot ptrace::detach from {}", self.tid);
+        }
+        // TODO waitpid?
     }
 }
