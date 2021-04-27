@@ -450,28 +450,6 @@ impl Hypervisor {
         Ok(-1)
     }
 
-    /// Can be called regardless of de/attached state.
-    pub fn log_kvm_exits(&self) -> Result<()> {
-        self.kvmrun_wrapped(|wrapper: &mut KvmRunWrapper| {
-            let value: [u8; 2] = 0xDEADu16.to_ne_bytes();
-            println!("attached");
-
-            for _i in 0..100000 {
-                let mut mmio = wrapper.wait_for_ioctl()?;
-                if let Some(mmio) = &mut mmio {
-                    println!("kvm exit: {}", mmio);
-                    if !mmio.is_write {
-                        mmio.answer_read(&value)?;
-                    }
-                }
-            }
-
-            Ok(())
-        })?;
-
-        Ok(())
-    }
-
     pub fn check_extension(&self, cap: c_int) -> Result<c_int> {
         let tracee = try_with!(
             self.tracee.read(),

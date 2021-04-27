@@ -7,6 +7,7 @@ use std::time::Duration;
 use vmm_sys_util::eventfd::{EventFd, EFD_NONBLOCK};
 use vmsh::kvm::hypervisor::get_hypervisor;
 use vmsh::result::Result;
+use vmsh::tracer::wrap_syscall::KvmRunWrapper;
 
 fn inject(pid: Pid) -> Result<()> {
     let vm = try_with!(get_hypervisor(pid), "cannot get vms for process {}", pid);
@@ -198,7 +199,22 @@ fn guest_ioeventfd(pid: Pid) -> Result<()> {
 
 fn guest_kvm_exits(pid: Pid) -> Result<()> {
     let vm = try_with!(get_hypervisor(pid), "cannot get vms for process {}", pid);
-    vm.log_kvm_exits()?;
+    vm.kvmrun_wrapped(|wrapper: &mut KvmRunWrapper| {
+        let value: [u8; 2] = 0xDEADu16.to_ne_bytes();
+        println!("attached");
+
+        for _i in 0..100000 {
+            let mut mmio = wrapper.wait_for_ioctl()?;
+            if let Some(mmio) = &mut mmio {
+                println!("kvm exit: {}", mmio);
+                if !mmio.is_write {
+                    mmio.answer_read(&value)?;
+                }
+            }
+        }
+
+        Ok(())
+    })?;
     Ok(())
 }
 
