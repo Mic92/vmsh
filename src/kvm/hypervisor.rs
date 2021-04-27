@@ -231,21 +231,11 @@ impl Hypervisor {
 
         try_with!(f(&mut wrapper), "closure on KvmRunWrapper failed");
 
-        // TODO move to from_tracer and revert to upholding tracer (no re attaching)
-        wrapper.interrupt_wait()?;
         if was_attached {
-            println!("was_attached: re attaching");
-            let err =
-                "cannot re-attach injector after having detached it in favour of KvmRunWrapper";
-            let main_pid;
-            {
-                let tracer = wrapper.into_tracer()?;
-                main_pid = tracer.main_thread().tid;
-            }
-            let injector = try_with!(inject_syscall::attach(main_pid), &err);
+            let err = "cannot re-attach injector after having detached it favour of KvmRunWrapper";
+            let injector = try_with!(inject_syscall::from_tracer(wrapper.into_tracer()?), &err);
             try_with!(tracee.attach_to(injector), &err);
         }
-        println!("just before drop");
 
         Ok(())
     }

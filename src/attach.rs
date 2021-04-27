@@ -31,22 +31,21 @@ pub fn attach(opts: &AttachOptions) -> Result<()> {
     // instanciate blkdev
     let device = try_with!(Device::new(&vm, &opts.backing), "cannot create vm");
     println!("mmio dev attached");
-    vm.resume()?;
 
     // start monitoring thread
-    //let child = blkdev_monitor(&device);
+    let child = blkdev_monitor(&device);
 
     // run guest until driver has inited
     try_with!(
         run_kvm_wrapped(&vm, &device),
         "device init stage with KvmRunWrapper failed"
     );
-    println!("just after drop");
-    //vm.resume()?;
+    println!("blkdev queue ready.");
+    vm.resume()?;
 
     println!("pause");
     nix::unistd::pause();
-    //let _err = child.join();
+    let _err = child.join();
     Ok(())
 }
 
@@ -54,8 +53,12 @@ fn blkdev_monitor(device: &Device) -> JoinHandle<()> {
     let blkdev = device.blkdev.clone();
     thread::spawn(move || loop {
         {
-            println!();
             let blkdev = blkdev.lock().unwrap();
+            if blkdev.selected_queue().map(|q| q.ready).unwrap() {
+                // blkdev queue ready
+                break;
+            }
+            println!();
             println!("dev type {}", blkdev.device_type());
             println!("dev features b{:b}", blkdev.device_features());
             println!(
@@ -79,6 +82,7 @@ fn blkdev_monitor(device: &Device) -> JoinHandle<()> {
     })
 }
 
+/// returns when blkdev queue is ready
 fn run_kvm_wrapped(vm: &Arc<Hypervisor>, device: &Device) -> Result<()> {
     let mut mmio_mgr = device.mmio_mgr.lock().unwrap();
 
@@ -102,9 +106,9 @@ fn run_kvm_wrapped(vm: &Arc<Hypervisor>, device: &Device) -> Result<()> {
                 }
                 {
                     let blkdev = device.blkdev.clone();
-                    let blkdev = &try_with!(blkdev.lock(), "TODO");
+                    let blkdev = &try_with!(blkdev.lock(), "cannot get blkdev lock");
                     if blkdev.selected_queue().map(|q| q.ready).unwrap() {
-                        println!("queue ready. break.");
+                        // blkdev queue ready
                         break;
                     }
                 }

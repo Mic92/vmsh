@@ -130,12 +130,9 @@ impl Thread {
     }
 }
 
-pub fn attach(tid: Pid) -> Result<Thread> {
-    println!("!!!!!!!!!!!!!!!!!!! attached {}", tid);
-    // TODO rename function
-    // seize seems to be more modern and versatile: stop tracees while running and detach while
-    // even while running
-    // try_with!(ptrace::attach(tid), "cannot attach to process");
+pub fn attach_seize(tid: Pid) -> Result<Thread> {
+    // seize seems to be more modern and versatile than `ptrace::attach()`: continue, stop and
+    // detach from tracees at (almost) any time
     try_with!(
         ptrace::seize(tid, ptrace::Options::empty()),
         "cannot seize the process"
@@ -164,7 +161,7 @@ pub fn attach_all_threads(pid: Pid) -> Result<(Vec<Thread>, usize)> {
             if tid == pid {
                 process_idx = i;
             }
-            let thread = attach(tid);
+            let thread = attach_seize(tid);
             try_with!(waitpid(tid, Some(WaitPidFlag::WSTOPPED)), "waitpid failed");
             thread
         })
@@ -175,12 +172,8 @@ pub fn attach_all_threads(pid: Pid) -> Result<(Vec<Thread>, usize)> {
 
 impl Drop for Thread {
     fn drop(&mut self) {
-        //std::thread::sleep(std::time::Duration::from_millis(1000));
-        println!("!!!!!!!!!!!!!!!!!!! dropped {}", self.tid);
         if let Err(e) = ptrace::detach(self.tid, None) {
-            eprintln!("Cannot ptrace::detach from {}", self.tid);
             log::warn!("Cannot ptrace::detach from {}", self.tid);
         }
-        // TODO waitpid?
     }
 }
