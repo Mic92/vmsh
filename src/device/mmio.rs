@@ -30,13 +30,15 @@ pub struct IoPirate {
     mmio_bus: MmioPirateBus<Arc<dyn DeviceMmio + Send + Sync>>,
 }
 
-impl IoPirate {
-    pub fn new() -> IoPirate {
+impl Default for IoPirate {
+    fn default() -> IoPirate {
         IoPirate {
             mmio_bus: Bus::new(),
         }
     }
+}
 
+impl IoPirate {
     pub fn register_mmio_device(
         &mut self,
         range: MmioRange,

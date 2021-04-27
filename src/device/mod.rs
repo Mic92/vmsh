@@ -9,7 +9,7 @@ use crate::result::Result;
 use crate::tracer::proc::Mapping;
 use event_manager::{EventManager, MutEventSubscriber};
 use simple_error::{bail, try_with};
-use std::path::PathBuf;
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 use vm_device::bus::{MmioAddress, MmioRange};
 use vm_device::device_manager::IoManager;
@@ -78,7 +78,7 @@ pub struct Device {
 }
 
 impl Device {
-    pub fn new(vmm: &Arc<Hypervisor>) -> Result<Device> {
+    pub fn new(vmm: &Arc<Hypervisor>, backing: &Path) -> Result<Device> {
         let guest_memory = try_with!(vmm.get_maps(), "cannot get guests memory");
         let mem: Arc<GuestMemoryMmap> = Arc::new(try_with!(
             convert(&guest_memory),
@@ -93,7 +93,7 @@ impl Device {
         let device_manager = Arc::new(Mutex::new(IoManager::new()));
         let _guard = device_manager.lock().unwrap();
         // IoManager replacement:
-        let device_manager = Arc::new(Mutex::new(IoPirate::new()));
+        let device_manager = Arc::new(Mutex::new(IoPirate::default()));
         let guard = device_manager.lock().unwrap();
         guard.mmio_device(MmioAddress(MMIO_MEM_START));
 
@@ -113,7 +113,7 @@ impl Device {
 
         let args = BlockArgs {
             common,
-            file_path: PathBuf::from("/dev/null"),
+            file_path: backing.to_path_buf(),
             read_only: false,
             root_device: true,
             advertise_flush: true,

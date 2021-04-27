@@ -6,9 +6,10 @@ use clap::{
 };
 use nix::unistd::Pid;
 
+use vmsh::attach::{self, AttachOptions};
 use vmsh::coredump::CoredumpOptions;
 use vmsh::inspect::InspectOptions;
-use vmsh::{attach, coredump, inspect};
+use vmsh::{coredump, inspect};
 
 fn pid_arg(index: u64) -> Arg<'static, 'static> {
     Arg::with_name("pid")
@@ -33,8 +34,9 @@ fn inspect(args: &ArgMatches) {
 }
 
 fn attach(args: &ArgMatches) {
-    let opts = InspectOptions {
+    let opts = AttachOptions {
         pid: parse_pid_arg(&args),
+        backing: PathBuf::from(value_t!(args, "backing-file", String).unwrap_or_else(|e| e.exit())),
     };
 
     if let Err(err) = attach::attach(&opts) {
@@ -64,10 +66,18 @@ fn main() {
         .arg(pid_arg(1));
 
     let attach_command = SubCommand::with_name("attach")
-        .about("Attach to a virtual machine.")
+        .about("Attach (a block device) to a virtual machine.")
         .version(crate_version!())
         .author(crate_authors!("\n"))
-        .arg(pid_arg(1));
+        .arg(pid_arg(1))
+        .arg(
+            Arg::with_name("backing-file")
+                .short("f")
+                .long("backing-file")
+                .takes_value(true)
+                .default_value("/dev/null")
+                .help("File which shall be served as a block device."),
+        );
 
     let coredump_command = SubCommand::with_name("coredump")
         .about("Get a coredump of a virtual machine.")
