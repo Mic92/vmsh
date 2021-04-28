@@ -1,4 +1,5 @@
 use clap::{value_t, App, Arg, SubCommand};
+use env_logger;
 use kvm_bindings as kvmb;
 use nix::unistd::Pid;
 use simple_error::{bail, try_with};
@@ -248,6 +249,8 @@ fn subtest(name: &str) -> App {
 }
 
 fn main() {
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+
     let app = App::new("test_ioctls")
         .about("Something between integration and unit test to be used by pytest.")
         .subcommand(subtest("alloc_mem"))

@@ -1,3 +1,4 @@
+use env_logger;
 use std::path::PathBuf;
 
 use clap::{
@@ -58,6 +59,24 @@ fn coredump(args: &ArgMatches) {
     };
 }
 
+fn setup_logging(matches: &clap::ArgMatches) {
+    if matches.is_present("verbose") {
+        env_logger::Builder::new()
+            .filter_level(log::LevelFilter::max())
+            .init();
+        return;
+    }
+
+    let loglevel = matches.value_of("loglevel");
+    if let Some(level) = loglevel {
+        env_logger::Builder::new().parse_filters(&level).init();
+        return;
+    }
+
+    // default
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn")).init();
+}
+
 fn main() {
     let inspect_command = SubCommand::with_name("inspect")
         .about("Inspect a virtual machine.")
@@ -95,11 +114,20 @@ fn main() {
         .version(crate_version!())
         .author(crate_authors!("\n"))
         .setting(AppSettings::SubcommandRequiredElseHelp)
+        .arg(Arg::with_name("verbose")
+             .short("v")
+             .conflicts_with("loglevel")
+             .help("shorthand for highest log level (-l trace)"))
+        .arg(Arg::with_name("loglevel")
+             .short("l")
+             .takes_value(true)
+             .help("Finegrained verbosity control. See docs.rs/env_logger. Examples: [error, warn, info, debug, trace]"))
         .subcommand(inspect_command)
         .subcommand(attach_command)
         .subcommand(coredump_command);
 
     let matches = main_app.get_matches();
+    setup_logging(&matches);
     match matches.subcommand() {
         ("inspect", Some(sub_matches)) => inspect(&sub_matches),
         ("attach", Some(sub_matches)) => attach(&sub_matches),
