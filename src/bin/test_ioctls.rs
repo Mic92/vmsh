@@ -1,5 +1,4 @@
 use clap::{value_t, App, Arg, SubCommand};
-use env_logger;
 use kvm_bindings as kvmb;
 use nix::unistd::Pid;
 use simple_error::{bail, try_with};

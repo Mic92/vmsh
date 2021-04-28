@@ -1,5 +1,3 @@
-import subprocess
-
 import conftest
 
 
@@ -21,12 +19,12 @@ def test_virtio_device_space(helpers: conftest.Helpers) -> None:
     with helpers.spawn_qemu(helpers.notos_image()) as vm:
         vm.wait_for_ssh()
         print("ssh available")
-        vmsh = helpers.spawn_vmsh_command(
-            ["attach", str(vm.pid)], stdout=subprocess.PIPE
-        )
+        vmsh = helpers.spawn_vmsh_command(["attach", str(vm.pid)])
 
         with vmsh:
-            vmsh.wait_until_line("mmio dev attached")
+            vmsh.wait_until_line(
+                "mmio dev attached", lambda l: "mmio dev attached" in l
+            )
 
             mmio_config = "0x1000@0xd0000000:5"
             res = vm.ssh_cmd(

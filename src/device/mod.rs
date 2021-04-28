@@ -15,12 +15,10 @@ use std::sync::{Arc, Mutex};
 use vm_device::bus::{MmioAddress, MmioRange};
 use vm_device::device_manager::IoManager;
 use vm_device::device_manager::MmioManager;
-use vm_device::resources::ResourceConstraint;
 use vm_memory::guest_memory::GuestAddress;
 use vm_memory::mmap::MmapRegion;
 use vm_memory::GuestMemoryRegion;
 use vm_memory::{GuestMemoryMmap, GuestRegionMmap};
-use vm_virtio::device::status::RESET;
 
 // Where BIOS/VGA magic would live on a real PC.
 #[allow(dead_code)] // FIXME
