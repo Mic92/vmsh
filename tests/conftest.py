@@ -10,7 +10,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from queue import Queue
 from shlex import quote
-from typing import Any, Iterator, List, Type, Union
+from typing import Any, Iterator, List, Type, Union, Callable
 
 import pytest
 from qemu import QemuVm, VmImage, spawn_qemu
@@ -64,18 +64,19 @@ EOF = 1
 class VmshPopen(subprocess.Popen):
     def process_stdout(self) -> None:
         self.lines: Queue[Union[str, int]] = Queue()
-        threading.Thread(target=self.print_stdout_with_prefix).start()
+        threading.Thread(target=self.print_stdout).start()
+        threading.Thread(target=self.print_stderr).start()
 
     def __exit__(self, exc_type: Any, exc_value: Any, traceback: Any) -> None:
         # we cannot kill sudo, but we can stop vmsh as it drops privileges to our user
         subprocess.run(["pkill", "--parent", str(self.pid)])
         super().__exit__(exc_type, exc_value, traceback)
 
-    def print_stdout_with_prefix(self) -> None:
+    def print_stdio_with_prefix(self, stdio: Any) -> None:
         buf = ""
         while True:
-            assert self.stdout is not None
-            res = self.stdout.read(1)
+            assert stdio is not None
+            res = stdio.read(1)
 
             if len(res) > 0:
                 if res == "\n":
@@ -90,25 +91,30 @@ class VmshPopen(subprocess.Popen):
                 self.lines.put(EOF)
                 return
 
-    def wait_until_line(self, line: str) -> None:
+    def print_stderr(self) -> None:
+        self.print_stdio_with_prefix(self.stderr)
+
+    def print_stdout(self) -> None:
+        self.print_stdio_with_prefix(self.stdout)
+
+    def wait_until_line(self, tag: str, condition: Callable[[str], bool]) -> None:
         """
-        blocks until line is printed
-        @param line example: "pause\n"
+        blocks until a line matching the given condition is printed
+        Example: `vm.wait_until_line(lambda line: line == "foobar")`
+        @param tag: printable, human readable tag
         """
-        print(f"wait for '{line}'...")
+        print(f"wait for '{tag}'...")
         while True:
             l = self.lines.get()
 
             if l == EOF:
                 raise Exception("reach end of stdout output before process finished")
 
-            if l == line:
+            if condition(str(l)):
                 return
 
 
-def spawn_vmsh_command(
-    args: List[str], cargo_executable: str = "vmsh", stdout: Any = None
-) -> VmshPopen:
+def spawn_vmsh_command(args: List[str], cargo_executable: str = "vmsh") -> VmshPopen:
     if not os.path.isdir("/sys/module/kheaders"):
         subprocess.run(["sudo", "modprobe", "kheaders"])
     uid = os.getuid()
@@ -136,7 +142,7 @@ def spawn_vmsh_command(
             cmd_quoted,
         ]
         print("$ " + " ".join(map(quote, cmd)))
-        p = VmshPopen(cmd, stdout=subprocess.PIPE, text=True)
+        p = VmshPopen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         p.process_stdout()
         return p
 
@@ -152,9 +158,9 @@ class Helpers:
 
     @staticmethod
     def spawn_vmsh_command(
-        args: List[str], cargo_executable: str = "vmsh", stdout: Any = None
+        args: List[str], cargo_executable: str = "vmsh"
     ) -> VmshPopen:
-        return spawn_vmsh_command(args, cargo_executable, stdout=stdout)
+        return spawn_vmsh_command(args, cargo_executable)
 
     @staticmethod
     def run_vmsh_command(args: List[str], cargo_executable: str = "vmsh") -> None:

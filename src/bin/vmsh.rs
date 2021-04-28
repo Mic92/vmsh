@@ -1,4 +1,4 @@
-use env_logger;
+use log::*;
 use std::path::PathBuf;
 
 use clap::{
@@ -29,7 +29,7 @@ fn inspect(args: &ArgMatches) {
     };
 
     if let Err(err) = inspect::inspect(&opts) {
-        eprintln!("{}", err);
+        error!("{}", err);
         std::process::exit(1);
     };
 }
@@ -41,7 +41,7 @@ fn attach(args: &ArgMatches) {
     };
 
     if let Err(err) = attach::attach(&opts) {
-        eprintln!("{}", err);
+        error!("{}", err);
         std::process::exit(1);
     };
 }
@@ -54,16 +54,14 @@ fn coredump(args: &ArgMatches) {
     let opts = CoredumpOptions { pid, path };
 
     if let Err(err) = coredump::generate_coredump(&opts) {
-        eprintln!("{}", err);
+        error!("{}", err);
         std::process::exit(1);
     };
 }
 
 fn setup_logging(matches: &clap::ArgMatches) {
     if matches.is_present("verbose") {
-        env_logger::Builder::new()
-            .filter_level(log::LevelFilter::max())
-            .init();
+        env_logger::Builder::new().parse_filters("debug").init();
         return;
     }
 
@@ -74,7 +72,7 @@ fn setup_logging(matches: &clap::ArgMatches) {
     }
 
     // default
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn")).init();
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 }
 
 fn main() {
@@ -117,7 +115,7 @@ fn main() {
         .arg(Arg::with_name("verbose")
              .short("v")
              .conflicts_with("loglevel")
-             .help("shorthand for highest log level (-l trace)"))
+             .help("shorthand for --loglevel debug)"))
         .arg(Arg::with_name("loglevel")
              .short("l")
              .takes_value(true)

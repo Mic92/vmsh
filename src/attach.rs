@@ -1,4 +1,5 @@
 use crate::result::Result;
+use log::*;
 use nix::unistd::Pid;
 use simple_error::try_with;
 use std::path::PathBuf;
@@ -19,7 +20,7 @@ pub struct AttachOptions {
 }
 
 pub fn attach(opts: &AttachOptions) -> Result<()> {
-    println!("attaching");
+    info!("attaching");
 
     let vm = Arc::new(try_with!(
         kvm::hypervisor::get_hypervisor(opts.pid),
@@ -30,7 +31,7 @@ pub fn attach(opts: &AttachOptions) -> Result<()> {
 
     // instanciate blkdev
     let device = try_with!(Device::new(&vm, &opts.backing), "cannot create vm");
-    println!("mmio dev attached");
+    info!("mmio dev attached");
 
     // start monitoring thread
     let child = blkdev_monitor(&device);
@@ -40,10 +41,10 @@ pub fn attach(opts: &AttachOptions) -> Result<()> {
         run_kvm_wrapped(&vm, &device),
         "device init stage with KvmRunWrapper failed"
     );
-    println!("blkdev queue ready.");
+    info!("blkdev queue ready.");
     vm.resume()?;
 
-    println!("pause");
+    info!("pause");
     nix::unistd::pause();
     let _err = child.join();
     Ok(())
@@ -58,22 +59,22 @@ fn blkdev_monitor(device: &Device) -> JoinHandle<()> {
                 // blkdev queue ready
                 break;
             }
-            println!();
-            println!("dev type {}", blkdev.device_type());
-            println!("dev features b{:b}", blkdev.device_features());
-            println!(
+            info!("");
+            info!("dev type {}", blkdev.device_type());
+            info!("dev features b{:b}", blkdev.device_features());
+            info!(
                 "dev interrupt stat b{:b}",
                 blkdev
                     .interrupt_status()
                     .load(std::sync::atomic::Ordering::Relaxed)
             );
-            println!("dev status b{:b}", blkdev.device_status());
-            println!("dev config gen {}", blkdev.config_generation());
-            println!(
+            info!("dev status b{:b}", blkdev.device_status());
+            info!("dev config gen {}", blkdev.config_generation());
+            info!(
                 "dev selqueue max size {}",
                 blkdev.selected_queue().map(Queue::max_size).unwrap()
             );
-            println!(
+            info!(
                 "dev selqueue ready {}",
                 blkdev.selected_queue().map(|q| q.ready).unwrap()
             );

@@ -1,5 +1,3 @@
-import subprocess
-
 import conftest
 
 
@@ -61,11 +59,10 @@ def test_userfaultfd_completes(helpers: conftest.Helpers) -> None:
         vmsh = helpers.spawn_vmsh_command(
             ["guest_userfaultfd", str(vm.pid)],
             cargo_executable="test_ioctls",
-            stdout=subprocess.PIPE,
         )
 
         with vmsh:
-            vmsh.wait_until_line("pause")
+            vmsh.wait_until_line("pause", lambda l: "pause" in l)
             print("ssh available")
 
             res = vm.ssh_cmd(
@@ -87,11 +84,10 @@ def test_wrap_syscall(helpers: conftest.Helpers) -> None:
         # attach vmsh after boot, because it slows the vm down a lot.
         vmsh = helpers.spawn_vmsh_command(
             ["guest_kvm_exits", str(vm.pid)],
-            stdout=subprocess.PIPE,
             cargo_executable="test_ioctls",
         )
         with vmsh:
-            vmsh.wait_until_line("attached")
+            vmsh.wait_until_line("attached", lambda l: "attached" in l)
             res = vm.ssh_cmd(["devmem2", "0xc0000000", "h"])
             print("read:\n", res.stdout)
             print("stderr:\n", res.stderr)

@@ -1,7 +1,7 @@
 use crate::tracer::inject_syscall;
 use kvm_bindings as kvmb;
 use libc::{c_int, c_void};
-use log::warn;
+use log::*;
 use nix::sys::uio::{process_vm_readv, process_vm_writev, IoVec, RemoteIoVec};
 use nix::unistd::Pid;
 use simple_error::{bail, try_with};
@@ -367,7 +367,7 @@ impl Hypervisor {
 
     pub fn ioeventfd(&self, guest_addr: u64) -> Result<EventFd> {
         let eventfd = try_with!(EventFd::new(EFD_NONBLOCK), "cannot create event fd");
-        println!(
+        info!(
             "ioeventfd {:?}, guest phys addr {:?}",
             eventfd.as_raw_fd(),
             guest_addr
@@ -404,7 +404,7 @@ impl Hypervisor {
     /// param `gsi`: pin on the irqchip to be toggled by fd events
     pub fn irqfd(&self, gsi: u32) -> Result<EventFd> {
         let eventfd = try_with!(EventFd::new(EFD_NONBLOCK), "cannot create event fd");
-        println!("irqfd {:?}, interupt gsi/nr {:?}", eventfd.as_raw_fd(), gsi);
+        info!("irqfd {:?}, interupt gsi/nr {:?}", eventfd.as_raw_fd(), gsi);
         let hv_eventfd = self.transfer(vec![eventfd.as_raw_fd()].as_slice())?[0];
 
         let irqfd = kvmb::kvm_irqfd {
@@ -537,7 +537,7 @@ fn find_vm_fd(handle: &PidHandle) -> Result<(Vec<RawFd>, Vec<VCPU>)> {
                 "cannot parse number {}",
                 parts[0]
             );
-            println!("vcpu {} fd {}", idx, fd.fd_num);
+            info!("vcpu {} fd {}", idx, fd.fd_num);
             vcpu_fds.push(VCPU {
                 idx,
                 fd_num: fd.fd_num,
