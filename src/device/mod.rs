@@ -8,6 +8,7 @@ use crate::kvm::hypervisor::{Hypervisor, VmMem};
 use crate::result::Result;
 use crate::tracer::proc::Mapping;
 use event_manager::{EventManager, MutEventSubscriber};
+use log::*;
 use simple_error::{bail, try_with};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
@@ -34,7 +35,6 @@ pub type Block = block::Block<Arc<GuestMemoryMmap>>;
 fn convert(mappings: &[Mapping]) -> Result<GuestMemoryMmap> {
     let mut regions: Vec<Arc<GuestRegionMmap>> = vec![];
 
-    println!("{}", mappings.len());
     for mapping in mappings {
         // TODO need reason for why this is safe. ("a smart human wrote it")
         let mmap_region = try_with!(
@@ -85,7 +85,7 @@ impl Device {
             "cannot convert Mapping to GuestMemoryMmap"
         ));
 
-        println!("mmio range start {:x}", MMIO_MEM_START);
+        info!("mmio range start {:x}", MMIO_MEM_START);
         let range = MmioRange::new(MmioAddress(MMIO_MEM_START), 0x1000).unwrap();
         let mmio_cfg = MmioConfig { range, gsi: 5 };
 
@@ -162,11 +162,5 @@ impl Device {
             .expect("don't call this function when there is not device space attached");
         mmio_device_mem.mem.write(&self.mmio_device_space)?;
         Ok(())
-    }
-
-    pub fn create(&self) {
-        let _a = RESET;
-        let _b = ResourceConstraint::new_pio(1);
-        println!("create device");
     }
 }

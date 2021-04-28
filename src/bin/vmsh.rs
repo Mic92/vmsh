@@ -1,4 +1,5 @@
 use env_logger;
+use log::*;
 use std::path::PathBuf;
 
 use clap::{
@@ -29,7 +30,7 @@ fn inspect(args: &ArgMatches) {
     };
 
     if let Err(err) = inspect::inspect(&opts) {
-        eprintln!("{}", err);
+        error!("{}", err);
         std::process::exit(1);
     };
 }
@@ -41,7 +42,7 @@ fn attach(args: &ArgMatches) {
     };
 
     if let Err(err) = attach::attach(&opts) {
-        eprintln!("{}", err);
+        error!("{}", err);
         std::process::exit(1);
     };
 }
@@ -54,7 +55,7 @@ fn coredump(args: &ArgMatches) {
     let opts = CoredumpOptions { pid, path };
 
     if let Err(err) = coredump::generate_coredump(&opts) {
-        eprintln!("{}", err);
+        error!("{}", err);
         std::process::exit(1);
     };
 }

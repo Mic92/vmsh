@@ -1,5 +1,6 @@
 use crate::tracer::Tracer;
 use kvm_bindings as kvmb;
+use log::*;
 use nix::sys::signal::Signal;
 use nix::sys::wait::{waitpid, WaitStatus};
 use nix::unistd::Pid;
@@ -333,7 +334,7 @@ impl KvmRunWrapper {
                 bail!("got unexpected still-alive waitpid() event")
             }
             WaitStatus::Continued(_) => {
-                println!("WaitStatus::Continued");
+                warn!("WaitStatus::Continued");
             } // noop
             WaitStatus::Stopped(pid, signal) => {
                 return self.stopped(pid, &signal);
@@ -373,10 +374,10 @@ impl KvmRunWrapper {
         }
 
         if thread.in_syscall {
-            //println!("kvm-run enter {}", pid);
+            trace!("kvm-run enter {}", pid);
             return Ok(None);
         } else {
-            //println!("kvm-run exit {}", pid);
+            trace!("kvm-run exit {}", pid);
             if regs.syscall_ret() != 0 {
                 log::warn!("wrap_syscall: ioctl(KVM_RUN) failed.");
                 // hope that hypervisor handles it correctly
@@ -399,10 +400,10 @@ impl KvmRunWrapper {
             "cannot getsiginfo"
         );
         if (siginfo.si_code == libc::SIGTRAP) || (siginfo.si_code == (libc::SIGTRAP | 0x80)) {
-            println!("siginfo.si_code true: 0x{:x}", siginfo.si_code);
+            trace!("siginfo.si_code true: 0x{:x}", siginfo.si_code);
             return Ok(());
         } else {
-            println!("siginfo.si_code false: 0x{:x}", siginfo.si_code);
+            trace!("siginfo.si_code false: 0x{:x}", siginfo.si_code);
         }
         Ok(())
     }
