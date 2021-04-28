@@ -21,13 +21,11 @@ pub struct Tracer {
 }
 
 impl Tracer {
-    #[allow(dead_code)]
-    fn main_thread(&self) -> &ptrace::Thread {
+    pub fn main_thread(&self) -> &ptrace::Thread {
         &self.threads[self.process_idx]
     }
 
-    #[allow(dead_code)]
-    fn main_thread_mut(&mut self) -> &mut ptrace::Thread {
+    pub fn main_thread_mut(&mut self) -> &mut ptrace::Thread {
         &mut self.threads[self.process_idx]
     }
 }

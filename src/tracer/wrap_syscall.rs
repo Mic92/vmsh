@@ -141,12 +141,55 @@ impl Thread {
     pub fn toggle_in_syscall(&mut self) {
         self.in_syscall = !self.in_syscall;
     }
+
+    /// Should be called before or during dropping a Thread
+    pub fn prepare_detach(&self) -> Result<()> {
+        if !self.is_running {
+            // not interrupting because already stopped
+            return Ok(());
+        }
+        self.ptthread.interrupt()?;
+        // wait for thread to actually be interrupted
+        loop {
+            let status = try_with!(
+                waitpid(self.ptthread.tid, None),
+                "failed to waitpid on thread {}",
+                self.ptthread.tid
+            );
+            match status {
+                WaitStatus::PtraceEvent(pid, _signal, event) => {
+                    if pid != self.ptthread.tid {
+                        continue;
+                    }
+                    if event == libc::PTRACE_EVENT_STOP {
+                        break;
+                    }
+                }
+                WaitStatus::Stopped(pid, _signal) => {
+                    if pid != self.ptthread.tid {
+                        continue;
+                    }
+                    break;
+                }
+                _ => {}
+            }
+        }
+        Ok(())
+    }
 }
 
 /// TODO respect and handle newly spawned threads as well
 pub struct KvmRunWrapper {
     process_idx: usize,
     threads: Vec<Thread>,
+}
+
+impl Drop for KvmRunWrapper {
+    fn drop(&mut self) {
+        if let Err(e) = self.prepare_detach() {
+            log::warn!("cannot drop KvmRunWrapper: {}", e);
+        }
+    }
 }
 
 impl KvmRunWrapper {
@@ -170,14 +213,31 @@ impl KvmRunWrapper {
         })
     }
 
-    pub fn into_tracer(self) -> Tracer {
+    /// Should be called before or during dropping a KvmRunWrapper
+    pub fn prepare_detach(&mut self) -> Result<()> {
+        for thread in &self.threads {
+            try_with!(
+                thread.prepare_detach(),
+                "cannot prepare thread {} for detaching",
+                thread.ptthread.tid
+            );
+        }
+        Ok(())
+    }
+
+    /// resume all threads and convert self into tracer.
+    pub fn into_tracer(mut self) -> Result<Tracer> {
         let vcpu_map = self.threads[0].vcpu_map.clone();
-        let threads = self.threads.into_iter().map(|t| t.ptthread).collect();
-        Tracer {
+        // Because we run the drop routine here,
+        self.prepare_detach()?;
+        // we may take all here, despite making KvmRunWrapper::drop ineffective.
+        let threads = self.threads.split_off(0);
+        let threads = threads.into_iter().map(|t| t.ptthread).collect();
+        Ok(Tracer {
             process_idx: self.process_idx,
             threads,
             vcpu_map,
-        }
+        })
     }
 
     pub fn from_tracer(tracer: Tracer) -> Result<Self> {
@@ -228,6 +288,8 @@ impl KvmRunWrapper {
     /// busy polling on all thread tids
     fn waitpid(&mut self) -> Result<WaitStatus> {
         // Options to waitpid on many pids at the same time:
+        //
+        // - wait with multiple threads. Events into queue and poll on queue.
         //
         // - waitpid(WNOHANG): async waitpid, busy polling
         //
@@ -311,10 +373,10 @@ impl KvmRunWrapper {
         }
 
         if thread.in_syscall {
-            //println!("kvm-run enter");
+            //println!("kvm-run enter {}", pid);
             return Ok(None);
         } else {
-            //println!("kvm-run exit.");
+            //println!("kvm-run exit {}", pid);
             if regs.syscall_ret() != 0 {
                 log::warn!("wrap_syscall: ioctl(KVM_RUN) failed.");
                 // hope that hypervisor handles it correctly

@@ -233,7 +233,7 @@ impl Hypervisor {
 
         if was_attached {
             let err = "cannot re-attach injector after having detached it favour of KvmRunWrapper";
-            let injector = try_with!(inject_syscall::from_tracer(wrapper.into_tracer()), &err);
+            let injector = try_with!(inject_syscall::from_tracer(wrapper.into_tracer()?), &err);
             try_with!(tracee.attach_to(injector), &err);
         }
 
@@ -448,28 +448,6 @@ impl Hypervisor {
         // TODO impl userfaultfd handling
 
         Ok(-1)
-    }
-
-    /// Can be called regardless of de/attached state.
-    pub fn log_kvm_exits(&self) -> Result<()> {
-        self.kvmrun_wrapped(|wrapper: &mut KvmRunWrapper| {
-            let value: [u8; 2] = 0xDEADu16.to_ne_bytes();
-            println!("attached");
-
-            for _i in 0..100000 {
-                let mut mmio = wrapper.wait_for_ioctl()?;
-                if let Some(mmio) = &mut mmio {
-                    println!("kvm exit: {}", mmio);
-                    if !mmio.is_write {
-                        mmio.answer_read(&value)?;
-                    }
-                }
-            }
-
-            Ok(())
-        })?;
-
-        Ok(())
     }
 
     pub fn check_extension(&self, cap: c_int) -> Result<c_int> {

@@ -105,3 +105,7 @@ def test_wrap_syscall(helpers: conftest.Helpers) -> None:
             print("read:\n", res.stdout)
             print("stderr:\n", res.stderr)
             assert "0xDEAD" in res.stdout
+
+        # check that vm is still responsive
+        res = vm.ssh_cmd(["ls"])
+        assert res.returncode == 0

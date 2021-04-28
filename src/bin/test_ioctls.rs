@@ -1,4 +1,5 @@
 use clap::{value_t, App, Arg, SubCommand};
+use env_logger;
 use kvm_bindings as kvmb;
 use nix::unistd::Pid;
 use simple_error::{bail, try_with};
@@ -7,6 +8,7 @@ use std::time::Duration;
 use vmm_sys_util::eventfd::{EventFd, EFD_NONBLOCK};
 use vmsh::kvm::hypervisor::get_hypervisor;
 use vmsh::result::Result;
+use vmsh::tracer::wrap_syscall::KvmRunWrapper;
 
 fn inject(pid: Pid) -> Result<()> {
     let vm = try_with!(get_hypervisor(pid), "cannot get vms for process {}", pid);
@@ -198,7 +200,22 @@ fn guest_ioeventfd(pid: Pid) -> Result<()> {
 
 fn guest_kvm_exits(pid: Pid) -> Result<()> {
     let vm = try_with!(get_hypervisor(pid), "cannot get vms for process {}", pid);
-    vm.log_kvm_exits()?;
+    vm.kvmrun_wrapped(|wrapper: &mut KvmRunWrapper| {
+        let value: [u8; 2] = 0xDEADu16.to_ne_bytes();
+        println!("attached");
+
+        for _i in 0..100000 {
+            let mut mmio = wrapper.wait_for_ioctl()?;
+            if let Some(mmio) = &mut mmio {
+                println!("kvm exit: {}", mmio);
+                if !mmio.is_write {
+                    mmio.answer_read(&value)?;
+                }
+            }
+        }
+
+        Ok(())
+    })?;
     Ok(())
 }
 
@@ -232,6 +249,8 @@ fn subtest(name: &str) -> App {
 }
 
 fn main() {
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+
     let app = App::new("test_ioctls")
         .about("Something between integration and unit test to be used by pytest.")
         .subcommand(subtest("alloc_mem"))

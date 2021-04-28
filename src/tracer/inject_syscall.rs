@@ -17,7 +17,7 @@ pub struct Process {
     process_idx: usize,
     saved_regs: Regs,
     saved_text: c_long,
-    /// Must never be None during operation. Only deinit() (called by drop) make take() this.
+    /// Must never be None during operation. Only deinit() (called by drop) may take() this.
     threads: Option<Vec<ptrace::Thread>>,
 }
 

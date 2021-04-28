@@ -40,6 +40,8 @@ pub fn attach(opts: &AttachOptions) -> Result<()> {
         run_kvm_wrapped(&vm, &device),
         "device init stage with KvmRunWrapper failed"
     );
+    println!("blkdev queue ready.");
+    vm.resume()?;
 
     println!("pause");
     nix::unistd::pause();
@@ -51,8 +53,12 @@ fn blkdev_monitor(device: &Device) -> JoinHandle<()> {
     let blkdev = device.blkdev.clone();
     thread::spawn(move || loop {
         {
-            println!();
             let blkdev = blkdev.lock().unwrap();
+            if blkdev.selected_queue().map(|q| q.ready).unwrap() {
+                // blkdev queue ready
+                break;
+            }
+            println!();
             println!("dev type {}", blkdev.device_type());
             println!("dev features b{:b}", blkdev.device_features());
             println!(
@@ -76,6 +82,7 @@ fn blkdev_monitor(device: &Device) -> JoinHandle<()> {
     })
 }
 
+/// returns when blkdev queue is ready
 fn run_kvm_wrapped(vm: &Arc<Hypervisor>, device: &Device) -> Result<()> {
     let mut mmio_mgr = device.mmio_mgr.lock().unwrap();
 
@@ -97,9 +104,13 @@ fn run_kvm_wrapped(vm: &Arc<Hypervisor>, device: &Device) -> Result<()> {
                 } else {
                     // do nothing, just continue to ingore and pass to hv
                 }
-                if device.mmio_device_space.queue_ready == 0x1 {
-                    println!("queue ready. break.");
-                    break;
+                {
+                    let blkdev = device.blkdev.clone();
+                    let blkdev = &try_with!(blkdev.lock(), "cannot get blkdev lock");
+                    if blkdev.selected_queue().map(|q| q.ready).unwrap() {
+                        // blkdev queue ready
+                        break;
+                    }
                 }
             }
         }
