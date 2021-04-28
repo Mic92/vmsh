@@ -10,7 +10,7 @@ use vm_virtio::device::VirtioDevice;
 use vm_virtio::device::WithDriverSelect;
 use vm_virtio::Queue;
 
-use crate::device::Device;
+use crate::device::{Device, DEVICE_MAX_MEM};
 use crate::kvm::{self, hypervisor::Hypervisor};
 use crate::tracer::wrap_syscall::KvmRunWrapper;
 
@@ -99,8 +99,12 @@ fn run_kvm_wrapped(vm: &Arc<Hypervisor>, device: &Device) -> Result<()> {
                 try_with!(wrapper.wait_for_ioctl(), "failed to wait for vmm exit_mmio");
             if let Some(mmio_rw) = &mut kvm_exit {
                 let addr = MmioAddress(mmio_rw.addr);
-                if mmio_space.base() <= addr && addr <= mmio_space.last() {
+                let from = mmio_space.base();
+                // virtio mmio space + virtio device specific space
+                let to = from + mmio_space.size() + DEVICE_MAX_MEM;
+                if from <= addr && addr < to {
                     // intercept op
+                    debug!("mmio access 0x{:x}", addr.0);
                     try_with!(mmio_mgr.handle_mmio_rw(mmio_rw), "failed to handle MmioRw");
                 } else {
                     // do nothing, just continue to ingore and pass to hv

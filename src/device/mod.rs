@@ -28,6 +28,9 @@ const MEM_32BIT_GAP_SIZE: u64 = 768 << 20;
 /// The start of the memory area reserved for MMIO devices.
 pub const MMIO_MEM_START: u64 = FIRST_ADDR_PAST_32BITS - MEM_32BIT_GAP_SIZE;
 
+/// max mem space per device
+pub const DEVICE_MAX_MEM: u64 = 0x1000;
+
 pub type Block = block::Block<Arc<GuestMemoryMmap>>;
 
 fn convert(mappings: &[Mapping]) -> Result<GuestMemoryMmap> {

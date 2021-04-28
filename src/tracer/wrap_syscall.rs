@@ -215,7 +215,7 @@ impl KvmRunWrapper {
     }
 
     /// Should be called before or during dropping a KvmRunWrapper
-    pub fn prepare_detach(&mut self) -> Result<()> {
+    fn prepare_detach(&mut self) -> Result<()> {
         for thread in &self.threads {
             try_with!(
                 thread.prepare_detach(),
