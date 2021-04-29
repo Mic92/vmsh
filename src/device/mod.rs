@@ -1,6 +1,7 @@
 pub mod mmio;
 mod virtio;
 
+use crate::attach::SubscriberEventManager;
 use crate::device::mmio::{IoPirate, MmioDeviceSpace};
 use crate::device::virtio::block::{self, BlockArgs};
 use crate::device::virtio::{CommonArgs, MmioConfig};
@@ -9,7 +10,7 @@ use crate::result::Result;
 use crate::tracer::proc::Mapping;
 use event_manager::{EventManager, MutEventSubscriber};
 use log::*;
-use simple_error::{bail, try_with};
+use simple_error::{bail, map_err_with, try_with};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use vm_device::bus::{MmioAddress, MmioRange};
@@ -79,7 +80,11 @@ pub struct Device {
 }
 
 impl Device {
-    pub fn new(vmm: &Arc<Hypervisor>, backing: &Path) -> Result<Device> {
+    pub fn new(
+        vmm: &Arc<Hypervisor>,
+        event_mgr: &mut SubscriberEventManager,
+        backing: &Path,
+    ) -> Result<Device> {
         let guest_memory = try_with!(vmm.get_maps(), "cannot get guests memory");
         let mem: Arc<GuestMemoryMmap> = Arc::new(try_with!(
             convert(&guest_memory),
@@ -98,16 +103,10 @@ impl Device {
         let guard = device_manager.lock().unwrap();
         guard.mmio_device(MmioAddress(MMIO_MEM_START));
 
-        let mut event_manager = try_with!(
-            EventManager::<Arc<Mutex<dyn MutEventSubscriber + Send>>>::new(),
-            "cannot create event manager"
-        );
-        // TODO add subscriber (wrapped_exit_handler) and stuff?
-
         let common = CommonArgs {
             mem,
             vmm: vmm.clone(),
-            event_mgr: &mut event_manager,
+            event_mgr,
             mmio_mgr: guard,
             mmio_cfg,
         };

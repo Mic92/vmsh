@@ -227,7 +227,10 @@ impl<M: GuestAddressSpace + Clone + Send + 'static> VirtioDeviceActions for Bloc
             .call_blocking(move |mgr| -> EvmgrResult<SubscriberId> {
                 Ok(mgr.add_subscriber(handler))
             })
-            .map_err(Error::Endpoint)?;
+            .map_err(|e| {
+                log::warn!("{}", e);
+                Error::Endpoint(e)
+            })?;
 
         self.virtio_cfg.device_activated = true;
 

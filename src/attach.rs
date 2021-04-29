@@ -1,9 +1,12 @@
 use crate::result::Result;
+use event_manager::EventManager;
+use event_manager::MutEventSubscriber;
 use log::*;
 use nix::unistd::Pid;
 use simple_error::try_with;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::thread::{self, JoinHandle};
 use vm_device::bus::MmioAddress;
 use vm_virtio::device::VirtioDevice;
@@ -13,6 +16,11 @@ use vm_virtio::Queue;
 use crate::device::{Device, DEVICE_MAX_MEM};
 use crate::kvm::{self, hypervisor::Hypervisor};
 use crate::tracer::wrap_syscall::KvmRunWrapper;
+
+// Arc<Mutex<>> because the same device (a dyn DevicePio/DeviceMmio from IoManager's
+// perspective, and a dyn MutEventSubscriber from EventManager's) is managed by the 2 entities,
+// and isn't Copy-able; so once one of them gets ownership, the other one can't anymore.
+pub type SubscriberEventManager = EventManager<Arc<Mutex<dyn MutEventSubscriber + Send>>>;
 
 pub struct AttachOptions {
     pub pid: Pid,
@@ -29,12 +37,18 @@ pub fn attach(opts: &AttachOptions) -> Result<()> {
     ));
     vm.stop()?;
 
-    // instanciate blkdev
-    let device = try_with!(Device::new(&vm, &opts.backing), "cannot create vm");
-    info!("mmio dev attached");
+    let mut event_manager = try_with!(SubscriberEventManager::new(), "cannot create event manager");
+    // TODO add subscriber (wrapped_exit_handler) and stuff?
 
-    // start monitoring thread
-    let child = blkdev_monitor(&device);
+    // instanciate blkdev
+    let device = try_with!(
+        Device::new(&vm, &mut event_manager, &opts.backing),
+        "cannot create vm"
+    );
+    info!("mmio dev attached");
+    event_thread(event_manager);
+
+    let child = blkdev_monitor_thread(&device);
 
     // run guest until driver has inited
     try_with!(
@@ -44,20 +58,32 @@ pub fn attach(opts: &AttachOptions) -> Result<()> {
     info!("blkdev queue ready.");
     vm.resume()?;
 
+    //device.run_event_loop();
+
     info!("pause");
     nix::unistd::pause();
     let _err = child.join();
     Ok(())
 }
 
-fn blkdev_monitor(device: &Device) -> JoinHandle<()> {
+fn event_thread(mut event_mgr: SubscriberEventManager) {
+    thread::spawn(move || loop {
+        match event_mgr.run() {
+            Ok(_) => (),
+            Err(e) => log::warn!("Failed to handle events: {:?}", e),
+        }
+        // TODO if !self.exit_handler.keep_running() { break; }
+    });
+}
+
+fn blkdev_monitor_thread(device: &Device) -> JoinHandle<()> {
     let blkdev = device.blkdev.clone();
     thread::spawn(move || loop {
         {
             let blkdev = blkdev.lock().unwrap();
             if blkdev.selected_queue().map(|q| q.ready).unwrap() {
                 // blkdev queue ready
-                break;
+                //break;
             }
             info!("");
             info!("dev type {}", blkdev.device_type());
@@ -114,7 +140,7 @@ fn run_kvm_wrapped(vm: &Arc<Hypervisor>, device: &Device) -> Result<()> {
                     let blkdev = &try_with!(blkdev.lock(), "cannot get blkdev lock");
                     if blkdev.selected_queue().map(|q| q.ready).unwrap() {
                         // blkdev queue ready
-                        break;
+                        //break;
                     }
                 }
             }
