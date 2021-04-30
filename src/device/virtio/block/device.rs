@@ -77,13 +77,13 @@ where
         let virtio_cfg = VirtioConfig::new(device_features, queues, config_space);
 
         // Used to send notifications to the driver.
-        let irqfd = EventFd::new(EFD_NONBLOCK).map_err(Error::EventFd)?;
-
-        // FIXME register irqfd on hypervisor
-        // args.common
-        //     .vm_fd
-        //     .register_irqfd(&irqfd, args.common.mmio_cfg.gsi)
-        //     .map_err(Error::RegisterIrqfd)?;
+        //let irqfd = EventFd::new(EFD_NONBLOCK).map_err(Error::EventFd)?;
+        log::debug!("register irqfd on gsi {}", args.common.mmio_cfg.gsi);
+        let irqfd = args
+            .common
+            .vmm
+            .irqfd(args.common.mmio_cfg.gsi)
+            .map_err(|e| Error::Simple(e))?;
 
         let mmio_cfg = args.common.mmio_cfg;
 
