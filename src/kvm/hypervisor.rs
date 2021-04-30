@@ -366,6 +366,17 @@ impl Hypervisor {
     }
 
     pub fn ioeventfd(&self, guest_addr: u64) -> Result<EventFd> {
+        self.ioeventfd_(guest_addr, 0, None)
+    }
+
+    /// @param len: 0, 1, 2, 4, or 8 [bytes]
+    /// TODO check support for 0 via KVM_CAP_IOEVENTFD_ANY_LENGTH
+    pub fn ioeventfd_(
+        &self,
+        guest_addr: u64,
+        len: usize,
+        datamatch: Option<u64>,
+    ) -> Result<EventFd> {
         let eventfd = try_with!(EventFd::new(EFD_NONBLOCK), "cannot create event fd");
         info!(
             "ioeventfd {:?}, guest phys addr {:?}",
@@ -374,12 +385,19 @@ impl Hypervisor {
         );
         let hv_eventfd = self.transfer(vec![eventfd.as_raw_fd()].as_slice())?[0];
 
+        let mut flags = 0;
+        let mut datam = 0;
+        if let Some(data) = datamatch {
+            flags = 1 << kvmb::kvm_ioeventfd_flag_nr_datamatch;
+            datam = data;
+        }
+
         let ioeventfd = kvmb::kvm_ioeventfd {
-            datamatch: 0,
-            len: 0,
+            datamatch: datam,
+            len: len as u32,
             addr: guest_addr,
-            fd: hv_eventfd.as_raw_fd(), // thats why we get -22 EINVAL
-            flags: 0,
+            fd: hv_eventfd.as_raw_fd(),
+            flags,
             ..Default::default()
         };
         let mem = self.alloc_mem()?;

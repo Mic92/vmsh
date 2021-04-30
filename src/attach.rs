@@ -145,8 +145,7 @@ fn run_kvm_wrapped(vm: &Arc<Hypervisor>, device: &Device) -> Result<()> {
                 }
             }
         }
-
-        Ok(())
+        //Ok(())
     })?;
     Ok(())
 }

@@ -23,7 +23,9 @@ use crate::device::virtio::block::{BLOCK_DEVICE_ID, VIRTIO_BLK_F_FLUSH, VIRTIO_B
 use crate::device::virtio::features::{
     VIRTIO_F_IN_ORDER, VIRTIO_F_RING_EVENT_IDX, VIRTIO_F_VERSION_1,
 };
-use crate::device::virtio::{MmioConfig, SingleFdSignalQueue, QUEUE_MAX_SIZE};
+use crate::device::virtio::{
+    MmioConfig, SingleFdSignalQueue, QUEUE_MAX_SIZE, VIRTIO_MMIO_QUEUE_NOTIFY_OFFSET,
+};
 use crate::kvm::hypervisor::Hypervisor;
 
 use super::inorder_handler::InOrderQueueHandler;
@@ -37,7 +39,6 @@ pub struct Block<M: GuestAddressSpace> {
     virtio_cfg: VirtioConfig<M>,
     pub mmio_cfg: MmioConfig,
     endpoint: RemoteEndpoint<Arc<Mutex<dyn MutEventSubscriber + Send>>>,
-    #[allow(dead_code)] // FIXME
     vmm: Arc<Hypervisor>,
     irqfd: Arc<EventFd>,
     file_path: PathBuf,
@@ -178,7 +179,6 @@ impl<M: GuestAddressSpace + Clone + Send + 'static> VirtioDeviceActions for Bloc
 
         let ioeventfd = EventFd::new(EFD_NONBLOCK).map_err(Error::EventFd)?;
 
-        // FIXME:
         // Register the queue event fd.
         // self.vm_fd
         //     .register_ioevent(
@@ -189,6 +189,13 @@ impl<M: GuestAddressSpace + Clone + Send + 'static> VirtioDeviceActions for Bloc
         //         0u32,
         //     )
         //     .map_err(Error::RegisterIoevent)?;
+        self.vmm
+            .ioeventfd_(
+                self.mmio_cfg.range.base().0 + VIRTIO_MMIO_QUEUE_NOTIFY_OFFSET,
+                4,
+                Some(0),
+            )
+            .map_err(|e| Error::Simple(e))?;
 
         let file = OpenOptions::new()
             .read(true)

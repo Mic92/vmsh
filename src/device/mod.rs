@@ -8,9 +8,8 @@ use crate::device::virtio::{CommonArgs, MmioConfig};
 use crate::kvm::hypervisor::{Hypervisor, VmMem};
 use crate::result::Result;
 use crate::tracer::proc::Mapping;
-use event_manager::{EventManager, MutEventSubscriber};
 use log::*;
-use simple_error::{bail, map_err_with, try_with};
+use simple_error::{bail, try_with};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use vm_device::bus::{MmioAddress, MmioRange};
@@ -69,7 +68,6 @@ fn convert(mappings: &[Mapping]) -> Result<GuestMemoryMmap> {
     ))
 }
 
-#[allow(dead_code)] // FIXME
 pub struct Device {
     vmm: Arc<Hypervisor>,
     pub blkdev: Arc<Mutex<Block>>,
