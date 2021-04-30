@@ -36,8 +36,31 @@ class Memory(Iterable):
         self.data = data
         self.offset = offset
 
+    @property
+    def start(self) -> int:
+        """
+        Address where the memory start
+        """
+        return self.offset
+
+    @property
+    def end(self) -> int:
+        """
+        Address where the memory end
+        """
+        return self.offset + len(self.data)
+
     def index(self, needle: bytes) -> int:
+        """
+        Search bytes in memory. Returns address if found, otherwise raises IndexError
+        """
         return self.data.index(needle) + self.offset
+
+    def inrange(self, addr: int) -> bool:
+        """
+        True if address is contained in memory range
+        """
+        return addr >= self.start and addr < self.end
 
     def __repr__(self) -> str:
         mib = len(self.data) / 1024 / 1024
@@ -59,10 +82,14 @@ class Memory(Iterable):
 
     def __getitem__(self, key: Union[int, slice]) -> Union[int, "Memory"]:
         if isinstance(key, slice):
-            assert key.start >= self.offset and key.start < key.stop
+            assert key.start >= self.start, f"{key.start=} >= {self.start=}"
+            assert key.start <= key.stop, f"{key.start=} <= {key.stop=}"
+            assert key.stop <= self.end, f"{key.stop=} <= {self.end=}"
             d = self.data[key.start - self.offset : key.stop - self.offset : key.step]
             return Memory(d, key.start)
         elif isinstance(key, int):
+            assert key >= self.start
+            assert key < self.end
             return self.data[key - self.offset]
         else:
             raise TypeError("Expected int or slice got: {}", key)

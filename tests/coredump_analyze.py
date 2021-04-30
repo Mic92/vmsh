@@ -7,7 +7,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "tests"))
 
 import ctypes as ct
 import sys
-from typing import IO, Tuple, Optional, Iterator
+from typing import IO, Tuple, Optional, Iterator, Dict
 from dataclasses import dataclass
 
 from coredump import ElfCore, Memory, KVMSRegs
@@ -29,14 +29,17 @@ def is_printable(byte: int) -> bool:
     return 0x20 < byte < 0x7E
 
 
-def find_ksymtab_strings(mem: Memory) -> Tuple[int, int]:
+def find_ksymtab_strings_section(mem: Memory) -> Tuple[int, int]:
+    """
+    Find where in the memory the ksymtab_strings section is loaded.
+    """
     try:
         idx = mem.index(b"init_task")
     except ValueError:
         raise RuntimeError("could not find ksymtab_strings")
 
     unprintable = 0
-    for start_offset, byte in enumerate(reversed(mem[mem.offset : idx])):
+    for start_offset, byte in enumerate(reversed(mem[mem.start : idx])):
         if is_printable(byte):
             unprintable = 0
         else:
@@ -45,20 +48,23 @@ def find_ksymtab_strings(mem: Memory) -> Tuple[int, int]:
             break
     start = idx - start_offset + 1
 
-    for end_offset, byte in enumerate(mem[idx : len(mem)]):
+    for end_offset, byte in enumerate(mem[idx : mem.end]):
         if is_printable(byte):
             unprintable = 0
         else:
             unprintable += 1
-        if unprintable == 2:
-            break
-    end = idx + end_offset - 1
+            if unprintable == 2:
+                break
+    end = idx + end_offset
     return (start, end)
 
 
-def get_kernel_base(kaddr: int) -> int:
-    # https://github.com/bcoles/kernel-exploits/blob/master/CVE-2017-1000112/poc.c#L612
-    return (kaddr & 0xFFFFFFFFFFF00000) - 0x1000000
+def count_ksymtab_strings(mem: Memory) -> int:
+    count = 0
+    for byte in mem:
+        if byte == 0x0:
+            count += 1
+    return count
 
 
 # A 4k intel page table with 512 64bit entries.
@@ -98,8 +104,6 @@ class PageTableEntry:
         nx = "NX" if (v & _PAGE_NX) else ""
 
         ranges = list(memory_layout.at(self.virt_addr))
-        if len(ranges) == 0:
-            breakpoint()
         description = ranges[0].data
 
         return f"0x{self.phys_addr:x} -> 0x{self.virt_addr:x} {rw} {user} {pwt} {pcd} {accessed} {nx} {description}"
@@ -216,7 +220,7 @@ memory_layout = IntervalTree(
     ]
 )
 
-LinuxKernelKaslrRange = Interval(0xFFFFFFFF80000000, 0xFFFFFFFFC0000000)
+LINUX_KERNEL_KASLR_RANGE = Interval(0xFFFFFFFF80000000, 0xFFFFFFFFC0000000)
 
 
 def get_page_table_addr(sregs: KVMSRegs) -> int:
@@ -226,13 +230,91 @@ def get_page_table_addr(sregs: KVMSRegs) -> int:
         return sregs.cr3
 
 
-def find_kalsr_offset(
+def find_linux_kernel_offset(
     pml4: PageTable, mem: Memory, mem_range: Interval
-) -> Optional[int]:
-    i = get_index(mem_range.begin, 4)
-    print(i)
-    return None
-    # TODO
+) -> Optional[Interval]:
+    # TODO: skip first level in page tables to speed up the search
+    # i = get_index(mem_range.begin, 0)
+    # pdt = page_table(mem, pml4.entries[i] & PHYS_ADDR_MASK)
+    it = iter(pml4)
+    first = -1
+    for entry in it:
+        if entry.virt_addr >= mem_range.begin:
+            first = entry.virt_addr
+            break
+    if first == -1:
+        return None
+    last = first
+    for entry in it:
+        if entry.virt_addr > mem_range.end:
+            break
+        last = entry.virt_addr
+    return Interval(first, last)
+
+
+# FIXME: on many archs, especially 32-bit ones, this layout is used!
+# struct kernel_symbol {
+# 	unsigned long value;
+# 	const char *name;
+# 	const char *namespace;
+# };
+
+# From include/linux/export.h
+class kernel_symbol(ct.Structure):
+    _fields_ = [
+        ("value_offset", ct.c_int),
+        ("name_offset", ct.c_int),
+        ("namespace_offset", ct.c_int),
+    ]
+
+
+# algorithm for reconstructing function pointers;
+# - assuming we have HAVE_ARCH_PREL32_RELOCATIONS (is the case on arm64 and x86_64)
+# - Get Address of last symbol in __ksymtab_string
+# - if CONFIG_MODVERSIONS we have __kcrctab, otherwise no (seems to be the case on Ubuntu, probably not in most microvm kernels i.e. kata containers)
+# - Maybe not implement crc for but add a check if symbols in ksymtab_string have weird subfixes: i.e. printk_R1b7d4074 instead of printk ?
+# - Is __ksymtab seems not to be at a predictable offsets?
+#
+# 0xffffffff80000000–0xffffffffc0000000
+# dump_page_table(pml4, mem)
+#
+# Layout of __ksymtab,  __ksymtab_gpl
+# struct kernel_symbol {
+#    int value_offset;
+#    int name_offset;
+#    int namespace_offset;
+# };
+#
+# To convert an offset to its pointer: ptr = (unsigned long)&sym.offset + sym.offset
+#
+# Layout of __ksymtab,  __ksymtab_gpl
+# __ksymtab_strings
+# null terminated, strings
+def get_kernel_symbols(mem: Memory, ksymtab_strings: Memory) -> Dict[str, int]:
+    # We validate kernel symbols here by checking if the name_offset
+    # points into the ksymtab_strings range.
+    sym_size = ct.sizeof(kernel_symbol)
+    syms = {}
+    for ii in range(ksymtab_strings.start, mem.start, -ct.sizeof(kernel_symbol)):
+        addr = ii - sym_size
+        sym = kernel_symbol.from_buffer_copy(mem[addr:ii].data)
+
+        name_addr = sym.name_offset + kernel_symbol.name_offset.offset + addr
+        value_addr = sym.value_offset + kernel_symbol.value_offset.offset + addr
+        # namespace_addr = sym.namespace_offset + kernel_symbol.namespace_offset.offset + addr
+
+        name_len = 0
+        if not ksymtab_strings.inrange(name_addr):
+            break
+        for b in ksymtab_strings[name_addr : ksymtab_strings.end]:
+            if b == 0x0:
+                break
+            name_len += 1
+
+        name = ksymtab_strings[name_addr : name_addr + name_len].data.decode("ascii")
+        syms[name] = value_addr
+        # print(f"{name} @ 0x{value_addr:x}")
+    return syms
 
 
 def inspect_coredump(fd: IO[bytes]) -> None:
@@ -240,8 +322,14 @@ def inspect_coredump(fd: IO[bytes]) -> None:
     vm_segment = core.find_segment_by_addr(PHYS_LOAD_ADDR)
     assert vm_segment is not None, "cannot find physical memory of VM in coredump"
     mem = core.map_segment(vm_segment)
-    start_addr, end_addr = find_ksymtab_strings(mem)
-    print(f"found ksymtab at physical 0x{start_addr:x}:0x{end_addr:x}")
+    strings_start_addr, strings_end_addr = find_ksymtab_strings_section(mem)
+    ksymtab_strings_section = mem[strings_start_addr:strings_end_addr]
+    string_num = count_ksymtab_strings(ksymtab_strings_section)
+    print(
+        f"found ksymtab_string at physical 0x{strings_start_addr:x}:0x{strings_end_addr:x} with {string_num} symbols"
+    )
+    symbols = get_kernel_symbols(mem, ksymtab_strings_section)
+    print(f"found ksymtab with {len(symbols)} functions")
 
     pt_addr = get_page_table_addr(core.special_regs[0])
     pt_segment = core.find_segment_by_addr(pt_addr)
@@ -255,11 +343,13 @@ def inspect_coredump(fd: IO[bytes]) -> None:
         print("program runs userspace")
     print(f"rip=0x{core.regs[0].rip:x}")
     pml4 = page_table(mem, pt_addr)
-    dump_page_table(pml4)
-    # find_kalsr_offset(pml4, mem, LinuxKernelKaslrRange)
-
-    # 0xffffffff80000000–0xffffffffc0000000
-    # dump_page_table(pml4, mem)
+    print("look for kernel in...")
+    offset = find_linux_kernel_offset(pml4, mem, LINUX_KERNEL_KASLR_RANGE)
+    if offset:
+        print(f"Found at {offset.begin:x}:{offset.end:x}")
+    else:
+        print("could not find kernel!")
+        sys.exit(1)
 
 
 def main() -> None:
