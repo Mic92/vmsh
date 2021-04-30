@@ -31,6 +31,9 @@ use crate::kvm::hypervisor::Hypervisor;
 use super::inorder_handler::InOrderQueueHandler;
 use super::queue_handler::QueueHandler;
 use super::{build_config_space, BlockArgs, Error, Result};
+use crate::tracer::wrap_syscall::KvmRunWrapper;
+use crate::tracer::inject_syscall;
+use simple_error::{try_with, simple_error, map_err_with};
 
 // This Block device can only use the MMIO transport for now, but we plan to reuse large parts of
 // the functionality when we implement virtio PCI as well, for example by having a base generic
@@ -40,6 +43,7 @@ pub struct Block<M: GuestAddressSpace> {
     pub mmio_cfg: MmioConfig,
     endpoint: RemoteEndpoint<Arc<Mutex<dyn MutEventSubscriber + Send>>>,
     vmm: Arc<Hypervisor>,
+    pub tracer: Option<KvmRunWrapper>,
     irqfd: Arc<EventFd>,
     file_path: PathBuf,
     read_only: bool,
@@ -97,6 +101,7 @@ where
             file_path: args.file_path,
             read_only: args.read_only,
             _root_device: args.root_device,
+            tracer: None,
         }));
 
         // Register the device on the MMIO bus.
@@ -161,10 +166,13 @@ impl<M: GuestAddressSpace + Clone + Send + 'static> BorrowMut<VirtioConfig<M>> f
 impl<M: GuestAddressSpace + Clone + Send + 'static> VirtioDeviceActions for Block<M> {
     type E = Error;
 
+    /// make sure to set self.tracer to Some() before activating
     fn activate(&mut self) -> Result<()> {
         if self.virtio_cfg.device_activated {
             return Err(Error::AlreadyActivated);
         }
+
+        log::debug!("activating device");
 
         // We do not support legacy drivers.
         if self.virtio_cfg.driver_features & (1 << VIRTIO_F_VERSION_1) == 0 {
@@ -189,13 +197,37 @@ impl<M: GuestAddressSpace + Clone + Send + 'static> VirtioDeviceActions for Bloc
         //         0u32,
         //     )
         //     .map_err(Error::RegisterIoevent)?;
-        self.vmm
-            .ioeventfd_(
-                self.mmio_cfg.range.base().0 + VIRTIO_MMIO_QUEUE_NOTIFY_OFFSET,
-                4,
-                Some(0),
-            )
-            .map_err(|e| Error::Simple(e))?;
+        {
+            //let mut wrapper_go = self.vmm.wrapper.lock().map_err(|e| simple_error!("cannot obtain wrapper mutex, {}", e)).map_err(|e| Error::Simple(e))?;
+            let mut wrapper_go = map_err_with!(self.vmm.wrapper.lock(), "cannot obtain wrapper mutex").map_err(|e| Error::Simple(e))?;
+            let wrapper = wrapper_go.take().unwrap();
+            let mut tracee = self.vmm.tracee_write_guard().map_err(|e| Error::Simple(e))?;
+            
+            // wrapper -> injector
+            let err = "cannot re-attach injector after having detached it favour of KvmRunWrapper";
+            let injector = map_err_with!(inject_syscall::from_tracer(
+                    wrapper.into_tracer().map_err(|e| Error::Simple(e))?
+            ), &err).map_err(|e| Error::Simple(e))?;
+            map_err_with!(tracee.attach_to(injector), &err).map_err(|e| Error::Simple(e))?;
+
+            let _ptr = tracee.mmap(1);
+
+            // injector -> wrapper
+            // we may unwrap because we just attached it.
+            let injector = tracee.detach().unwrap();
+            let wrapper = KvmRunWrapper::from_tracer(inject_syscall::into_tracer(
+                injector,
+                self.vmm.vcpu_maps[0].clone(),
+            ).map_err(|e| Error::Simple(e))?).map_err(|e| Error::Simple(e))?;
+            let _ = wrapper_go.replace(wrapper);
+        }
+        // self.vmm
+        //     .ioeventfd_(
+        //         self.mmio_cfg.range.base().0 + VIRTIO_MMIO_QUEUE_NOTIFY_OFFSET,
+        //         4,
+        //         Some(0),
+        //     )
+        //     .map_err(|e| Error::Simple(e))?;
 
         let file = OpenOptions::new()
             .read(true)
@@ -239,6 +271,7 @@ impl<M: GuestAddressSpace + Clone + Send + 'static> VirtioDeviceActions for Bloc
                 Error::Endpoint(e)
             })?;
 
+        log::debug!("activating device: ok");
         self.virtio_cfg.device_activated = true;
 
         Ok(())

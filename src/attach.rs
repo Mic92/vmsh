@@ -113,16 +113,22 @@ fn blkdev_monitor_thread(device: &Device) -> JoinHandle<()> {
 fn run_kvm_wrapped(vm: &Arc<Hypervisor>, device: &Device) -> Result<()> {
     let mut mmio_mgr = device.mmio_mgr.lock().unwrap();
 
-    vm.kvmrun_wrapped(|wrapper: &mut KvmRunWrapper| {
+    vm.kvmrun_wrapped(|wrapper_mo: &Mutex<Option<KvmRunWrapper>>| {
         let mmio_space = {
             let blkdev = device.blkdev.clone();
             let blkdev = &try_with!(blkdev.lock(), "TODO");
+            //blkdev.injector
             blkdev.mmio_cfg.range
         };
 
         loop {
-            let mut kvm_exit =
-                try_with!(wrapper.wait_for_ioctl(), "failed to wait for vmm exit_mmio");
+            let mut kvm_exit;
+            {
+                let mut wrapper_go = try_with!(wrapper_mo.lock(), "cannot obtain wrapper mutex");
+                let wrapper_g = wrapper_go.as_mut().unwrap();
+                kvm_exit =
+                    try_with!(wrapper_g.wait_for_ioctl(), "failed to wait for vmm exit_mmio");
+            }
             if let Some(mmio_rw) = &mut kvm_exit {
                 let addr = MmioAddress(mmio_rw.addr);
                 let from = mmio_space.base();
