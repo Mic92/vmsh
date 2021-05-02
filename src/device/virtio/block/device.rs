@@ -17,7 +17,7 @@ use vm_memory::GuestAddressSpace;
 use vm_virtio::block::stdio_executor::StdIoBackend;
 use vm_virtio::device::{VirtioConfig, VirtioDeviceActions, VirtioMmioDevice};
 use vm_virtio::Queue;
-use vmm_sys_util::eventfd::{EventFd, EFD_NONBLOCK};
+use vmm_sys_util::eventfd::EventFd;
 
 use crate::device::virtio::block::{BLOCK_DEVICE_ID, VIRTIO_BLK_F_FLUSH, VIRTIO_BLK_F_RO};
 use crate::device::virtio::features::{
@@ -33,7 +33,7 @@ use super::queue_handler::QueueHandler;
 use super::{build_config_space, BlockArgs, Error, Result};
 use crate::tracer::inject_syscall;
 use crate::tracer::wrap_syscall::KvmRunWrapper;
-use simple_error::{map_err_with, simple_error, try_with};
+use simple_error::map_err_with;
 
 // This Block device can only use the MMIO transport for now, but we plan to reuse large parts of
 // the functionality when we implement virtio PCI as well, for example by having a base generic
@@ -195,7 +195,7 @@ impl<M: GuestAddressSpace + Clone + Send + 'static> VirtioDeviceActions for Bloc
         //         0u32,
         //     )
         //     .map_err(Error::RegisterIoevent)?;
-        let mut ioeventfd;
+        let ioeventfd;
         {
             let mut wrapper_go =
                 map_err_with!(self.vmm.wrapper.lock(), "cannot obtain wrapper mutex")

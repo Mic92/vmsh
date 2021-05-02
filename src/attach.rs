@@ -59,8 +59,6 @@ pub fn attach(opts: &AttachOptions) -> Result<()> {
     info!("blkdev queue ready.");
     vm.resume()?;
 
-    //device.run_event_loop();
-
     info!("pause");
     nix::unistd::pause();
     let _err = child.join();
@@ -70,17 +68,17 @@ pub fn attach(opts: &AttachOptions) -> Result<()> {
 fn event_thread(mut event_mgr: SubscriberEventManager) {
     thread::spawn(move || loop {
         match event_mgr.run() {
-            Ok(_) => (),
+            Ok(nr) => log::debug!("EventManager {} events", nr),
             Err(e) => log::warn!("Failed to handle events: {:?}", e),
         }
         // TODO if !self.exit_handler.keep_running() { break; }
     });
 }
 
-fn exit_condition(_blkdev: &Arc<Mutex<Block>>) -> Result<bool> {
-    Ok(false)
-    //let blkdev = &try_with!(blkdev.lock(), "cannot get blkdev lock");
-    //Ok(blkdev.selected_queue().map(|q| q.ready).unwrap())
+fn exit_condition(blkdev: &Arc<Mutex<Block>>) -> Result<bool> {
+    //Ok(false)
+    let blkdev = &try_with!(blkdev.lock(), "cannot get blkdev lock");
+    Ok(blkdev.selected_queue().map(|q| q.ready).unwrap())
 }
 
 fn blkdev_monitor_thread(device: &Device) -> JoinHandle<()> {

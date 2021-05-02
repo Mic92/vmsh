@@ -207,7 +207,7 @@ impl Hypervisor {
     }
 
     pub fn tracee_write_guard(&self) -> Result<RwLockWriteGuard<Tracee>> {
-        let mut twg: RwLockWriteGuard<Tracee> = try_with!(
+        let twg: RwLockWriteGuard<Tracee> = try_with!(
             self.tracee.write(),
             "cannot obtain tracee read lock: poinsoned"
         );
