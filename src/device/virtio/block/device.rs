@@ -184,9 +184,8 @@ impl<M: GuestAddressSpace + Clone + Send + 'static> VirtioDeviceActions for Bloc
             self.virtio_cfg.queues[0].set_event_idx(true);
         }
 
-        let ioeventfd = EventFd::new(EFD_NONBLOCK).map_err(Error::EventFd)?;
-
         // Register the queue event fd. Something like this, but in a pirate fashion.
+        // let ioeventfd = EventFd::new(EFD_NONBLOCK).map_err(Error::EventFd)?;
         // self.vm_fd
         //     .register_ioevent(
         //         &ioeventfd,
@@ -196,6 +195,7 @@ impl<M: GuestAddressSpace + Clone + Send + 'static> VirtioDeviceActions for Bloc
         //         0u32,
         //     )
         //     .map_err(Error::RegisterIoevent)?;
+        let mut ioeventfd;
         {
             let mut wrapper_go =
                 map_err_with!(self.vmm.wrapper.lock(), "cannot obtain wrapper mutex")
@@ -209,9 +209,12 @@ impl<M: GuestAddressSpace + Clone + Send + 'static> VirtioDeviceActions for Bloc
                     .tracee_write_guard()
                     .map_err(|e| Error::Simple(e))?;
 
-                let err = "cannot re-attach injector after having detached it favour of KvmRunWrapper";
+                let err =
+                    "cannot re-attach injector after having detached it favour of KvmRunWrapper";
                 let injector = map_err_with!(
-                    inject_syscall::from_tracer(wrapper.into_tracer().map_err(|e| Error::Simple(e))?),
+                    inject_syscall::from_tracer(
+                        wrapper.into_tracer().map_err(|e| Error::Simple(e))?
+                    ),
                     &err
                 )
                 .map_err(|e| Error::Simple(e))?;
@@ -219,7 +222,8 @@ impl<M: GuestAddressSpace + Clone + Send + 'static> VirtioDeviceActions for Bloc
             }
 
             // we need to drop tracee for ioeventfd_
-            self.vmm
+            ioeventfd = self
+                .vmm
                 .ioeventfd_(
                     self.mmio_cfg.range.base().0 + VIRTIO_MMIO_QUEUE_NOTIFY_OFFSET,
                     4,
