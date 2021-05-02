@@ -186,7 +186,7 @@ impl<M: GuestAddressSpace + Clone + Send + 'static> VirtioDeviceActions for Bloc
 
         let ioeventfd = EventFd::new(EFD_NONBLOCK).map_err(Error::EventFd)?;
 
-        // Register the queue event fd.
+        // Register the queue event fd. Something like this, but in a pirate fashion.
         // self.vm_fd
         //     .register_ioevent(
         //         &ioeventfd,
@@ -197,44 +197,52 @@ impl<M: GuestAddressSpace + Clone + Send + 'static> VirtioDeviceActions for Bloc
         //     )
         //     .map_err(Error::RegisterIoevent)?;
         {
-            //let mut wrapper_go = self.vmm.wrapper.lock().map_err(|e| simple_error!("cannot obtain wrapper mutex, {}", e)).map_err(|e| Error::Simple(e))?;
             let mut wrapper_go =
                 map_err_with!(self.vmm.wrapper.lock(), "cannot obtain wrapper mutex")
                     .map_err(|e| Error::Simple(e))?;
-            let wrapper = wrapper_go.take().unwrap();
-            let mut tracee = self
-                .vmm
-                .tracee_write_guard()
-                .map_err(|e| Error::Simple(e))?;
 
             // wrapper -> injector
-            let err = "cannot re-attach injector after having detached it favour of KvmRunWrapper";
-            let injector = map_err_with!(
-                inject_syscall::from_tracer(wrapper.into_tracer().map_err(|e| Error::Simple(e))?),
-                &err
-            )
-            .map_err(|e| Error::Simple(e))?;
-            map_err_with!(tracee.attach_to(injector), &err).map_err(|e| Error::Simple(e))?;
+            {
+                let wrapper = wrapper_go.take().unwrap();
+                let mut tracee = self
+                    .vmm
+                    .tracee_write_guard()
+                    .map_err(|e| Error::Simple(e))?;
 
-            let _ptr = tracee.mmap(1); // TODO
+                let err = "cannot re-attach injector after having detached it favour of KvmRunWrapper";
+                let injector = map_err_with!(
+                    inject_syscall::from_tracer(wrapper.into_tracer().map_err(|e| Error::Simple(e))?),
+                    &err
+                )
+                .map_err(|e| Error::Simple(e))?;
+                map_err_with!(tracee.attach_to(injector), &err).map_err(|e| Error::Simple(e))?;
+            }
+
+            // we need to drop tracee for ioeventfd_
+            self.vmm
+                .ioeventfd_(
+                    self.mmio_cfg.range.base().0 + VIRTIO_MMIO_QUEUE_NOTIFY_OFFSET,
+                    4,
+                    Some(0),
+                )
+                .map_err(|e| Error::Simple(e))?;
 
             // injector -> wrapper
-            // we may unwrap because we just attached it.
-            let injector = tracee.detach().unwrap();
-            let wrapper = KvmRunWrapper::from_tracer(
-                inject_syscall::into_tracer(injector, self.vmm.vcpu_maps[0].clone())
-                    .map_err(|e| Error::Simple(e))?,
-            )
-            .map_err(|e| Error::Simple(e))?;
-            let _ = wrapper_go.replace(wrapper);
+            {
+                let mut tracee = self
+                    .vmm
+                    .tracee_write_guard()
+                    .map_err(|e| Error::Simple(e))?;
+                // we may unwrap because we just attached it.
+                let injector = tracee.detach().unwrap();
+                let wrapper = KvmRunWrapper::from_tracer(
+                    inject_syscall::into_tracer(injector, self.vmm.vcpu_maps[0].clone())
+                        .map_err(|e| Error::Simple(e))?,
+                )
+                .map_err(|e| Error::Simple(e))?;
+                let _ = wrapper_go.replace(wrapper);
+            }
         }
-        // self.vmm
-        //     .ioeventfd_(
-        //         self.mmio_cfg.range.base().0 + VIRTIO_MMIO_QUEUE_NOTIFY_OFFSET,
-        //         4,
-        //         Some(0),
-        //     )
-        //     .map_err(|e| Error::Simple(e))?;
 
         let file = OpenOptions::new()
             .read(true)
