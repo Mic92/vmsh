@@ -1,9 +1,9 @@
 use clap::{value_t, App, Arg, SubCommand};
-use std::sync::Mutex;
 use kvm_bindings as kvmb;
 use nix::unistd::Pid;
 use simple_error::{bail, try_with};
 use std::os::unix::io::AsRawFd;
+use std::sync::Mutex;
 use std::time::Duration;
 use vmm_sys_util::eventfd::{EventFd, EFD_NONBLOCK};
 use vmsh::kvm::hypervisor::get_hypervisor;
@@ -200,7 +200,6 @@ fn guest_ioeventfd(pid: Pid) -> Result<()> {
 
 fn guest_kvm_exits(pid: Pid) -> Result<()> {
     let vm = try_with!(get_hypervisor(pid), "cannot get vms for process {}", pid);
-    //vm.kvmrun_wrapped(|wrapper: &mut KvmRunWrapper| {
     vm.kvmrun_wrapped(|wrapper_r: &Mutex<Option<KvmRunWrapper>>| {
         let mut wrapper_go = wrapper_r.lock().unwrap();
         let wrapper = wrapper_go.as_mut().unwrap();

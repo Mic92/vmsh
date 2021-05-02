@@ -1,3 +1,4 @@
+use crate::device::Block;
 use crate::result::Result;
 use event_manager::EventManager;
 use event_manager::MutEventSubscriber;
@@ -76,15 +77,25 @@ fn event_thread(mut event_mgr: SubscriberEventManager) {
     });
 }
 
+fn exit_condition(_blkdev: &Arc<Mutex<Block>>) -> Result<bool> {
+    Ok(false)
+    //let blkdev = &try_with!(blkdev.lock(), "cannot get blkdev lock");
+    //Ok(blkdev.selected_queue().map(|q| q.ready).unwrap())
+}
+
 fn blkdev_monitor_thread(device: &Device) -> JoinHandle<()> {
     let blkdev = device.blkdev.clone();
     thread::spawn(move || loop {
         {
-            let blkdev = blkdev.lock().unwrap();
-            if blkdev.selected_queue().map(|q| q.ready).unwrap() {
-                // blkdev queue ready
-                //break;
+            match exit_condition(&blkdev) {
+                Err(e) => warn!("cannot evaluate exit condition: {}", e),
+                Ok(b) => {
+                    if b {
+                        break;
+                    }
+                }
             }
+            let blkdev = blkdev.lock().unwrap();
             info!("");
             info!("dev type {}", blkdev.device_type());
             info!("dev features b{:b}", blkdev.device_features());
@@ -117,7 +128,6 @@ fn run_kvm_wrapped(vm: &Arc<Hypervisor>, device: &Device) -> Result<()> {
         let mmio_space = {
             let blkdev = device.blkdev.clone();
             let blkdev = &try_with!(blkdev.lock(), "TODO");
-            //blkdev.injector
             blkdev.mmio_cfg.range
         };
 
@@ -125,9 +135,11 @@ fn run_kvm_wrapped(vm: &Arc<Hypervisor>, device: &Device) -> Result<()> {
             let mut kvm_exit;
             {
                 let mut wrapper_go = try_with!(wrapper_mo.lock(), "cannot obtain wrapper mutex");
-                let wrapper_g = wrapper_go.as_mut().unwrap();
-                kvm_exit =
-                    try_with!(wrapper_g.wait_for_ioctl(), "failed to wait for vmm exit_mmio");
+                let wrapper_g = wrapper_go.as_mut().unwrap(); // kvmrun_wrapped guarentees Some()
+                kvm_exit = try_with!(
+                    wrapper_g.wait_for_ioctl(),
+                    "failed to wait for vmm exit_mmio"
+                );
             }
             if let Some(mmio_rw) = &mut kvm_exit {
                 let addr = MmioAddress(mmio_rw.addr);
@@ -141,17 +153,12 @@ fn run_kvm_wrapped(vm: &Arc<Hypervisor>, device: &Device) -> Result<()> {
                 } else {
                     // do nothing, just continue to ingore and pass to hv
                 }
-                {
-                    let blkdev = device.blkdev.clone();
-                    let blkdev = &try_with!(blkdev.lock(), "cannot get blkdev lock");
-                    if blkdev.selected_queue().map(|q| q.ready).unwrap() {
-                        // blkdev queue ready
-                        //break;
-                    }
+                if exit_condition(&device.blkdev)? {
+                    break;
                 }
             }
         }
-        //Ok(())
+        Ok(())
     })?;
     Ok(())
 }

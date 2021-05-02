@@ -181,10 +181,6 @@ pub struct Hypervisor {
     pub vcpu_maps: Vec<Mapping>,
     tracee: Arc<RwLock<Tracee>>,
     pub wrapper: Mutex<Option<KvmRunWrapper>>,
-    //wrapper: Arc<Mutex<KvmRunWrapper>>,
-    // tracee write guard
-    //twg: Mutex<Option<RwLockWriteGuard<Tracee>>>,
-    twg: Option<inject_syscall::Process>,
 }
 
 impl Hypervisor {
@@ -219,13 +215,15 @@ impl Hypervisor {
         Ok(twg)
     }
 
-    /// run code while having full control over ioctl(KVM_RUN)
+    /// run code while having full control over ioctl(KVM_RUN).
+    /// Guarantees that self.wrapper is Some() during f().
     /// Can be called regardless of de/attached state.
     pub fn kvmrun_wrapped(
         &self,
         mut f: impl FnMut(&Mutex<Option<KvmRunWrapper>>) -> Result<()>,
     ) -> Result<()> {
-        let (was_attached, mut wrapper) = {
+        // detach tracee and convert to owned wrapper
+        let (was_attached, wrapper) = {
             let mut tracee = try_with!(
                 self.tracee.write(),
                 "cannot obtain tracee read lock: poinsoned"
@@ -245,46 +243,30 @@ impl Hypervisor {
             }
         };
 
+        // put wrapper: self.wrapper = Some(wrapper)
         {
             let mut self_wrapper = try_with!(self.wrapper.lock(), "cannot obtain wrapper mutex");
             let _ = self_wrapper.replace(wrapper);
         }
-        //let _ = wguard; // TODO afaik this drops the lock
-        //let wrapper = wguard.as_mut().unwrap();
 
-        // make this consuming and return the wrapper
         try_with!(f(&self.wrapper), "closure on KvmRunWrapper failed");
 
-        // {
-        //     // wrapper -> injector
-        //     let err = "cannot re-attach injector after having detached it favour of KvmRunWrapper";
-        //     let injector = try_with!(inject_syscall::from_tracer(wrapper.into_tracer()?), &err);
-        //     try_with!(tracee.attach_to(injector), &err);
-
-        //     let _ptr = tracee.mmap(1);
-
-
-        //     // injector -> wrapper
-        //     // we may unwrap because we just attached it.
-        //     let injector = tracee.detach().unwrap();
-        //     let wrapper = KvmRunWrapper::from_tracer(inject_syscall::into_tracer(
-        //         injector,
-        //         self.vcpu_maps[0].clone(),
-        //     )?)?;
-        // }
-
+        // take wrapper out of self.wrapper
         let wrapper: KvmRunWrapper;
         {
             let mut wguard = try_with!(self.wrapper.lock(), "cannot obtain wrapper mutex");
             wrapper = wguard.take().expect("earlier in this fn we put it here");
         }
+
+        // convert wrapper to tracee and attach it
         {
             let mut tracee = try_with!(
                 self.tracee.write(),
                 "cannot obtain tracee read lock: poinsoned"
             );
             if was_attached {
-                let err = "cannot re-attach injector after having detached it favour of KvmRunWrapper";
+                let err =
+                    "cannot re-attach injector after having detached it favour of KvmRunWrapper";
                 let injector = try_with!(inject_syscall::from_tracer(wrapper.into_tracer()?), &err);
                 try_with!(tracee.attach_to(injector), &err);
             }
@@ -650,7 +632,6 @@ pub fn get_hypervisor(pid: Pid) -> Result<Hypervisor> {
         vm_fd: vm_fds[0],
         vcpus,
         vcpu_maps,
-        twg: None,
         wrapper: Mutex::new(None),
     })
 }
