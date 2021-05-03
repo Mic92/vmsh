@@ -41,7 +41,7 @@ pub fn attach(opts: &AttachOptions) -> Result<()> {
     let mut event_manager = try_with!(SubscriberEventManager::new(), "cannot create event manager");
     // TODO add subscriber (wrapped_exit_handler) and stuff?
 
-    // instanciate blkdev
+    // instantiate blkdev
     let device = try_with!(
         Device::new(&vm, &mut event_manager, &opts.backing),
         "cannot create vm"
