@@ -11,6 +11,9 @@ kernel_fhs := `nix-build --no-out-link nix/kernel-fhs.nix` + "/bin/linux-kernel-
 qemu_pid := `pgrep -u $USER qemu-system | awk '{print $1}'`
 qemu_ssh_port := "2222"
 
+default:
+  @just --choose
+
 lint:
   flake8 tests
   black --check tests
