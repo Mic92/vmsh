@@ -16,6 +16,7 @@ use vm_virtio::block::stdio_executor;
 use vmm_sys_util::errno;
 
 use crate::device::virtio::CommonArgs;
+use simple_error::SimpleError;
 
 pub use device::Block;
 
@@ -48,6 +49,7 @@ pub enum Error {
     #[allow(dead_code)] // FIXME
     RegisterIrqfd(errno::Error),
     Seek(io::Error),
+    Simple(SimpleError),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

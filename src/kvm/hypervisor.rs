@@ -11,7 +11,7 @@ use std::mem::size_of;
 use std::mem::MaybeUninit;
 use std::os::unix::io::AsRawFd;
 use std::os::unix::prelude::RawFd;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, RwLock, RwLockWriteGuard};
 use vmm_sys_util::eventfd::{EventFd, EFD_NONBLOCK};
 
 use crate::cpu;
@@ -180,6 +180,7 @@ pub struct Hypervisor {
     /// sorted by vcpu nr. TODO what if there exist cpu [0, 1, 4]?
     pub vcpu_maps: Vec<Mapping>,
     tracee: Arc<RwLock<Tracee>>,
+    pub wrapper: Mutex<Option<KvmRunWrapper>>,
 }
 
 impl Hypervisor {
@@ -205,36 +206,70 @@ impl Hypervisor {
         Ok(())
     }
 
-    /// run code while having full control over ioctl(KVM_RUN)
-    /// Can be called regardless of de/attached state.
-    pub fn kvmrun_wrapped(
-        &self,
-        mut f: impl FnMut(&mut KvmRunWrapper) -> Result<()>,
-    ) -> Result<()> {
-        let mut tracee = try_with!(
+    pub fn tracee_write_guard(&self) -> Result<RwLockWriteGuard<Tracee>> {
+        let twg: RwLockWriteGuard<Tracee> = try_with!(
             self.tracee.write(),
             "cannot obtain tracee read lock: poinsoned"
         );
-        let (was_attached, mut wrapper) = match tracee.detach() {
-            Some(injector) => {
-                let wrapper = KvmRunWrapper::from_tracer(inject_syscall::into_tracer(
-                    injector,
-                    self.vcpu_maps[0].clone(),
-                )?)?;
-                (true, wrapper)
-            }
-            None => {
-                let wrapper = KvmRunWrapper::attach(self.pid, &self.vcpu_maps)?;
-                (false, wrapper)
+
+        Ok(twg)
+    }
+
+    /// run code while having full control over ioctl(KVM_RUN).
+    /// Guarantees that self.wrapper is Some() during f().
+    /// Can be called regardless of de/attached state.
+    pub fn kvmrun_wrapped(
+        &self,
+        mut f: impl FnMut(&Mutex<Option<KvmRunWrapper>>) -> Result<()>,
+    ) -> Result<()> {
+        // detach tracee and convert to owned wrapper
+        let (was_attached, wrapper) = {
+            let mut tracee = try_with!(
+                self.tracee.write(),
+                "cannot obtain tracee read lock: poinsoned"
+            );
+            match tracee.detach() {
+                Some(injector) => {
+                    let wrapper = KvmRunWrapper::from_tracer(inject_syscall::into_tracer(
+                        injector,
+                        self.vcpu_maps[0].clone(),
+                    )?)?;
+                    (true, wrapper)
+                }
+                None => {
+                    let wrapper = KvmRunWrapper::attach(self.pid, &self.vcpu_maps)?;
+                    (false, wrapper)
+                }
             }
         };
 
-        try_with!(f(&mut wrapper), "closure on KvmRunWrapper failed");
+        // put wrapper: self.wrapper = Some(wrapper)
+        {
+            let mut self_wrapper = try_with!(self.wrapper.lock(), "cannot obtain wrapper mutex");
+            let _ = self_wrapper.replace(wrapper);
+        }
 
-        if was_attached {
-            let err = "cannot re-attach injector after having detached it favour of KvmRunWrapper";
-            let injector = try_with!(inject_syscall::from_tracer(wrapper.into_tracer()?), &err);
-            try_with!(tracee.attach_to(injector), &err);
+        try_with!(f(&self.wrapper), "closure on KvmRunWrapper failed");
+
+        // take wrapper out of self.wrapper
+        let wrapper: KvmRunWrapper;
+        {
+            let mut wguard = try_with!(self.wrapper.lock(), "cannot obtain wrapper mutex");
+            wrapper = wguard.take().expect("earlier in this fn we put it here");
+        }
+
+        // convert wrapper to tracee and attach it
+        {
+            let mut tracee = try_with!(
+                self.tracee.write(),
+                "cannot obtain tracee read lock: poinsoned"
+            );
+            if was_attached {
+                let err =
+                    "cannot re-attach injector after having detached it favour of KvmRunWrapper";
+                let injector = try_with!(inject_syscall::from_tracer(wrapper.into_tracer()?), &err);
+                try_with!(tracee.attach_to(injector), &err);
+            }
         }
 
         Ok(())
@@ -366,6 +401,17 @@ impl Hypervisor {
     }
 
     pub fn ioeventfd(&self, guest_addr: u64) -> Result<EventFd> {
+        self.ioeventfd_(guest_addr, 0, None)
+    }
+
+    /// @param len: 0, 1, 2, 4, or 8 [bytes]
+    /// TODO check support for 0 via KVM_CAP_IOEVENTFD_ANY_LENGTH
+    pub fn ioeventfd_(
+        &self,
+        guest_addr: u64,
+        len: usize,
+        datamatch: Option<u64>,
+    ) -> Result<EventFd> {
         let eventfd = try_with!(EventFd::new(EFD_NONBLOCK), "cannot create event fd");
         info!(
             "ioeventfd {:?}, guest phys addr {:?}",
@@ -374,12 +420,19 @@ impl Hypervisor {
         );
         let hv_eventfd = self.transfer(vec![eventfd.as_raw_fd()].as_slice())?[0];
 
+        let mut flags = 0;
+        let mut datam = 0;
+        if let Some(data) = datamatch {
+            flags = 1 << kvmb::kvm_ioeventfd_flag_nr_datamatch;
+            datam = data;
+        }
+
         let ioeventfd = kvmb::kvm_ioeventfd {
-            datamatch: 0,
-            len: 0,
+            datamatch: datam,
+            len: len as u32,
             addr: guest_addr,
-            fd: hv_eventfd.as_raw_fd(), // thats why we get -22 EINVAL
-            flags: 0,
+            fd: hv_eventfd.as_raw_fd(),
+            flags,
             ..Default::default()
         };
         let mem = self.alloc_mem()?;
@@ -579,5 +632,6 @@ pub fn get_hypervisor(pid: Pid) -> Result<Hypervisor> {
         vm_fd: vm_fds[0],
         vcpus,
         vcpu_maps,
+        wrapper: Mutex::new(None),
     })
 }

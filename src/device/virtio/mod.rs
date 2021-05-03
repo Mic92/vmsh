@@ -9,12 +9,10 @@ pub mod block;
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
 
+use crate::kvm::hypervisor::Hypervisor;
 use event_manager::{EventManager, MutEventSubscriber};
 use log::error;
-//use kvm_ioctls::VmFd; FIXME remove
-use crate::kvm::hypervisor::Hypervisor;
 
-//use linux_loader::cmdline::Cmdline; FIXME remove
 use vm_device::bus::MmioRange;
 use vmm_sys_util::eventfd::EventFd;
 
@@ -37,7 +35,6 @@ const VIRTIO_MMIO_INT_VRING: u8 = 0x01;
 
 // The driver will write to the register at this offset in the MMIO region to notify the device
 // about available queue events.
-#[allow(dead_code)] // FIXME
 const VIRTIO_MMIO_QUEUE_NOTIFY_OFFSET: u64 = 0x50;
 
 // TODO: Make configurable for each device maybe?
@@ -56,7 +53,6 @@ pub struct CommonArgs<'a, M, B> {
     // The objects used for guest memory accesses and other operations.
     pub mem: M,
     // Used by the devices to register ioevents and irqfds.
-    //pub vm_fd: Arc<VmFd>, FIXME remove
     pub vmm: Arc<Hypervisor>,
     // Mutable handle to the event manager the device is supposed to register with. There could be
     // more if we decide to use more than just one thread for device model emulation.
@@ -70,7 +66,6 @@ pub struct CommonArgs<'a, M, B> {
     // required arguments (i.e. for virtio over MMIO discovery). This means we need to create
     // the devices before loading he kernel cmdline into memory, but that's not a significant
     // limitation.
-    //pub kernel_cmdline: &'a mut Cmdline, FIXME remove
 }
 
 /// Simple trait to model the operation of signalling the driver about used events

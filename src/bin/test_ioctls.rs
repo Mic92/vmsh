@@ -3,6 +3,7 @@ use kvm_bindings as kvmb;
 use nix::unistd::Pid;
 use simple_error::{bail, try_with};
 use std::os::unix::io::AsRawFd;
+use std::sync::Mutex;
 use std::time::Duration;
 use vmm_sys_util::eventfd::{EventFd, EFD_NONBLOCK};
 use vmsh::kvm::hypervisor::get_hypervisor;
@@ -199,7 +200,9 @@ fn guest_ioeventfd(pid: Pid) -> Result<()> {
 
 fn guest_kvm_exits(pid: Pid) -> Result<()> {
     let vm = try_with!(get_hypervisor(pid), "cannot get vms for process {}", pid);
-    vm.kvmrun_wrapped(|wrapper: &mut KvmRunWrapper| {
+    vm.kvmrun_wrapped(|wrapper_r: &Mutex<Option<KvmRunWrapper>>| {
+        let mut wrapper_go = wrapper_r.lock().unwrap();
+        let wrapper = wrapper_go.as_mut().unwrap();
         let value: [u8; 2] = 0xDEADu16.to_ne_bytes();
         println!("attached");
 
@@ -248,7 +251,7 @@ fn subtest(name: &str) -> App {
 }
 
 fn main() {
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("debug")).init();
 
     let app = App::new("test_ioctls")
         .about("Something between integration and unit test to be used by pytest.")

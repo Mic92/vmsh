@@ -17,18 +17,23 @@ use vm_memory::GuestAddressSpace;
 use vm_virtio::block::stdio_executor::StdIoBackend;
 use vm_virtio::device::{VirtioConfig, VirtioDeviceActions, VirtioMmioDevice};
 use vm_virtio::Queue;
-use vmm_sys_util::eventfd::{EventFd, EFD_NONBLOCK};
+use vmm_sys_util::eventfd::EventFd;
 
 use crate::device::virtio::block::{BLOCK_DEVICE_ID, VIRTIO_BLK_F_FLUSH, VIRTIO_BLK_F_RO};
 use crate::device::virtio::features::{
     VIRTIO_F_IN_ORDER, VIRTIO_F_RING_EVENT_IDX, VIRTIO_F_VERSION_1,
 };
-use crate::device::virtio::{MmioConfig, SingleFdSignalQueue, QUEUE_MAX_SIZE};
+use crate::device::virtio::{
+    MmioConfig, SingleFdSignalQueue, QUEUE_MAX_SIZE, VIRTIO_MMIO_QUEUE_NOTIFY_OFFSET,
+};
 use crate::kvm::hypervisor::Hypervisor;
 
 use super::inorder_handler::InOrderQueueHandler;
 use super::queue_handler::QueueHandler;
 use super::{build_config_space, BlockArgs, Error, Result};
+use crate::tracer::inject_syscall;
+use crate::tracer::wrap_syscall::KvmRunWrapper;
+use simple_error::map_err_with;
 
 // This Block device can only use the MMIO transport for now, but we plan to reuse large parts of
 // the functionality when we implement virtio PCI as well, for example by having a base generic
@@ -37,7 +42,6 @@ pub struct Block<M: GuestAddressSpace> {
     virtio_cfg: VirtioConfig<M>,
     pub mmio_cfg: MmioConfig,
     endpoint: RemoteEndpoint<Arc<Mutex<dyn MutEventSubscriber + Send>>>,
-    #[allow(dead_code)] // FIXME
     vmm: Arc<Hypervisor>,
     irqfd: Arc<EventFd>,
     file_path: PathBuf,
@@ -77,13 +81,13 @@ where
         let virtio_cfg = VirtioConfig::new(device_features, queues, config_space);
 
         // Used to send notifications to the driver.
-        let irqfd = EventFd::new(EFD_NONBLOCK).map_err(Error::EventFd)?;
-
-        // FIXME register irqfd on hypervisor
-        // args.common
-        //     .vm_fd
-        //     .register_irqfd(&irqfd, args.common.mmio_cfg.gsi)
-        //     .map_err(Error::RegisterIrqfd)?;
+        //let irqfd = EventFd::new(EFD_NONBLOCK).map_err(Error::EventFd)?;
+        log::debug!("register irqfd on gsi {}", args.common.mmio_cfg.gsi);
+        let irqfd = args
+            .common
+            .vmm
+            .irqfd(args.common.mmio_cfg.gsi)
+            .map_err(Error::Simple)?;
 
         let mmio_cfg = args.common.mmio_cfg;
 
@@ -160,10 +164,14 @@ impl<M: GuestAddressSpace + Clone + Send + 'static> BorrowMut<VirtioConfig<M>> f
 impl<M: GuestAddressSpace + Clone + Send + 'static> VirtioDeviceActions for Block<M> {
     type E = Error;
 
+    /// make sure to set self.vmm.wrapper to Some() before activating. Typically this is done by
+    /// activating during vmm.kvmrun_wrapped()
     fn activate(&mut self) -> Result<()> {
         if self.virtio_cfg.device_activated {
             return Err(Error::AlreadyActivated);
         }
+
+        log::debug!("activating device");
 
         // We do not support legacy drivers.
         if self.virtio_cfg.driver_features & (1 << VIRTIO_F_VERSION_1) == 0 {
@@ -176,10 +184,8 @@ impl<M: GuestAddressSpace + Clone + Send + 'static> VirtioDeviceActions for Bloc
             self.virtio_cfg.queues[0].set_event_idx(true);
         }
 
-        let ioeventfd = EventFd::new(EFD_NONBLOCK).map_err(Error::EventFd)?;
-
-        // FIXME:
-        // Register the queue event fd.
+        // Register the queue event fd. Something like this, but in a pirate fashion.
+        // let ioeventfd = EventFd::new(EFD_NONBLOCK).map_err(Error::EventFd)?;
         // self.vm_fd
         //     .register_ioevent(
         //         &ioeventfd,
@@ -189,6 +195,50 @@ impl<M: GuestAddressSpace + Clone + Send + 'static> VirtioDeviceActions for Bloc
         //         0u32,
         //     )
         //     .map_err(Error::RegisterIoevent)?;
+        let ioeventfd;
+        {
+            let mut wrapper_go =
+                map_err_with!(self.vmm.wrapper.lock(), "cannot obtain wrapper mutex")
+                    .map_err(Error::Simple)?;
+
+            // wrapper -> injector
+            {
+                let wrapper = wrapper_go.take().unwrap();
+                let mut tracee = self.vmm.tracee_write_guard().map_err(Error::Simple)?;
+
+                let err =
+                    "cannot re-attach injector after having detached it favour of KvmRunWrapper";
+                let injector = map_err_with!(
+                    inject_syscall::from_tracer(wrapper.into_tracer().map_err(Error::Simple)?),
+                    &err
+                )
+                .map_err(Error::Simple)?;
+                map_err_with!(tracee.attach_to(injector), &err).map_err(Error::Simple)?;
+            }
+
+            // we need to drop tracee for ioeventfd_
+            ioeventfd = self
+                .vmm
+                .ioeventfd_(
+                    self.mmio_cfg.range.base().0 + VIRTIO_MMIO_QUEUE_NOTIFY_OFFSET,
+                    4,
+                    Some(0),
+                )
+                .map_err(Error::Simple)?;
+
+            // injector -> wrapper
+            {
+                let mut tracee = self.vmm.tracee_write_guard().map_err(Error::Simple)?;
+                // we may unwrap because we just attached it.
+                let injector = tracee.detach().unwrap();
+                let wrapper = KvmRunWrapper::from_tracer(
+                    inject_syscall::into_tracer(injector, self.vmm.vcpu_maps[0].clone())
+                        .map_err(Error::Simple)?,
+                )
+                .map_err(Error::Simple)?;
+                let _ = wrapper_go.replace(wrapper);
+            }
+        }
 
         let file = OpenOptions::new()
             .read(true)
@@ -227,8 +277,12 @@ impl<M: GuestAddressSpace + Clone + Send + 'static> VirtioDeviceActions for Bloc
             .call_blocking(move |mgr| -> EvmgrResult<SubscriberId> {
                 Ok(mgr.add_subscriber(handler))
             })
-            .map_err(Error::Endpoint)?;
+            .map_err(|e| {
+                log::warn!("{}", e);
+                Error::Endpoint(e)
+            })?;
 
+        log::debug!("activating device: ok");
         self.virtio_cfg.device_activated = true;
 
         Ok(())
