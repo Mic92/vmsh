@@ -23,6 +23,7 @@ build_artifacts = Path("/dev/null")  # folder with cargo-built executables
 
 def cargo_build() -> Path:
     subprocess.run(["cargo", "build"], cwd=PROJECT_ROOT)
+    subprocess.run(["cargo", "build", "--examples"], cwd=PROJECT_ROOT)
     return PROJECT_ROOT.joinpath("target", "debug")
 
 
@@ -121,7 +122,7 @@ def spawn_vmsh_command(args: List[str], cargo_executable: str = "vmsh") -> VmshP
     gid = os.getuid()
     groups = ",".join(map(str, os.getgroups()))
     with ensure_debugfs_access():
-        cmd = [str(os.path.join(build_artifacts, cargo_executable))]
+        cmd = [str(build_artifacts.joinpath(cargo_executable))]
         cmd += args
         cmd_quoted = " ".join(map(quote, cmd))
 

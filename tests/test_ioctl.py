@@ -1,65 +1,60 @@
 import conftest
+from qemu import QemuVm
+
+
+def run_ioctl_test(command: str, vm: QemuVm) -> None:
+    conftest.Helpers.run_vmsh_command(
+        [command, str(vm.pid)], cargo_executable="examples/test_ioctls"
+    )
+
+
+def spawn_ioctl_test(command: str, vm: QemuVm) -> conftest.VmshPopen:
+    return conftest.Helpers.spawn_vmsh_command(
+        [command, str(vm.pid)], cargo_executable="examples/test_ioctls"
+    )
 
 
 def test_injection(helpers: conftest.Helpers) -> None:
     with helpers.spawn_qemu(helpers.notos_image()) as vm:
-        helpers.run_vmsh_command(
-            ["inject", str(vm.pid)], cargo_executable="test_ioctls"
-        )
+        run_ioctl_test("inject", vm)
 
 
 def test_alloc_mem(helpers: conftest.Helpers) -> None:
     with helpers.spawn_qemu(helpers.notos_image()) as vm:
-        helpers.run_vmsh_command(
-            ["alloc_mem", str(vm.pid)], cargo_executable="test_ioctls"
-        )
+        run_ioctl_test("alloc_mem", vm)
 
 
 def test_ioctl_guest_add_mem(helpers: conftest.Helpers) -> None:
     with helpers.spawn_qemu(helpers.notos_image()) as vm:
-        helpers.run_vmsh_command(
-            ["guest_add_mem", str(vm.pid)], cargo_executable="test_ioctls"
-        )
+        run_ioctl_test("guest_add_mem", vm)
 
 
 # add mem and try to get maps afterwards again
 def test_ioctl_guest_add_mem_get_maps(helpers: conftest.Helpers) -> None:
     with helpers.spawn_qemu(helpers.notos_image()) as vm:
         vm.wait_for_ssh()  # to be sure qemu won't add any memory we didn't expect
-        helpers.run_vmsh_command(
-            ["guest_add_mem_get_maps", str(vm.pid)],
-            cargo_executable="test_ioctls",
-        )
+        run_ioctl_test("guest_add_mem_get_maps", vm)
 
 
 def test_fd_transfer1(helpers: conftest.Helpers) -> None:
     with helpers.spawn_qemu(helpers.notos_image()) as vm:
-        helpers.run_vmsh_command(
-            ["fd_transfer1", str(vm.pid)], cargo_executable="test_ioctls"
-        )
+        run_ioctl_test("fd_transfer1", vm)
 
 
 def test_fd_transfer2(helpers: conftest.Helpers) -> None:
     with helpers.spawn_qemu(helpers.notos_image()) as vm:
-        helpers.run_vmsh_command(
-            ["fd_transfer2", str(vm.pid)], cargo_executable="test_ioctls"
-        )
+        run_ioctl_test("fd_transfer2", vm)
 
 
 def test_get_vcpu_maps(helpers: conftest.Helpers) -> None:
     with helpers.spawn_qemu(helpers.notos_image()) as vm:
-        helpers.run_vmsh_command(
-            ["vcpu_maps", str(vm.pid)], cargo_executable="test_ioctls"
-        )
+        run_ioctl_test("vcpu_maps", vm)
 
 
 def test_userfaultfd_completes(helpers: conftest.Helpers) -> None:
     with helpers.spawn_qemu(helpers.notos_image()) as vm:
         vm.wait_for_ssh()
-        vmsh = helpers.spawn_vmsh_command(
-            ["guest_userfaultfd", str(vm.pid)],
-            cargo_executable="test_ioctls",
-        )
+        vmsh = spawn_ioctl_test("guest_userfaultfd", vm)
 
         with vmsh:
             vmsh.wait_until_line("pause", lambda l: "pause" in l)
@@ -82,10 +77,7 @@ def test_wrap_syscall(helpers: conftest.Helpers) -> None:
         vm.wait_for_ssh()
         print("ssh available")
         # attach vmsh after boot, because it slows the vm down a lot.
-        vmsh = helpers.spawn_vmsh_command(
-            ["guest_kvm_exits", str(vm.pid)],
-            cargo_executable="test_ioctls",
-        )
+        vmsh = spawn_ioctl_test("guest_kvm_exits", vm)
         with vmsh:
             vmsh.wait_until_line("attached", lambda l: "attached" in l)
             res = vm.ssh_cmd(["devmem2", "0xc0000000", "h"])
