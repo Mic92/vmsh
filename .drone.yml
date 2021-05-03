@@ -19,13 +19,13 @@ clone:
 steps:
 - name: run tests
   commands:
-  - nix-shell ./ci.nix --run 'pytest -s ./tests'
+  - nix-shell ./ci.nix --run 'pytest -n $(nproc --ignore=2) -s ./tests'
 trigger:
   event:
   - push
 
 ---
 kind: signature
-hmac: f76f9042f2f43346e512039664b2650bf4fbb38468f8b376cad80dff9b514542
+hmac: d0ae33a07c91c6d2c26ea980453f298400ad6e3ef82e1c869a0588298448620a
 
 ...
