@@ -11,6 +11,9 @@ kernel_fhs := `nix-build --no-out-link nix/kernel-fhs.nix` + "/bin/linux-kernel-
 qemu_pid := `pgrep -u $USER qemu-system | awk '{print $1}'`
 qemu_ssh_port := "2222"
 
+default:
+  @just --choose
+
 lint:
   flake8 tests
   black --check tests
@@ -82,13 +85,12 @@ qemu EXTRA_CMDLINE="nokalsr": build-linux nixos-image
     -hda {{linux_dir}}/nixos.qcow2 \
     -append "root=/dev/sda console=ttyS0 {{EXTRA_CMDLINE}}" \
     -net nic,netdev=user.0,model=virtio \
-    -netdev user,id=user.0,hostfwd=tcp::{{qemu_ssh_port}}-:22 \
     -m 512M \
+    -netdev user,id=user.0,hostfwd=tcp:127.0.0.1:{{qemu_ssh_port}}-:21 \
     -cpu host \
     -virtfs local,path={{invocation_directory()}}/..,security_model=none,mount_tag=home \
     -virtfs local,path={{linux_dir}},security_model=none,mount_tag=linux \
     -nographic -enable-kvm \
-    -s
 
 # SSH into vm started by `just qemu`
 ssh-qemu $COMMAND="":
