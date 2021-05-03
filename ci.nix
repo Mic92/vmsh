@@ -16,6 +16,7 @@ pkgs.mkShell {
     pkgs.tmux # needed for integration test
     (pkgs.python3.withPackages(ps: [
       ps.pytest
+      ps.pytest-xdist
       ps.pyelftools
     ]))
   ] ++ vmsh.nativeBuildInputs;
