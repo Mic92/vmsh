@@ -86,7 +86,7 @@ qemu EXTRA_CMDLINE="nokalsr": build-linux nixos-image
     -append "root=/dev/sda console=ttyS0 {{EXTRA_CMDLINE}}" \
     -net nic,netdev=user.0,model=virtio \
     -m 512M \
-    -netdev user,id=user.0,hostfwd=tcp:127.0.0.1:{{qemu_ssh_port}}-:21 \
+    -netdev user,id=user.0,hostfwd=tcp:127.0.0.1:{{qemu_ssh_port}}-:22 \
     -cpu host \
     -virtfs local,path={{invocation_directory()}}/..,security_model=none,mount_tag=home \
     -virtfs local,path={{linux_dir}},security_model=none,mount_tag=linux \
