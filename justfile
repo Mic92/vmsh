@@ -196,7 +196,7 @@ build-debug-kernel-mod:
 
 # Load debug kernel module into VM started by `just qemu` using ssh
 load-debug-kernel-mod: build-debug-kernel-mod
-  just ssh-qemu "rmmod debug-kernel-mod; insmod /mnt/vmsh/tests/debug-kernel-mod/debug-kernel-mod.ko && dmesg"
+  just qemu_ssh_port={{qemu_ssh_port}} ssh-qemu "rmmod debug-kernel-mod; insmod /mnt/vmsh/tests/debug-kernel-mod/debug-kernel-mod.ko && dmesg"
 
 attach-qemu-img: nixos-image
   cargo run -- \
