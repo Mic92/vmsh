@@ -383,6 +383,7 @@ source = "git+https://github.com/rust-vmm/vm-device?rev=989c315712b80a538331fe05
 [[package]]
 name = "vm-memory"
 version = "0.5.0"
+source = "git+https://github.com/pogobanane/vm-memory.git?rev=d4885a850386c630f4cb254645791a1e3d3a8d90#d4885a850386c630f4cb254645791a1e3d3a8d90"
 dependencies = [
  "libc",
  "log",
