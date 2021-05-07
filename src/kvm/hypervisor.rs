@@ -2,16 +2,15 @@ use crate::tracer::inject_syscall;
 use kvm_bindings as kvmb;
 use libc::{c_int, c_void};
 use log::*;
-use nix::sys::uio::{process_vm_readv, process_vm_writev, IoVec, RemoteIoVec};
 use nix::unistd::Pid;
-use simple_error::{bail, try_with};
+use simple_error::{bail, simple_error, try_with};
 use std::ffi::OsStr;
 use std::marker::PhantomData;
 use std::mem::size_of;
-use std::mem::MaybeUninit;
 use std::os::unix::io::AsRawFd;
 use std::os::unix::prelude::RawFd;
 use std::sync::{Arc, Mutex, RwLock, RwLockWriteGuard};
+use vm_memory::remote_mem;
 use vmm_sys_util::eventfd::{EventFd, EFD_NONBLOCK};
 
 use crate::cpu;
@@ -23,66 +22,12 @@ use crate::result::Result;
 use crate::tracer::proc::{openpid, Mapping, PidHandle};
 use crate::tracer::wrap_syscall::KvmRunWrapper;
 
-/// # Safety
-///
-/// None. See safety chapter of `std::slice::from_raw_parts`.
-pub unsafe fn any_as_bytes<T: Sized>(p: &T) -> &[u8] {
-    std::slice::from_raw_parts((p as *const T) as *const u8, size_of::<T>())
-}
-
-/// read from a virtual addr of the hypervisor
 pub fn process_read<T: Sized + Copy>(pid: Pid, addr: *const c_void) -> Result<T> {
-    let len = size_of::<T>();
-    let mut t_mem = MaybeUninit::<T>::uninit();
-    let t_slice = unsafe { std::slice::from_raw_parts_mut(t_mem.as_mut_ptr() as *mut u8, len) };
-
-    let local_iovec = vec![IoVec::from_mut_slice(t_slice)];
-    let remote_iovec = vec![RemoteIoVec {
-        base: addr as usize,
-        len,
-    }];
-
-    let f = try_with!(
-        process_vm_readv(pid, local_iovec.as_slice(), remote_iovec.as_slice()),
-        "cannot read memory"
-    );
-    if f != len {
-        bail!(
-            "process_vm_readv read {} bytes when {} were expected",
-            f,
-            len
-        )
-    }
-
-    let t: T = unsafe { t_mem.assume_init() };
-    Ok(t)
+    remote_mem::process_read(pid, addr).map_err(|e| simple_error!("{}", e))
 }
 
-/// write to a virtual addr of the hypervisor
 pub fn process_write<T: Sized + Copy>(pid: Pid, addr: *mut c_void, val: &T) -> Result<()> {
-    let len = size_of::<T>();
-    // safe, because we won't need t_bytes for long
-    let t_bytes = unsafe { any_as_bytes(val) };
-
-    let local_iovec = vec![IoVec::from_slice(t_bytes)];
-    let remote_iovec = vec![RemoteIoVec {
-        base: addr as usize,
-        len,
-    }];
-
-    let f = try_with!(
-        process_vm_writev(pid, local_iovec.as_slice(), remote_iovec.as_slice()),
-        "cannot write memory"
-    );
-    if f != len {
-        bail!(
-            "process_vm_writev written {} bytes when {} were expected",
-            f,
-            len
-        )
-    }
-
-    Ok(())
+    remote_mem::process_write(pid, addr, val).map_err(|e| simple_error!("{}", e))
 }
 
 /// Hypervisor Memory

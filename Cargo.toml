@@ -34,3 +34,7 @@ event-manager = { version = "0.2.1", features = ["remote_endpoint"] }
 vmm-sys-util = "0.8.0" # only for its ::eventfd::EventFd
 vm-memory = { version = "0.5.0", features = ["backend-mmap"] }
 log = "0.4.6"
+
+[patch.crates-io]
+vm-memory = { git = "https://github.com/pogobanane/vm-memory.git", rev = "d4885a850386c630f4cb254645791a1e3d3a8d90", features = ["backend-mmap"] }
+# vm-memory = { path = "../vm-memory", features = ["backend-mmap"] }

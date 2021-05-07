@@ -8,6 +8,7 @@ use crate::device::virtio::{CommonArgs, MmioConfig};
 use crate::kvm::hypervisor::{Hypervisor, VmMem};
 use crate::result::Result;
 use crate::tracer::proc::Mapping;
+use libc::pid_t;
 use log::*;
 use simple_error::{bail, try_with};
 use std::path::Path;
@@ -33,7 +34,7 @@ pub const DEVICE_MAX_MEM: u64 = 0x1000;
 
 pub type Block = block::Block<Arc<GuestMemoryMmap>>;
 
-fn convert(mappings: &[Mapping]) -> Result<GuestMemoryMmap> {
+fn convert(pid: pid_t, mappings: &[Mapping]) -> Result<GuestMemoryMmap> {
     let mut regions: Vec<Arc<GuestRegionMmap>> = vec![];
 
     for mapping in mappings {
@@ -51,7 +52,7 @@ fn convert(mappings: &[Mapping]) -> Result<GuestMemoryMmap> {
         );
 
         let guest_region_mmap = try_with!(
-            GuestRegionMmap::new(mmap_region, GuestAddress(mapping.phys_addr as u64)),
+            GuestRegionMmap::new(pid, mmap_region, GuestAddress(mapping.phys_addr as u64)),
             "cannot allocate guest region"
         );
 
@@ -63,7 +64,7 @@ fn convert(mappings: &[Mapping]) -> Result<GuestMemoryMmap> {
 
     // trows regions overlap error because start_addr (guest) is 0 for all regions.
     Ok(try_with!(
-        GuestMemoryMmap::from_arc_regions(regions),
+        GuestMemoryMmap::from_arc_regions(pid, regions),
         "GuestMemoryMmap error"
     ))
 }
@@ -85,7 +86,7 @@ impl Device {
     ) -> Result<Device> {
         let guest_memory = try_with!(vmm.get_maps(), "cannot get guests memory");
         let mem: Arc<GuestMemoryMmap> = Arc::new(try_with!(
-            convert(&guest_memory),
+            convert(vmm.pid.as_raw(), &guest_memory),
             "cannot convert Mapping to GuestMemoryMmap"
         ));
 

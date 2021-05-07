@@ -75,10 +75,11 @@ fn event_thread(mut event_mgr: SubscriberEventManager) {
     });
 }
 
-fn exit_condition(blkdev: &Arc<Mutex<Block>>) -> Result<bool> {
-    //Ok(false)
-    let blkdev = &try_with!(blkdev.lock(), "cannot get blkdev lock");
-    Ok(blkdev.selected_queue().map(|q| q.ready).unwrap())
+fn exit_condition(_blkdev: &Arc<Mutex<Block>>) -> Result<bool> {
+    Ok(false)
+    // TODO think of teardown
+    //let blkdev = &try_with!(blkdev.lock(), "cannot get blkdev lock");
+    //Ok(blkdev.selected_queue().map(|q| q.ready).unwrap())
 }
 
 fn blkdev_monitor_thread(device: &Device) -> JoinHandle<()> {

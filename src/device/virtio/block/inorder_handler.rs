@@ -50,6 +50,7 @@ where
     fn process_chain(&mut self, mut chain: DescriptorChain<M>) -> result::Result<(), Error> {
         let len;
 
+        log::trace!("process_chain");
         match Request::parse(&mut chain) {
             Ok(request) => {
                 let status = match self.disk.execute(chain.memory(), &request) {
