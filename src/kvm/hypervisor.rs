@@ -2,18 +2,16 @@ use crate::tracer::inject_syscall;
 use kvm_bindings as kvmb;
 use libc::{c_int, c_void};
 use log::*;
-use nix::sys::uio::{process_vm_readv, process_vm_writev, IoVec, RemoteIoVec};
 use nix::unistd::Pid;
-use simple_error::{bail, try_with, simple_error};
+use simple_error::{bail, simple_error, try_with};
 use std::ffi::OsStr;
 use std::marker::PhantomData;
 use std::mem::size_of;
-use std::mem::MaybeUninit;
 use std::os::unix::io::AsRawFd;
 use std::os::unix::prelude::RawFd;
 use std::sync::{Arc, Mutex, RwLock, RwLockWriteGuard};
-use vmm_sys_util::eventfd::{EventFd, EFD_NONBLOCK};
 use vm_memory::remote_mem;
+use vmm_sys_util::eventfd::{EventFd, EFD_NONBLOCK};
 
 use crate::cpu;
 use crate::kvm::fd_transfer;
@@ -57,10 +55,10 @@ impl<T: Copy> Drop for HvMem<T> {
 
 impl<T: Copy> HvMem<T> {
     pub fn read(&self) -> Result<T> {
-        process_read(self.pid, self.ptr).map_err(|e| simple_error!("{}", e))
+        process_read(self.pid, self.ptr)
     }
     pub fn write(&self, val: &T) -> Result<()> {
-        process_write(self.pid, self.ptr, val).map_err(|e| simple_error!("{}", e))
+        process_write(self.pid, self.ptr, val)
     }
 }
 

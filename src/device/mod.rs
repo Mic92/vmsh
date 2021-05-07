@@ -8,6 +8,7 @@ use crate::device::virtio::{CommonArgs, MmioConfig};
 use crate::kvm::hypervisor::{Hypervisor, VmMem};
 use crate::result::Result;
 use crate::tracer::proc::Mapping;
+use libc::pid_t;
 use log::*;
 use simple_error::{bail, try_with};
 use std::path::Path;
@@ -19,7 +20,6 @@ use vm_memory::guest_memory::GuestAddress;
 use vm_memory::mmap::MmapRegion;
 use vm_memory::GuestMemoryRegion;
 use vm_memory::{GuestMemoryMmap, GuestRegionMmap};
-use libc::pid_t;
 
 // Where BIOS/VGA magic would live on a real PC.
 #[allow(dead_code)] // FIXME

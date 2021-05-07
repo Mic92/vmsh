@@ -6,10 +6,7 @@ use nix::sys::wait::{waitpid, WaitStatus};
 use nix::unistd::Pid;
 use simple_error::bail;
 use simple_error::try_with;
-use simple_error::map_err_with;
-use simple_error::simple_error;
 use std::fmt;
-use vm_memory::remote_mem::{process_read, process_write};
 
 use crate::kvm::hypervisor;
 use crate::kvm::ioctls;
@@ -89,16 +86,16 @@ impl MmioRw {
         // may or may not perform vcpu_map size assertions.
         let mmio_ptr: *mut MmioRwRaw = unsafe { &mut ((*kvm_run_ptr).__bindgen_anon_1.mmio) };
         let data_ptr: *mut [u8; MMIO_RW_DATA_MAX] = unsafe { &mut ((*mmio_ptr).data) };
-        process_write(self.pid, data_ptr as *mut libc::c_void, &self.data).map_err(|e| simple_error!("{}", e))?;
+        hypervisor::process_write(self.pid, data_ptr as *mut libc::c_void, &self.data)?;
 
         // guess who will never know that this was a mmio read
         let is_totally_write = 1u8;
         let is_write_ptr: *mut u8 = unsafe { &mut ((*mmio_ptr).is_write) };
-        process_write(
+        hypervisor::process_write(
             self.pid,
             is_write_ptr as *mut libc::c_void,
             &is_totally_write,
-        ).map_err(|e| simple_error!("{}", e))?;
+        )?;
 
         Ok(())
     }
@@ -391,7 +388,7 @@ impl KvmRunWrapper {
         // fulfilled precondition: ioctl(KVM_RUN) just returned
         let map_ptr = thread.vcpu_map.start as *const kvm_bindings::kvm_run;
         let kvm_run: kvm_bindings::kvm_run =
-            process_read(pid, map_ptr as *const libc::c_void).map_err(|e| simple_error!("{}", e))?;
+            hypervisor::process_read(pid, map_ptr as *const libc::c_void)?;
         let mmio = MmioRw::from(&kvm_run, thread.ptthread.tid, thread.vcpu_map.clone());
 
         Ok(mmio)
