@@ -130,17 +130,16 @@ fn run_kvm_wrapped(vm: &Arc<Hypervisor>, device: &Device) -> Result<()> {
             blkdev.mmio_cfg.range
         };
 
-        loop {
-            let mut kvm_exit;
-            {
+        'outer: loop {
+            let kvm_exits = {
                 let mut wrapper_go = try_with!(wrapper_mo.lock(), "cannot obtain wrapper mutex");
                 let wrapper_g = wrapper_go.as_mut().unwrap(); // kvmrun_wrapped guarentees Some()
-                kvm_exit = try_with!(
+                try_with!(
                     wrapper_g.wait_for_ioctl(),
                     "failed to wait for vmm exit_mmio"
-                );
-            }
-            if let Some(mmio_rw) = &mut kvm_exit {
+                )
+            };
+            for mut mmio_rw in kvm_exits {
                 let addr = MmioAddress(mmio_rw.addr);
                 let from = mmio_space.base();
                 // virtio mmio space + virtio device specific space
@@ -148,12 +147,15 @@ fn run_kvm_wrapped(vm: &Arc<Hypervisor>, device: &Device) -> Result<()> {
                 if from <= addr && addr < to {
                     // intercept op
                     debug!("mmio access 0x{:x}", addr.0);
-                    try_with!(mmio_mgr.handle_mmio_rw(mmio_rw), "failed to handle MmioRw");
+                    try_with!(
+                        mmio_mgr.handle_mmio_rw(&mut mmio_rw),
+                        "failed to handle MmioRw"
+                    );
                 } else {
                     // do nothing, just continue to ingore and pass to hv
                 }
                 if exit_condition(&device.blkdev)? {
-                    break;
+                    break 'outer;
                 }
             }
         }

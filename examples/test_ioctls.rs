@@ -207,8 +207,7 @@ fn guest_kvm_exits(pid: Pid) -> Result<()> {
         println!("attached");
 
         for _i in 0..100000 {
-            let mut mmio = wrapper.wait_for_ioctl()?;
-            if let Some(mmio) = &mut mmio {
+            for mut mmio in wrapper.wait_for_ioctl()? {
                 println!("kvm exit: {}", mmio);
                 if !mmio.is_write {
                     mmio.answer_read(&value)?;

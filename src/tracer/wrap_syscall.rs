@@ -1,15 +1,20 @@
 use crate::tracer::Tracer;
 use kvm_bindings as kvmb;
 use log::*;
+use nix::errno::Errno;
+use nix::poll::{poll, PollFd, PollFlags};
 use nix::sys::signal::Signal;
 use nix::sys::wait::{waitpid, WaitStatus};
 use nix::unistd::Pid;
 use simple_error::bail;
 use simple_error::try_with;
 use std::fmt;
+use std::fs::File;
+use std::os::unix::io::AsRawFd;
 
 use crate::kvm::hypervisor;
 use crate::kvm::ioctls;
+use crate::pidfd;
 use crate::result::Result;
 use crate::tracer::proc::Mapping;
 use crate::tracer::ptrace;
@@ -183,6 +188,9 @@ impl Thread {
 pub struct KvmRunWrapper {
     process_idx: usize,
     threads: Vec<Thread>,
+    #[allow(dead_code)] // required for poll_files life time
+    pid_files: Vec<File>,
+    poll_files: Vec<PollFd>,
 }
 
 impl Drop for KvmRunWrapper {
@@ -194,24 +202,50 @@ impl Drop for KvmRunWrapper {
 }
 
 impl KvmRunWrapper {
+    fn new(
+        process_idx: usize,
+        threads: Vec<ptrace::Thread>,
+        vcpu_maps: &[Mapping],
+    ) -> Result<Self> {
+        // TODO support more than 1 cpu and respect remaps
+        let threads: Vec<Thread> = threads
+            .into_iter()
+            .map(|t| {
+                let vcpu_map = vcpu_maps[0].clone();
+                Thread::new(t, vcpu_map)
+            })
+            .collect();
+
+        let pid_files = try_with!(
+            threads
+                .iter()
+                .map(|thread| pidfd::pidfd_open(thread.ptthread.tid))
+                .collect::<nix::Result<Vec<_>>>(),
+            "cannot open pidfd"
+        );
+
+        let poll_files = try_with!(
+            pid_files
+                .iter()
+                .map(|pid_file| { Ok(PollFd::new(pid_file.as_raw_fd(), PollFlags::POLLIN)) })
+                .collect::<Result<Vec<_>>>(),
+            "cannot create to pollfd"
+        );
+
+        Ok(KvmRunWrapper {
+            process_idx,
+            threads,
+            pid_files,
+            poll_files,
+        })
+    }
     pub fn attach(pid: Pid, vcpu_maps: &[Mapping]) -> Result<KvmRunWrapper> {
         let (threads, process_idx) = try_with!(
             ptrace::attach_all_threads(pid),
             "cannot attach KvmRunWrapper to all threads of {} via ptrace",
             pid
         );
-        let threads: Vec<Thread> = threads
-            .into_iter()
-            .map(|t| {
-                let vcpu_map = vcpu_maps[0].clone(); // TODO support more than 1 cpu and respect remaps
-                Thread::new(t, vcpu_map)
-            })
-            .collect();
-
-        Ok(KvmRunWrapper {
-            process_idx,
-            threads,
-        })
+        Self::new(process_idx, threads, vcpu_maps)
     }
 
     /// Should be called before or during dropping a KvmRunWrapper
@@ -242,17 +276,7 @@ impl KvmRunWrapper {
     }
 
     pub fn from_tracer(tracer: Tracer) -> Result<Self> {
-        let vcpu_map = tracer.vcpu_map;
-        let threads: Vec<Thread> = tracer
-            .threads
-            .into_iter()
-            .map(|t| Thread::new(t, vcpu_map.clone()))
-            .collect();
-
-        Ok(KvmRunWrapper {
-            process_idx: tracer.process_idx,
-            threads,
-        })
+        Self::new(tracer.process_idx, tracer.threads, &[tracer.vcpu_map])
     }
 
     pub fn cont(&self) -> Result<()> {
@@ -273,53 +297,51 @@ impl KvmRunWrapper {
     }
 
     // TODO Err if third qemu thread terminates?
-    pub fn wait_for_ioctl(&mut self) -> Result<Option<MmioRw>> {
+    pub fn wait_for_ioctl(&mut self) -> Result<Vec<MmioRw>> {
         for thread in &mut self.threads {
             if !thread.is_running {
                 thread.ptthread.syscall()?;
                 thread.is_running = true;
             }
         }
-        let status = self.waitpid()?;
-        let mmio = self.process_status(status)?;
-
-        Ok(mmio)
+        self.waitpid()?
+            .iter()
+            .filter_map(|status| match self.process_status(*status) {
+                Ok(Some(v)) => Some(Ok(v)),
+                Ok(None) => None,
+                Err(v) => Some(Err(v)),
+            })
+            .collect::<Result<Vec<_>>>()
     }
 
     /// busy polling on all thread tids
-    fn waitpid(&mut self) -> Result<WaitStatus> {
-        // Options to waitpid on many pids at the same time:
-        //
-        // - wait with multiple threads. Events into queue and poll on queue.
-        //
-        // - waitpid(WNOHANG): async waitpid, busy polling
-        //
-        // - linux waitid() P_PIDFD pidfd_open(): maybe (e)poll() on this fd? dunno
-        //
-        // - waitpid(pid = -pgid): Use linux default flag of __WALL: wait for main_thread and all
-        //   kinds of children. To wait for all children, use -pgid.
-        //   pid = -self.main_thread().tid fails with ECHILD though because it requires pgid (not
-        //   parent id):
-        //   setpgid(): waitpid on the pgid. Grouping could destroy existing Hypervisor groups and
-        //   requires all group members to be in the same session (whatever that means). Also if
-        //   the group owner (pid==pgid) dies, the enire group orphans (will it be killed as
-        //   zombies?)
-        //   => sounds a bit dangerous, doesn't it?
+    fn waitpid(&mut self) -> Result<Vec<WaitStatus>> {
         loop {
-            for thread in &mut self.threads {
-                let status = try_with!(
-                    waitpid(
-                        thread.ptthread.tid,
-                        Some(nix::sys::wait::WaitPidFlag::WNOHANG)
-                    ),
-                    "cannot wait for ioctl syscall"
-                );
-                if WaitStatus::StillAlive != status {
-                    thread.is_running = false;
-                    return Ok(status);
-                }
-            }
+            match poll(&mut self.poll_files, -1) {
+                Ok(_) => break,
+                Err(nix::Error::Sys(Errno::EINTR)) => continue,
+                Err(e) => bail!("polling failed: {}", e),
+            };
         }
+
+        let statuses = self
+            .poll_files
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, file)| {
+                file.revents().map(|_| {
+                    Ok(try_with!(
+                        waitpid(self.threads[idx].ptthread.tid, None),
+                        "waitpid failed"
+                    ))
+                })
+            })
+            .collect::<Result<Vec<_>>>();
+
+        for (idx, _) in statuses.iter().enumerate() {
+            self.threads[idx].is_running = false;
+        }
+        statuses
     }
 
     fn process_status(&mut self, status: WaitStatus) -> Result<Option<MmioRw>> {
