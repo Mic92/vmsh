@@ -1,4 +1,4 @@
-{ pkgs ? (import (import ./nix/sources.nix).nixpkgs { }) }:
+{ pkgs ? (import (import ./nix/sources.nix).nixpkgs {  }) }:
 
 let
   sources = import ./nix/sources.nix;
@@ -46,4 +46,6 @@ pkgs.mkShell {
   shellHook = ''
     pre-commit install
   '';
+
+  KERNELDIR = toString ../linux;
 }

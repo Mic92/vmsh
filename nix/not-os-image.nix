@@ -5,10 +5,6 @@ let
   inherit (pkgs) stdenv lib;
   inherit (pkgs.pkgsMusl.hostPlatform) system parsed;
 
-  virtio_mmio = pkgs.callPackage ./virtio_mmio.nix {
-    inherit (config.system.build) kernel;
-  };
-
   useMusl = false;
 
   config = (import not-os {
@@ -23,7 +19,6 @@ let
         pkgs.gnugrep
         pkgs.kmod
         pkgs.devmem2
-        virtio_mmio
       ];
       environment.pathsToLink = [ "/lib/modules" ];
 
@@ -43,8 +38,7 @@ let
         ip addr add 10.0.2.15/24 dev eth0
       '';
 
-      boot.initrd.availableKernelModules = [ "virtio_console" "virtio_mmio" ];
-      # to activate at boot time: boot.initrd.kernelModules = [ "virtio_mmio" ];
+      boot.initrd.availableKernelModules = [ "virtio_console" ];
 
       environment.etc = {
         "hosts".text = ''

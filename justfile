@@ -50,7 +50,6 @@ configure-linux: clone-linux
     {{kernel_fhs}} "scripts/config --set-val BPF_SYSCALL y"
     {{kernel_fhs}} "scripts/config --set-val IKHEADERS y"
     {{kernel_fhs}} "scripts/config --set-val VIRTIO_MMIO m"
-    {{kernel_fhs}} "scripts/config --set-val VIRTIO_MMIO_CMDLINE_DEVICES y"
     {{kernel_fhs}} "scripts/config --set-val PTDUMP_CORE y"
     {{kernel_fhs}} "scripts/config --set-val PTDUMP_DEBUGFS y"
   fi
@@ -113,12 +112,19 @@ build-debug-kernel-mod:
 load-debug-kernel-mod: build-debug-kernel-mod
   just ssh-qemu "rmmod debug-kernel-mod; insmod /mnt/vmsh/tests/debug-kernel-mod/debug-kernel-mod.ko && dmesg"
 
+# Attach block device to first qemu vm found by pidof and owned by our own user
+attach-qemu:
+  cargo run -- attach "{{qemu_pid}}" -- -p "{{qemu_ssh_port}}" "root@localhost"
+
+# Inspect first qemu vm found by pidof and owned by our own user
 inspect-qemu:
   cargo run -- inspect "{{qemu_pid}}"
 
+# Generate a core dump of the first qemu vm found by pidof and owned by our own user
 coredump-qemu:
   cargo run -- coredump "{{qemu_pid}}"
 
+# Generate a core dump of the first qemu vm found by pidof and owned by our own user
 trace-qemu:
   perf trace -p "{{qemu_pid}}"
 
