@@ -185,7 +185,7 @@ pub fn get_vcpu_maps(pid: Pid) -> Result<Vec<Mapping>> {
             vcpu_map.pathname,
         );
         let ai = try_with!(
-            u64::from_str_radix(astr, 10),
+            astr.parse::<u64>(),
             "vcpufd {} has unexpected postfix {}",
             vcpu_map.pathname,
             astr,
