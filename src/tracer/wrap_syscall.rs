@@ -286,35 +286,18 @@ impl KvmRunWrapper {
         Ok(mmio)
     }
 
-    /// busy polling on all thread tids
     fn waitpid(&mut self) -> Result<WaitStatus> {
-        // Options to waitpid on many pids at the same time:
-        //
-        // - wait with multiple threads. Events into queue and poll on queue.
-        //
-        // - waitpid(WNOHANG): async waitpid, busy polling
-        //
-        // - linux waitid() P_PIDFD pidfd_open(): maybe (e)poll() on this fd? dunno
-        //
-        // - waitpid(pid = -pgid): Use linux default flag of __WALL: wait for main_thread and all
-        //   kinds of children. To wait for all children, use -pgid.
-        //   pid = -self.main_thread().tid fails with ECHILD though because it requires pgid (not
-        //   parent id):
-        //   setpgid(): waitpid on the pgid. Grouping could destroy existing Hypervisor groups and
-        //   requires all group members to be in the same session (whatever that means). Also if
-        //   the group owner (pid==pgid) dies, the enire group orphans (will it be killed as
-        //   zombies?)
-        //   => sounds a bit dangerous, doesn't it?
         loop {
-            for thread in &mut self.threads {
-                let status = try_with!(
-                    waitpid(
-                        thread.ptthread.tid,
-                        Some(nix::sys::wait::WaitPidFlag::WNOHANG)
-                    ),
-                    "cannot wait for ioctl syscall"
-                );
-                if WaitStatus::StillAlive != status {
+            let status = try_with!(
+                waitpid(None, Some(nix::sys::wait::WaitPidFlag::__WALL)),
+                "cannot wait for ioctl syscall"
+            );
+            if let Some(pid) = status.pid() {
+                let res = self
+                    .threads
+                    .iter_mut()
+                    .find(|thread| thread.ptthread.tid == pid);
+                if let Some(mut thread) = res {
                     thread.is_running = false;
                     return Ok(status);
                 }
