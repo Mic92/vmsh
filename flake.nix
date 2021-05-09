@@ -15,16 +15,17 @@
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
-
-        inherit (fenix.packages.${system}.latest) cargo rustc;
-
-        toolchain = with fenix.packages.${system};
-          combine [
-            rustc
-            cargo
-            targets."aarch64-unknown-linux-gnu".latest.rust-std
-            targets."x86_64-unknown-linux-gnu".latest.rust-std
-          ];
+        fenixPkgs = fenix.packages.${system};
+        rustToolchain = fenixPkgs.latest.withComponents [
+          "cargo"
+          "rustc"
+          # buggy
+          # "rls-preview"
+          "rust-src"
+          "rust-std"
+          "clippy-preview"
+          "rustfmt-preview"
+        ];
 
         vmsh = pkgs.callPackage ./nix/vmsh.nix {
           pkgSrc = self;
@@ -33,12 +34,12 @@
         kernel-fhs = pkgs.callPackage ./nix/kernel-fhs.nix {};
 
         rustPlatform = (pkgs.makeRustPlatform {
-          inherit cargo rustc;
+          cargo = rustToolchain;
+          rustc = rustToolchain;
         });
 
         ciDeps = [
-          rustc
-          cargo
+          rustToolchain
           pkgs.qemu_kvm
           pkgs.tmux # needed for integration test
           (pkgs.python3.withPackages (ps: [
@@ -83,20 +84,16 @@
         # used by `nix develop`
         devShell = pkgs.mkShell {
           inherit (vmsh) buildInputs;
-          RUST_SRC_PATH = pkgs.rustPlatform.rustLibSrc;
+          RUST_SRC_PATH = "${rustToolchain}/lib/rustlib/src/rust/library";
           nativeBuildInputs = ciDeps ++ [
-            pkgs.jq
-            pkgs.rls
-            pkgs.rust-analyzer
-            pkgs.rustfmt
+            pkgs.jq # needed for justfile
             pkgs.just
-            pkgs.clippy
-            pkgs.rustfmt
             pkgs.cargo-watch
             pkgs.cargo-deny
             pkgs.pre-commit
+            pkgs.rls
             pkgs.git # needed for pre-commit install
-
+            fenixPkgs.rust-analyzer
             pkgs.gdb
           ];
 

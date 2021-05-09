@@ -95,18 +95,20 @@ fn spawn_stage1(
                     .arg(
                         r#"
 set -eux -o pipefail
-tmpfile=$(mktemp --suffix .ko)
-trap "rm -f $tmpfile" EXIT
-cat > $tmpfile
-insmod $tmpfile
+tmpdir=$(mktemp -d)
+trap "rm -rf '$tmpdir'" EXIT
+cat > "$tmpdir/stage1.ko"
+insmod "$tmpdir/stage1.ko"
 "#
                     )
                     .spawn(),
                 "ssh command failed"
             );
 
-            let mut stdin = require_with!(child.stdin.take(), "Failed to open stdin");
-            try_with!(stdin.write_all(STAGE1_EXE), "Failed to write to stdin");
+            {
+                let mut stdin = require_with!(child.stdin.take(), "Failed to open stdin");
+                try_with!(stdin.write_all(STAGE1_EXE), "Failed to write to stdin");
+            }
 
             try_with!(child.wait(), "Failed to load stage1 kernel driver");
             Ok(())

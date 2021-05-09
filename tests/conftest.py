@@ -27,23 +27,6 @@ def cargo_build() -> Path:
     return PROJECT_ROOT.joinpath("target", "debug")
 
 
-def rootfs_image(image: Path) -> VmImage:
-    result = subprocess.run(
-        ["nix-build", str(image), "-A", "json"],
-        text=True,
-        stdout=subprocess.PIPE,
-        check=True,
-    )
-    with open(result.stdout.strip("\n")) as f:
-        data = json.load(f)
-        return VmImage(
-            kernel=Path(data["kernel"]),
-            squashfs=Path(data["squashfs"]),
-            initial_ramdisk=Path(data["initialRamdisk"]),
-            kernel_params=data["kernelParams"],
-        )
-
-
 @contextmanager
 def ensure_debugfs_access() -> Iterator[None]:
     uid = os.getuid()
@@ -155,7 +138,22 @@ class Helpers:
 
     @staticmethod
     def notos_image() -> VmImage:
-        return rootfs_image(TEST_ROOT.joinpath("../nix/not-os-image.nix"))
+        result = subprocess.run(
+            ["nix", "build", "--json", ".#not-os-image.json"],
+            text=True,
+            stdout=subprocess.PIPE,
+            check=True,
+            cwd=TEST_ROOT.parent,
+        )
+        data = json.loads(result.stdout)
+        with open(data[0]["outputs"]["out"]) as f:
+            data = json.load(f)
+            return VmImage(
+                kernel=Path(data["kernel"]),
+                squashfs=Path(data["squashfs"]),
+                initial_ramdisk=Path(data["initialRamdisk"]),
+                kernel_params=data["kernelParams"],
+            )
 
     @staticmethod
     def spawn_vmsh_command(

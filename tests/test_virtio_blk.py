@@ -1,16 +1,6 @@
 import conftest
 
 
-def test_loading_virtio_mmio(helpers: conftest.Helpers) -> None:
-    with helpers.spawn_qemu(helpers.notos_image()) as vm:
-        vm.wait_for_ssh()
-        print("ssh available")
-        # assert that virtio_mmio is now loaded
-        res = vm.ssh_cmd(["lsmod"])
-        assert res.stdout
-        assert res.stdout.find("virtio_mmio") >= 0
-
-
 def test_virtio_device_space(helpers: conftest.Helpers) -> None:
     with helpers.spawn_qemu(helpers.notos_image()) as vm:
         vm.wait_for_ssh()
