@@ -6,9 +6,9 @@
 linux_dir := invocation_directory() + "/../linux"
 linux_rev := "v5.11"
 
-kernel_fhs := `nix-build --no-out-link nix/kernel-fhs.nix` + "/bin/linux-kernel-build"
+kernel_fhs := `nix build --json '.#kernel-fhs' | jq -r '.[] | .outputs | .out'` + "/bin/linux-kernel-build"
 
-qemu_pid := `pgrep -u $USER qemu-system | awk '{print $1}'`
+qemu_pid := `pgrep -u $(id -u) qemu-system | awk '{print $1}'`
 qemu_ssh_port := "2222"
 
 default:
@@ -25,6 +25,10 @@ fmt:
   isort tests
   black tests
   cargo fmt
+
+# Continously run clippy checks whenever the source changes
+watch:
+  cargo watch -x clippy
 
 test:
   cargo test
@@ -59,19 +63,24 @@ sign-drone:
   DRONE_TOKEN=$(cat $HOME/.secret/drone-token) \
     nix-shell -p drone-cli --run 'drone sign Mic92/vmsh --save'
 
+# Linux kernel development shell
 build-linux-shell:
-  nix-shell {{invocation_directory()}}/nix/kernel-fhs-shell.nix
+  nix develop '.#kernel-fhs-shell'
 
 build-linux: configure-linux
   {{kernel_fhs}} "yes \n | make -C {{linux_dir}} -j$(nproc)"
 
+# Build kernel-less disk image for NixOS
 nixos-image:
   [[ {{linux_dir}}/nixos.qcow2 -nt nix/nixos-image.nix ]] || \
-  [[ {{linux_dir}}/nixos.qcow2 -nt nix/sources.json ]] || \
-  install -m600 "$(nix-build --no-out-link nix/nixos-image.nix)/nixos.qcow2" {{linux_dir}}/nixos.qcow2
+  [[ {{linux_dir}}/nixos.qcow2 -nt flake.lock ]] || \
+  (nix build .#nixos-image --out-link nixos-image && \
+  install -m600 "nixos-image/nixos.qcow2" {{linux_dir}}/nixos.qcow2)
 
+# Build kernel/disk image for not os
 notos-image:
-  nix-build nix/not-os-image.nix -A json
+  nix build '.#not-os-image.json'
+  jq < result
 
 # built image for qemu_nested.sh
 nested-nixos-image: nixos-image

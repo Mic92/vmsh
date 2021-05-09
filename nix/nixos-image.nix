@@ -1,7 +1,4 @@
-# $ nix-build minimal-vm.nix
-# $ install -m600 ./result/nixos.qcow2 ../../linux/nixos.qcow2
-# $ ./run-vm.sh
-{ pkgs ? (import (import ../nix/sources.nix).nixpkgs { }) }:
+{ pkgs }:
 
 let
   keys = map (key: "${builtins.getEnv "HOME"}/.ssh/${key}")
@@ -54,6 +51,7 @@ in import (pkgs.path + "/nixos/lib/make-disk-image.nix") {
       environment.systemPackages = [ 
         pkgs.linuxPackages.bcc
         pkgs.busybox
+        pkgs.file
         (pkgs.writeShellScriptBin "qemu-nested" ''
           exec ${pkgs.qemu_kvm}/bin/qemu-system-x86_64 \
             -kernel /linux/arch/x86/boot/bzImage \

@@ -1,6 +1,4 @@
-{ pkgs ? (import (import ../nix/sources.nix).nixpkgs { })
-, not-os ? (import ../nix/sources.nix).not-os
-}:
+{ pkgs, not-os }:
 let
   inherit (pkgs) stdenv lib;
   inherit (pkgs.pkgsMusl.hostPlatform) system parsed;

@@ -1,10 +1,9 @@
-{ pkgs ? (import (import ./sources.nix).nixpkgs { })
-, runScript ? ''bash -c''
+{ buildFHSUserEnv
+, runScript ? "bash -c"
 }:
-
-(pkgs.buildFHSUserEnv {
+buildFHSUserEnv {
   name = "linux-kernel-build";
-  targetPkgs = pkgs: (with pkgs;  [
+  targetPkgs = pkgs: with pkgs; [
     getopt
     flex
     bison
@@ -20,6 +19,6 @@
     ncurses
     openssl
     zlib
-  ]);
-  inherit runScript;
-})
+  ];
+  runScript = "bash -c";
+}
