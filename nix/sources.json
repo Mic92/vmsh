@@ -5,10 +5,10 @@
         "homepage": "",
         "owner": "nmattia",
         "repo": "naersk",
-        "rev": "32e3ba39d9d83098b13720a4384bdda191dd0445",
-        "sha256": "0yxqggmj4c65nzmgjmwxii9ibxmxw9w87pbqpgmnyf5rpyp79nv7",
+        "rev": "a3f40fe42cc6d267ff7518fa3199e99ff1444ac4",
+        "sha256": "1nf7fn8anghwf6p5p58ywbcwdkjxq112qv663rn52jq9k95iakdi",
         "type": "tarball",
-        "url": "https://github.com/nmattia/naersk/archive/32e3ba39d9d83098b13720a4384bdda191dd0445.tar.gz",
+        "url": "https://github.com/nmattia/naersk/archive/a3f40fe42cc6d267ff7518fa3199e99ff1444ac4.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
     "nixpkgs": {
