@@ -176,4 +176,4 @@ capsh:
       --addamb=cap_sys_resource \
       --addamb=cap_sys_admin \
       --addamb=cap_sys_ptrace \
-      -- -c 'direnv exec "$0" "$1"' . "$SHELL"
+      -- -c 'export USER=$USER; direnv exec "$0" "$1"' . "$SHELL"
