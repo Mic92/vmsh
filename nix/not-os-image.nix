@@ -32,7 +32,7 @@ let
         echo 'nixos' > /proc/sys/kernel/hostname
         ip addr add 127.0.0.1/8 dev lo
         ip addr add ::1/128 dev lo
-        ip link dev lo up
+        ip link set dev lo up
         ip addr add 10.0.2.15/24 dev eth0
       '';
 
@@ -69,11 +69,13 @@ let
       '';
     };
   }).config;
+  inherit (config.system.build) kernel;
 in
 {
   inherit (config.system.build) runvm kernel squashfs initialRamdisk kernelParams;
   json = pkgs.writeText "not-os.json" (builtins.toJSON {
     inherit (config.system.build) kernel squashfs initialRamdisk;
+    kerneldir = "${kernel.dev}/lib/modules/${kernel.modDirVersion}/build";
     inherit (config.boot) kernelParams;
   });
 }
