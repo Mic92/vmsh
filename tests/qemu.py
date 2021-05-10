@@ -240,7 +240,12 @@ class QemuVm:
         return self.qmp_session.send(cmd, args)
 
 
-def qemu_command(image: VmImage, qmp_socket: Path) -> List:
+def qemu_command(image: VmImage, qmp_socket: Path, ssh_port: int = 0) -> List:
+    """
+    @image VM image to boot
+    @qmp_socket unixsocket path of the QEMU qmp control socket
+    @ssh_port host port bound to vm guest port (0 means dynamic port)
+    """
     params = " ".join(image.kernel_params)
     return [
         "qemu-kvm",
@@ -258,7 +263,7 @@ def qemu_command(image: VmImage, qmp_socket: Path) -> List:
         "-append",
         f"console=ttyS0 {params} quiet panic=-1",
         "-netdev",
-        "user,id=n1,hostfwd=tcp:127.0.0.1:0-:22",
+        f"user,id=n1,hostfwd=tcp:127.0.0.1:{ssh_port}-:22",
         "-device",
         "virtio-net-pci,netdev=n1",
         "-qmp",

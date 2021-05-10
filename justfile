@@ -114,7 +114,7 @@ qemu-notos:
   import sys, os, subprocess
   sys.path.insert(0, os.path.join("{{invocation_directory()}}", "tests"))
   from qemu import notos_image, qemu_command
-  cmd = qemu_command(notos_image(), "qmp.sock")
+  cmd = qemu_command(notos_image(), "qmp.sock", ssh_port={{qemu_ssh_port}})
   print(" ".join(cmd))
   subprocess.run(cmd)
 
