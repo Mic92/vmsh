@@ -6,6 +6,7 @@ extern "C" {
     pub fn kfree(x: *const libc::c_void);
     pub fn __kmalloc(size: libc::size_t, flags: gfp_t) -> *mut libc::c_void;
     pub fn printk(fmt: *const libc::c_char, ...);
+    pub fn memcpy(dest: *mut libc::c_void, src: *const libc::c_void, count: libc::size_t);
 }
 
 const GFP_KERNEL: gfp_t = 0x90;
@@ -24,7 +25,11 @@ impl core::fmt::Write for KernelDebugWriter {
                 let ptr = msg.as_ptr() as *const libc::c_char;
                 printk(ptr);
             } else {
-                core::ptr::copy(message.as_ptr(), ptr as *mut u8, message.len());
+                memcpy(
+                    ptr as *mut libc::c_void,
+                    message.as_ptr() as *mut libc::c_void,
+                    message.len(),
+                );
                 core::ptr::write(ptr.offset(message.len() as isize), 0);
                 printk(ptr);
                 kfree(ptr as *const libc::c_void);
@@ -54,7 +59,7 @@ macro_rules! printk {
     // Dynamic implementation that processes format arguments
     ($fmt:expr, $($arg:tt)*) => ({
         use ::core::fmt::Write;
-        use ::stage1::kprint::KernelDebugWriter;
+        use printk::KernelDebugWriter;
 
         let mut writer = KernelDebugWriter {};
         writer.write_fmt(format_args!($fmt, $($arg)*)).unwrap();
