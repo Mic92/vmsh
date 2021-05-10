@@ -11,9 +11,11 @@ kernel_fhs := `nix build --json '.#kernel-fhs' | jq -r '.[] | .outputs | .out'` 
 qemu_pid := `pgrep -u $(id -u) qemu-system | awk '{print $1}'`
 qemu_ssh_port := "2222"
 
+# Interactively select a task from just file
 default:
   @just --choose
 
+# Linux python and rust code
 lint:
   flake8 tests
   black --check tests
@@ -21,6 +23,7 @@ lint:
   cargo clippy
   cargo fmt -- --check
 
+# Format python and rust code
 fmt:
   isort tests
   black tests
@@ -30,15 +33,18 @@ fmt:
 watch:
   cargo watch -x clippy
 
+# Run unit and integration tests
 test:
   cargo test
   pytest -n $(nproc --ignore=2) -s tests
 
+# Git clone linux kernel
 clone-linux:
   [[ -d {{linux_dir}} ]] || \
     git clone https://github.com/torvalds/linux {{linux_dir}}
   git -C {{linux_dir}} checkout {{linux_rev}}
 
+# Configure linux kernel build
 configure-linux: clone-linux
   #!/usr/bin/env bash
   set -euxo pipefail
@@ -58,6 +64,7 @@ configure-linux: clone-linux
     {{kernel_fhs}} "scripts/config --set-val PTDUMP_DEBUGFS y"
   fi
 
+# Sign drone ci configuration
 sign-drone:
   DRONE_SERVER=https://drone.thalheim.io \
   DRONE_TOKEN=$(cat $HOME/.secret/drone-token) \
@@ -67,6 +74,7 @@ sign-drone:
 build-linux-shell:
   nix develop '.#kernel-fhs-shell'
 
+# Build linux kernel
 build-linux: configure-linux
   {{kernel_fhs}} "yes \n | make -C {{linux_dir}} -j$(nproc)"
 
@@ -118,6 +126,7 @@ ssh-qemu $COMMAND="":
       root@localhost \
       -p {{qemu_ssh_port}} "$COMMAND"
 
+# Start qemu in qemu based on nixos image
 nested-qemu: nested-nixos-image
   just ssh-qemu qemu-nested
 
@@ -147,6 +156,7 @@ coredump-qemu:
 trace-qemu:
   perf trace -p "{{qemu_pid}}"
 
+# Start subshell with capabilities/permissions suitable for vmsh
 capsh:
   @ if [ -n "${IN_CAPSH:-}" ]; then \
     echo "you are already in a capsh session"; exit 1; \
