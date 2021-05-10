@@ -3,7 +3,21 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
-// Example custom build script.
+fn fallback_kernel_dir() -> String {
+    let proc = Command::new("uname")
+        .arg("-r")
+        .output()
+        .expect("uname command failed");
+    if !proc.status.success() {
+        match proc.status.code() {
+            Some(code) => panic!("uname exited with status code: {}", code),
+            None => panic!("uname terminated by signal"),
+        }
+    }
+    let kernel_version = String::from_utf8(proc.stdout).expect("cannot decode uname output");
+    format!("/lib/modules/{}/build", kernel_version.trim_end())
+}
+
 fn main() {
     // Tell Cargo that if the given file changes, to rerun this build script.
     let srcs = ["build.rs", "module.c", "Makefile", "src/lib.rs"];
@@ -15,7 +29,7 @@ fn main() {
     // Re-run build if kernel dir changes
     println!("rerun-if-env-changed=KERNELDIR");
 
-    let kernel_dir = env::var("KERNELDIR").expect("KERNELDIR environment variable not set");
+    let kernel_dir = env::var("KERNELDIR").unwrap_or_else(|_| fallback_kernel_dir());
 
     let mut stage1_dir = env::current_dir().expect("cannot get current working directory");
     stage1_dir.push("src");
