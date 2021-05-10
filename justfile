@@ -142,7 +142,7 @@ load-debug-kernel-mod: build-debug-kernel-mod
 
 # Attach block device to first qemu vm found by pidof and owned by our own user
 attach-qemu:
-  cargo run -- attach "{{qemu_pid}}" -- -p "{{qemu_ssh_port}}" "root@localhost"
+  cargo run -- attach "{{qemu_pid}}" -- -i nix/ssh_key -p "{{qemu_ssh_port}}" "root@localhost"
 
 # Inspect first qemu vm found by pidof and owned by our own user
 inspect-qemu:
