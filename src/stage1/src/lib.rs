@@ -1,6 +1,8 @@
 #![no_std]
 #![allow(non_camel_case_types)]
 
+mod printk;
+
 use core::panic::PanicInfo;
 use core::ptr;
 
@@ -122,13 +124,24 @@ fn is_err_value(x: *const libc::c_void) -> bool {
     return x as libc::c_long >= -(MAX_ERRNO as libc::c_long);
 }
 
+/// Retrieves error value from pointer
+fn err_value(ptr: *const libc::c_void) -> libc::c_long {
+    ptr as libc::c_long
+}
+
 /// Safety: this code is not thread-safe as it uses static globals
 #[no_mangle]
 pub unsafe fn init_vmsh_stage1() -> libc::c_int {
+    printkln!("stage1: init");
     BLK_DEV = register_virtio_mmio(MMIO_BASE, MMIO_SIZE, MMIO_IRQ);
     if is_err_value(BLK_DEV) {
-        return BLK_DEV as libc::c_int;
+        printkln!(
+            "stage1: initializing virt-blk driver failed: {}",
+            err_value(BLK_DEV)
+        );
+        return err_value(BLK_DEV) as libc::c_int;
     }
+    printkln!("stage1: virt-blk driver set up");
     return 0;
 }
 
