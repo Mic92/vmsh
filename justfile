@@ -100,6 +100,16 @@ qemu EXTRA_CMDLINE="nokalsr": build-linux nixos-image
     -virtfs local,path={{linux_dir}},security_model=none,mount_tag=linux \
     -nographic -enable-kvm \
 
+# run qemu with filesystem/kernel from notos (same as in tests)
+qemu-notos:
+  #!/usr/bin/env python3
+  import sys, os, subprocess
+  sys.path.insert(0, os.path.join("{{invocation_directory()}}", "tests"))
+  from qemu import notos_image, qemu_command
+  cmd = qemu_command(notos_image(), "qmp.sock")
+  print(" ".join(cmd))
+  subprocess.run(cmd)
+
 # SSH into vm started by `just qemu`
 ssh-qemu $COMMAND="":
   ssh -i {{invocation_directory()}}/nix/ssh_key \
