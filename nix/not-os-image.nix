@@ -70,12 +70,14 @@ let
     };
   }).config;
   inherit (config.system.build) kernel;
+  kerneldir = "${kernel.dev}/lib/modules/${kernel.modDirVersion}/build";
 in
 {
   inherit (config.system.build) runvm kernel squashfs initialRamdisk kernelParams;
+  inherit kerneldir;
   json = pkgs.writeText "not-os.json" (builtins.toJSON {
+    inherit kerneldir;
     inherit (config.system.build) kernel squashfs initialRamdisk;
-    kerneldir = "${kernel.dev}/lib/modules/${kernel.modDirVersion}/build";
     inherit (config.boot) kernelParams;
   });
 }

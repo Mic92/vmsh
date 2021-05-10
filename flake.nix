@@ -55,6 +55,10 @@
             ps.mypy
           ]))
         ] ++ vmsh.nativeBuildInputs;
+
+        not-os-image = pkgs.callPackage ./nix/not-os-image.nix {
+          inherit not-os;
+        };
       in
       rec {
         # default target for `nix build`
@@ -70,13 +74,10 @@
 
           # see justfile/build-linux-shell
           kernel-fhs-shell = (kernel-fhs.override { runScript = "bash"; }).env;
-
           kernel-fhs = kernel-fhs;
 
           # see justfile/not-os
-          not-os-image = pkgs.callPackage ./nix/not-os-image.nix {
-            inherit not-os;
-          };
+          inherit not-os-image;
 
           # see justfile/nixos-image
           nixos-image = pkgs.callPackage ./nix/nixos-image.nix {};
@@ -100,6 +101,9 @@
           shellHook = ''
             pre-commit install
             export KERNELDIR=$(pwd)/../linux;
+          '' + pkgs.lib.optionalString (false) ''
+            # when debugging not-os kernel
+            # export KERNELDIR=${not-os-image.kerneldir};
           '';
           # interesting when supporting aarch64
           #CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER =
