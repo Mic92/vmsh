@@ -1,5 +1,3 @@
-use libc;
-
 type gfp_t = libc::c_uint;
 
 extern "C" {
@@ -30,7 +28,7 @@ impl core::fmt::Write for KernelDebugWriter {
                     message.as_ptr() as *mut libc::c_void,
                     message.len(),
                 );
-                core::ptr::write(ptr.offset(message.len() as isize), 0);
+                core::ptr::write(ptr.add(message.len()), 0);
                 printk(ptr);
                 kfree(ptr as *const libc::c_void);
             }

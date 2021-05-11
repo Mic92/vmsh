@@ -113,7 +113,7 @@ unsafe fn register_virtio_mmio(base: usize, size: usize, irq: usize) -> *mut pla
         properties: ptr::null(),
     };
 
-    return platform_device_register_full(&info);
+    platform_device_register_full(&info)
 }
 
 /// Holds the device we create by this code, so we can unregister it later
@@ -121,7 +121,7 @@ static mut BLK_DEV: *mut platform_device = ptr::null_mut();
 
 /// re-implementation of IS_ERR_VALUE
 fn is_err_value(x: *const libc::c_void) -> bool {
-    return x as libc::c_long >= -(MAX_ERRNO as libc::c_long);
+    x as libc::c_long >= -(MAX_ERRNO as libc::c_long)
 }
 
 /// Retrieves error value from pointer
@@ -129,7 +129,9 @@ fn err_value(ptr: *const libc::c_void) -> libc::c_long {
     ptr as libc::c_long
 }
 
-/// Safety: this code is not thread-safe as it uses static globals
+/// # Safety
+///
+/// this code is not thread-safe as it uses static globals
 #[no_mangle]
 pub unsafe fn init_vmsh_stage1() -> libc::c_int {
     printkln!("stage1: init");
@@ -142,11 +144,14 @@ pub unsafe fn init_vmsh_stage1() -> libc::c_int {
         return err_value(BLK_DEV) as libc::c_int;
     }
     printkln!("stage1: virt-blk driver set up");
-    return 0;
+    0
 }
 
-/// Safety: this code is not thread-safe as it uses static globals
+/// # Safety
+///
+/// this code is not thread-safe as it uses static globals
 #[no_mangle]
 pub unsafe fn cleanup_vmsh_stage1() {
+    printkln!("stage1: cleanup");
     platform_device_unregister(BLK_DEV);
 }
