@@ -36,7 +36,8 @@ let
         ip addr add 10.0.2.15/24 dev eth0
       '';
 
-      boot.initrd.availableKernelModules = [ "virtio_console" ];
+      boot.initrd.availableKernelModules = [ "virtio_console" "virtio_mmio" ];
+      boot.initrd.kernelModules = [ "virtio_mmio" ];
 
       environment.etc = {
         "hosts".text = ''
