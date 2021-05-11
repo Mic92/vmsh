@@ -110,7 +110,10 @@ insmod "$tmpdir/stage1.ko"
                 try_with!(stdin.write_all(STAGE1_EXE), "Failed to write to stdin");
             }
 
+            info!("block device driver started");
+
             try_with!(child.wait(), "Failed to load stage1 kernel driver");
+
             Ok(())
         }),
         "failed to create stage1 thread"
@@ -199,22 +202,22 @@ fn blkdev_monitor_thread(device: &Device) -> Result<JoinHandle<()>> {
                     }
                 }
                 let blkdev = blkdev.lock().unwrap();
-                info!("");
-                info!("dev type {}", blkdev.device_type());
-                info!("dev features b{:b}", blkdev.device_features());
-                info!(
+                debug!("");
+                debug!("dev type {}", blkdev.device_type());
+                debug!("dev features b{:b}", blkdev.device_features());
+                debug!(
                     "dev interrupt stat b{:b}",
                     blkdev
                         .interrupt_status()
                         .load(std::sync::atomic::Ordering::Relaxed)
                 );
-                info!("dev status b{:b}", blkdev.device_status());
-                info!("dev config gen {}", blkdev.config_generation());
-                info!(
+                debug!("dev status b{:b}", blkdev.device_status());
+                debug!("dev config gen {}", blkdev.config_generation());
+                debug!(
                     "dev selqueue max size {}",
                     blkdev.selected_queue().map(Queue::max_size).unwrap()
                 );
-                info!(
+                debug!(
                     "dev selqueue ready {}",
                     blkdev.selected_queue().map(|q| q.ready).unwrap()
                 );
