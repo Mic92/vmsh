@@ -251,7 +251,7 @@ fn run_kvm_wrapped(
             let mut kvm_exit;
             {
                 let mut wrapper_go = try_with!(wrapper_mo.lock(), "cannot obtain wrapper mutex");
-                let wrapper_g = wrapper_go.as_mut().unwrap(); // kvmrun_wrapped guarentees Some()
+                let wrapper_g = require_with!(wrapper_go.as_mut(), "KvmRunWrapper not initialized");
                 kvm_exit = try_with!(
                     wrapper_g.wait_for_ioctl(),
                     "failed to wait for vmm exit_mmio"
