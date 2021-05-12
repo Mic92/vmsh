@@ -58,3 +58,11 @@ def test_virtio_device_space(helpers: conftest.Helpers) -> None:
                 )
                 > 0
             )
+
+            try:
+                vmsh.wait(timeout=20)
+            except Exception:
+                # vmsh did not crash unexpectedly within timeout. This is good.
+                ()
+            else:
+                assert 0 == "Vmsh did crash unexpectedly. This is bad."
