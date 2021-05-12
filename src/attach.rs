@@ -4,6 +4,7 @@ use event_manager::EventManager;
 use event_manager::MutEventSubscriber;
 use log::*;
 use nix::unistd::Pid;
+use simple_error::bail;
 use simple_error::{require_with, try_with};
 use std::io::Write;
 use std::path::PathBuf;
@@ -68,10 +69,48 @@ impl DeviceReady {
 
 const STAGE1_EXE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/stage1.ko"));
 
+struct Stage1 {
+    ssh_args: Vec<String>,
+}
+
+fn cleanup_stage1(ssh_args: &[String]) -> Result<()> {
+    let mut proc = ssh_command(ssh_args, |cmd| cmd.arg(r#"rmmod stage1.ko"#))?;
+    let status = try_with!(proc.wait(), "failed to wait for ssh");
+    if !status.success() {
+        match status.code() {
+            Some(code) => bail!("ssh exited with status code: {}", code),
+            None => bail!("ssh terminated by signal"),
+        }
+    }
+    Ok(())
+}
+
+impl Drop for Stage1 {
+    fn drop(&mut self) {
+        debug!("start stage1 cleanup");
+        if let Err(e) = cleanup_stage1(&self.ssh_args) {
+            warn!("could not cleanup stage1: {}", e);
+        }
+    }
+}
+
+fn ssh_command<F>(ssh_args: &[String], mut configure: F) -> Result<std::process::Child>
+where
+    F: FnMut(&mut Command) -> &mut Command,
+{
+    let mut cmd = Command::new("ssh");
+    let cmd_ref = cmd
+        .arg("-oStrictHostKeyChecking=no")
+        .arg("-oUserKnownHostsFile=/dev/null")
+        .args(ssh_args);
+    let configured = configure(cmd_ref);
+    Ok(try_with!(configured.spawn(), "ssh command failed"))
+}
+
 fn spawn_stage1(
     ssh_args: &[String],
     device_ready: &Arc<DeviceReady>,
-) -> Result<JoinHandle<Result<()>>> {
+) -> Result<JoinHandle<Result<Stage1>>> {
     let builder = thread::Builder::new()
         .name(String::from("stage1"))
         .stack_size(DEFAULT_THREAD_STACKSIZE);
@@ -83,38 +122,34 @@ fn spawn_stage1(
         builder.spawn(move || {
             // wait until vmsh can process block device requests
             device_ready.wait()?;
-            let mut child = try_with!(
-                Command::new("ssh")
-                    .stdin(Stdio::piped())
-                    .arg("-oStrictHostKeyChecking=no")
-                    .arg("-oUserKnownHostsFile=/dev/null")
-                    .args(ssh_args)
-                    .arg("--")
-                    .arg("sh")
-                    .arg("-c")
-                    .arg(
-                        r#"
+            let mut child = ssh_command(&ssh_args, |cmd| {
+                cmd.stdin(Stdio::piped()).arg("--").arg("sh").arg("-c").arg(
+                    r#"
 set -eux -o pipefail
 tmpdir=$(mktemp -d)
 trap "rm -rf '$tmpdir'" EXIT
 cat > "$tmpdir/stage1.ko"
 insmod "$tmpdir/stage1.ko"
-"#
-                    )
-                    .spawn(),
-                "ssh command failed"
-            );
+"#,
+                )
+            })?;
 
-            {
-                let mut stdin = require_with!(child.stdin.take(), "Failed to open stdin");
-                try_with!(stdin.write_all(STAGE1_EXE), "Failed to write to stdin");
+            let mut stdin = require_with!(child.stdin.take(), "Failed to open stdin");
+            try_with!(stdin.write_all(STAGE1_EXE), "Failed to write to stdin");
+            // close stdin so that cat no-longer blocks
+            drop(stdin);
+
+            let status = try_with!(child.wait(), "Failed to load stage1 kernel driver");
+            if !status.success() {
+                match status.code() {
+                    Some(code) => bail!("ssh exited with status code: {}", code),
+                    None => bail!("ssh terminated by signal"),
+                }
             }
 
             info!("block device driver started");
 
-            try_with!(child.wait(), "Failed to load stage1 kernel driver");
-
-            Ok(())
+            Ok(Stage1 { ssh_args })
         }),
         "failed to create stage1 thread"
     ))
@@ -145,13 +180,14 @@ pub fn attach(opts: &AttachOptions) -> Result<()> {
 
     let device_ready = Arc::new(DeviceReady::new());
 
-    try_with!(spawn_stage1(&opts.ssh_args, &device_ready), "stage1 failed");
+    let stage1 = try_with!(spawn_stage1(&opts.ssh_args, &device_ready), "stage1 failed");
 
     // run guest until driver has inited
     try_with!(
         run_kvm_wrapped(&vm, &device, &device_ready),
         "device init stage with KvmRunWrapper failed"
     );
+    drop(stage1);
 
     info!("blkdev queue ready.");
     vm.resume()?;
