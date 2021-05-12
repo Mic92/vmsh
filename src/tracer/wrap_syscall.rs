@@ -276,12 +276,12 @@ impl KvmRunWrapper {
     pub fn wait_for_ioctl(&mut self) -> Result<Option<MmioRw>> {
         for thread in &mut self.threads {
             if !thread.is_running {
-                thread.ptthread.syscall()?;
+                try_with!(thread.ptthread.syscall(), "ptrace.thread.syscall() failed");
                 thread.is_running = true;
             }
         }
-        let status = self.waitpid()?;
-        let mmio = self.process_status(status)?;
+        let status = try_with!(self.waitpid(), "cannot waitpid");
+        let mmio = try_with!(self.process_status(status), "cannot process status");
 
         Ok(mmio)
     }
@@ -322,12 +322,30 @@ impl KvmRunWrapper {
             WaitStatus::Stopped(pid, signal) => {
                 return self.stopped(pid, &signal);
             }
-            WaitStatus::Exited(_, status) => bail!("process exited with: {}", status),
+            WaitStatus::Exited(tid, status) => {
+                warn!("thread {} exited with: {}", tid, status);
+                self.drop_thread(tid);
+                return Ok(None);
+            }
             WaitStatus::Signaled(_, signal, _) => {
                 bail!("process was stopped by signal: {}", signal)
             }
         }
         Ok(None)
+    }
+
+    fn drop_thread(&mut self, tid: Pid) {
+        let idx = self
+            .threads
+            .iter()
+            .position(|t| t.ptthread.tid == tid)
+            .expect("the programmer must not drop threads which are not present");
+        // remove and shift others to left
+        self.threads.remove(idx);
+        // shift idx if it was shifted
+        if idx < self.process_idx {
+            self.process_idx -= 1;
+        }
     }
 
     fn stopped(&mut self, pid: Pid, _signal: &Signal) -> Result<Option<MmioRw>> {
