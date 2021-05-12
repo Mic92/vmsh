@@ -1,17 +1,29 @@
 import conftest
 
+from root import PROJECT_ROOT
+
 
 def test_virtio_device_space(helpers: conftest.Helpers) -> None:
     with helpers.spawn_qemu(helpers.notos_image()) as vm:
         vm.wait_for_ssh()
         print("ssh available")
         vmsh = helpers.spawn_vmsh_command(
-            ["attach", str(vm.pid), "--", "-p", str(vm.ssh_port), "127.0.0.1"]
+            [
+                "attach",
+                str(vm.pid),
+                "--",
+                "-i",
+                str(PROJECT_ROOT.joinpath("nix", "ssh_key")),
+                "-p",
+                str(vm.ssh_port),
+                "root@127.0.0.1",
+            ]
         )
 
         with vmsh:
             vmsh.wait_until_line(
-                "mmio dev attached", lambda l: "mmio dev attached" in l
+                "block device driver started",
+                lambda l: "block device driver started" in l,
             )
 
             res = vm.ssh_cmd(["dmesg"])
