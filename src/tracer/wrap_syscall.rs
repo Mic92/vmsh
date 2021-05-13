@@ -339,7 +339,12 @@ impl KvmRunWrapper {
             .threads
             .iter()
             .position(|t| t.ptthread.tid == tid)
-            .expect("the programmer must not drop threads which are not present");
+            .unwrap_or_else(|| {
+                panic!(
+                    "BUG! must not drop threads which are not present (tid={})",
+                    tid
+                )
+            });
         // remove and shift others to left
         self.threads.remove(idx);
         // shift idx if it was shifted
