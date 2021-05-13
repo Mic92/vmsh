@@ -36,5 +36,5 @@ vm-memory = { version = "0.5.0", features = ["backend-mmap"] }
 log = "0.4.6"
 
 [patch.crates-io]
-vm-memory = { git = "https://github.com/pogobanane/vm-memory.git", rev = "d4885a850386c630f4cb254645791a1e3d3a8d90", features = ["backend-mmap"] }
+vm-memory = { git = "https://github.com/pogobanane/vm-memory.git", rev = "ecf1d8e0fd765759559c586d83760dfaf9812a8c", features = ["backend-mmap"] }
 # vm-memory = { path = "../vm-memory", features = ["backend-mmap"] }
