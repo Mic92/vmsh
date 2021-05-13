@@ -6,6 +6,7 @@ import re
 import socket
 import subprocess
 import time
+import functools
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -14,15 +15,42 @@ from shlex import quote
 from tempfile import TemporaryDirectory
 from typing import Any, Dict, Iterator, List, Optional
 
-from root import TEST_ROOT
+from root import TEST_ROOT, PROJECT_ROOT
 
 
 @dataclass
 class VmImage:
     kernel: Path
+    ## kernel headers & buildsystem
+    kerneldir: Path
     squashfs: Path
     initial_ramdisk: Path
     kernel_params: List[str]
+
+
+@functools.lru_cache(maxsize=None)
+def nix_build(what: str) -> Any:
+    result = subprocess.run(
+        ["nix", "build", "--json", what],
+        text=True,
+        stdout=subprocess.PIPE,
+        check=True,
+        cwd=PROJECT_ROOT,
+    )
+    return json.loads(result.stdout)
+
+
+def notos_image() -> VmImage:
+    data = nix_build(".#not-os-image.json")
+    with open(data[0]["outputs"]["out"]) as f:
+        data = json.load(f)
+        return VmImage(
+            kernel=Path(data["kernel"]),
+            kerneldir=Path(data["kerneldir"]),
+            squashfs=Path(data["squashfs"]),
+            initial_ramdisk=Path(data["initialRamdisk"]),
+            kernel_params=data["kernelParams"],
+        )
 
 
 class QmpSession:
@@ -212,7 +240,12 @@ class QemuVm:
         return self.qmp_session.send(cmd, args)
 
 
-def qemu_command(image: VmImage, qmp_socket: Path) -> List:
+def qemu_command(image: VmImage, qmp_socket: Path, ssh_port: int = 0) -> List:
+    """
+    @image VM image to boot
+    @qmp_socket unixsocket path of the QEMU qmp control socket
+    @ssh_port host port bound to vm guest port (0 means dynamic port)
+    """
     params = " ".join(image.kernel_params)
     return [
         "qemu-kvm",
@@ -230,7 +263,7 @@ def qemu_command(image: VmImage, qmp_socket: Path) -> List:
         "-append",
         f"console=ttyS0 {params} quiet panic=-1",
         "-netdev",
-        "user,id=n1,hostfwd=tcp:127.0.0.1:0-:22",
+        f"user,id=n1,hostfwd=tcp:127.0.0.1:{ssh_port}-:22",
         "-device",
         "virtio-net-pci,netdev=n1",
         "-qmp",

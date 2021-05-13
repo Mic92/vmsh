@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 import contextlib
-import json
 import os
 import subprocess
 import sys
@@ -13,7 +12,7 @@ from shlex import quote
 from typing import Any, Iterator, List, Type, Union, Callable
 
 import pytest
-from qemu import QemuVm, VmImage, spawn_qemu
+from qemu import QemuVm, VmImage, spawn_qemu, notos_image
 from root import PROJECT_ROOT, TEST_ROOT
 
 sys.path.append(str(TEST_ROOT.parent))
@@ -22,26 +21,13 @@ build_artifacts = Path("/dev/null")  # folder with cargo-built executables
 
 
 def cargo_build() -> Path:
-    subprocess.run(["cargo", "build"], cwd=PROJECT_ROOT)
-    subprocess.run(["cargo", "build", "--examples"], cwd=PROJECT_ROOT)
-    return PROJECT_ROOT.joinpath("target", "debug")
-
-
-def rootfs_image(image: Path) -> VmImage:
-    result = subprocess.run(
-        ["nix-build", str(image), "-A", "json"],
-        text=True,
-        stdout=subprocess.PIPE,
-        check=True,
+    env = os.environ.copy()
+    env["KERNELDIR"] = str(notos_image().kerneldir)
+    subprocess.run(["cargo", "build"], cwd=PROJECT_ROOT, env=env, check=True)
+    subprocess.run(
+        ["cargo", "build", "--examples"], cwd=PROJECT_ROOT, env=env, check=True
     )
-    with open(result.stdout.strip("\n")) as f:
-        data = json.load(f)
-        return VmImage(
-            kernel=Path(data["kernel"]),
-            squashfs=Path(data["squashfs"]),
-            initial_ramdisk=Path(data["initialRamdisk"]),
-            kernel_params=data["kernelParams"],
-        )
+    return PROJECT_ROOT.joinpath("target", "debug")
 
 
 @contextmanager
@@ -155,7 +141,7 @@ class Helpers:
 
     @staticmethod
     def notos_image() -> VmImage:
-        return rootfs_image(TEST_ROOT.joinpath("../nix/not-os-image.nix"))
+        return notos_image()
 
     @staticmethod
     def spawn_vmsh_command(

@@ -6,14 +6,16 @@
 linux_dir := invocation_directory() + "/../linux"
 linux_rev := "v5.11"
 
-kernel_fhs := `nix-build --no-out-link nix/kernel-fhs.nix` + "/bin/linux-kernel-build"
+kernel_fhs := `nix build --json '.#kernel-fhs' | jq -r '.[] | .outputs | .out'` + "/bin/linux-kernel-build"
 
-qemu_pid := `pgrep -u $USER qemu-system | awk '{print $1}'`
+qemu_pid := `pgrep -u $(id -u) qemu-system | awk '{print $1}'`
 qemu_ssh_port := "2222"
 
+# Interactively select a task from just file
 default:
   @just --choose
 
+# Linux python and rust code
 lint:
   flake8 tests
   black --check tests
@@ -21,20 +23,28 @@ lint:
   cargo clippy
   cargo fmt -- --check
 
+# Format python and rust code
 fmt:
   isort tests
   black tests
   cargo fmt
 
+# Continously run clippy checks whenever the source changes
+watch:
+  cargo watch -x clippy
+
+# Run unit and integration tests
 test:
   cargo test
   pytest -n $(nproc --ignore=2) -s tests
 
+# Git clone linux kernel
 clone-linux:
   [[ -d {{linux_dir}} ]] || \
     git clone https://github.com/torvalds/linux {{linux_dir}}
   git -C {{linux_dir}} checkout {{linux_rev}}
 
+# Configure linux kernel build
 configure-linux: clone-linux
   #!/usr/bin/env bash
   set -euxo pipefail
@@ -50,29 +60,35 @@ configure-linux: clone-linux
     {{kernel_fhs}} "scripts/config --set-val BPF_SYSCALL y"
     {{kernel_fhs}} "scripts/config --set-val IKHEADERS y"
     {{kernel_fhs}} "scripts/config --set-val VIRTIO_MMIO m"
-    {{kernel_fhs}} "scripts/config --set-val VIRTIO_MMIO_CMDLINE_DEVICES y"
     {{kernel_fhs}} "scripts/config --set-val PTDUMP_CORE y"
     {{kernel_fhs}} "scripts/config --set-val PTDUMP_DEBUGFS y"
   fi
 
+# Sign drone ci configuration
 sign-drone:
   DRONE_SERVER=https://drone.thalheim.io \
   DRONE_TOKEN=$(cat $HOME/.secret/drone-token) \
     nix-shell -p drone-cli --run 'drone sign Mic92/vmsh --save'
 
+# Linux kernel development shell
 build-linux-shell:
-  nix-shell {{invocation_directory()}}/nix/kernel-fhs-shell.nix
+  nix develop '.#kernel-fhs-shell'
 
+# Build linux kernel
 build-linux: configure-linux
   {{kernel_fhs}} "yes \n | make -C {{linux_dir}} -j$(nproc)"
 
+# Build kernel-less disk image for NixOS
 nixos-image:
   [[ {{linux_dir}}/nixos.qcow2 -nt nix/nixos-image.nix ]] || \
-  [[ {{linux_dir}}/nixos.qcow2 -nt nix/sources.json ]] || \
-  install -m600 "$(nix-build --no-out-link nix/nixos-image.nix)/nixos.qcow2" {{linux_dir}}/nixos.qcow2
+  [[ {{linux_dir}}/nixos.qcow2 -nt flake.lock ]] || \
+  (nix build .#nixos-image --out-link nixos-image && \
+  install -m600 "nixos-image/nixos.qcow2" {{linux_dir}}/nixos.qcow2)
 
+# Build kernel/disk image for not os
 notos-image:
-  nix-build nix/not-os-image.nix -A json
+  nix build '.#not-os-image.json'
+  jq < result
 
 # built image for qemu_nested.sh
 nested-nixos-image: nixos-image
@@ -92,6 +108,16 @@ qemu EXTRA_CMDLINE="nokalsr": build-linux nixos-image
     -virtfs local,path={{linux_dir}},security_model=none,mount_tag=linux \
     -nographic -enable-kvm \
 
+# run qemu with filesystem/kernel from notos (same as in tests)
+qemu-notos:
+  #!/usr/bin/env python3
+  import sys, os, subprocess
+  sys.path.insert(0, os.path.join("{{invocation_directory()}}", "tests"))
+  from qemu import notos_image, qemu_command
+  cmd = qemu_command(notos_image(), "qmp.sock", ssh_port={{qemu_ssh_port}})
+  print(" ".join(cmd))
+  subprocess.run(cmd)
+
 # SSH into vm started by `just qemu`
 ssh-qemu $COMMAND="":
   ssh -i {{invocation_directory()}}/nix/ssh_key \
@@ -100,6 +126,7 @@ ssh-qemu $COMMAND="":
       root@localhost \
       -p {{qemu_ssh_port}} "$COMMAND"
 
+# Start qemu in qemu based on nixos image
 nested-qemu: nested-nixos-image
   just ssh-qemu qemu-nested
 
@@ -113,15 +140,23 @@ build-debug-kernel-mod:
 load-debug-kernel-mod: build-debug-kernel-mod
   just ssh-qemu "rmmod debug-kernel-mod; insmod /mnt/vmsh/tests/debug-kernel-mod/debug-kernel-mod.ko && dmesg"
 
+# Attach block device to first qemu vm found by pidof and owned by our own user
+attach-qemu:
+  cargo run -- attach "{{qemu_pid}}" -- -i nix/ssh_key -p "{{qemu_ssh_port}}" "root@localhost"
+
+# Inspect first qemu vm found by pidof and owned by our own user
 inspect-qemu:
   cargo run -- inspect "{{qemu_pid}}"
 
+# Generate a core dump of the first qemu vm found by pidof and owned by our own user
 coredump-qemu:
   cargo run -- coredump "{{qemu_pid}}"
 
+# Generate a core dump of the first qemu vm found by pidof and owned by our own user
 trace-qemu:
   perf trace -p "{{qemu_pid}}"
 
+# Start subshell with capabilities/permissions suitable for vmsh
 capsh:
   @ if [ -n "${IN_CAPSH:-}" ]; then \
     echo "you are already in a capsh session"; exit 1; \
@@ -141,4 +176,4 @@ capsh:
       --addamb=cap_sys_resource \
       --addamb=cap_sys_admin \
       --addamb=cap_sys_ptrace \
-      -- -c 'direnv exec "$0" "$1"' . "$SHELL"
+      -- -c 'export USER=$(id -un); direnv exec "$0" "$1"' . "$SHELL"

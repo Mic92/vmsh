@@ -1,7 +1,4 @@
-# $ nix-build minimal-vm.nix
-# $ install -m600 ./result/nixos.qcow2 ../../linux/nixos.qcow2
-# $ ./run-vm.sh
-{ pkgs ? (import (import ../nix/sources.nix).nixpkgs { }) }:
+{ pkgs }:
 
 let
   keys = map (key: "${builtins.getEnv "HOME"}/.ssh/${key}")

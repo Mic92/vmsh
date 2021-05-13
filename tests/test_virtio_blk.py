@@ -1,41 +1,30 @@
 import conftest
 
-
-def test_loading_virtio_mmio(helpers: conftest.Helpers) -> None:
-    with helpers.spawn_qemu(helpers.notos_image()) as vm:
-        vm.wait_for_ssh()
-        print("ssh available")
-        res = vm.ssh_cmd(
-            ["insmod", "/run/current-system/sw/lib/modules/virtio/virtio_mmio.ko"]
-        )
-        assert res.returncode == 0
-        # assert that virtio_mmio is now loaded
-        res = vm.ssh_cmd(["lsmod"])
-        assert res.stdout
-        assert res.stdout.find("virtio_mmio") >= 0
+from root import PROJECT_ROOT
 
 
 def test_virtio_device_space(helpers: conftest.Helpers) -> None:
     with helpers.spawn_qemu(helpers.notos_image()) as vm:
         vm.wait_for_ssh()
         print("ssh available")
-        vmsh = helpers.spawn_vmsh_command(["attach", str(vm.pid)])
+        vmsh = helpers.spawn_vmsh_command(
+            [
+                "attach",
+                str(vm.pid),
+                "--",
+                "-i",
+                str(PROJECT_ROOT.joinpath("nix", "ssh_key")),
+                "-p",
+                str(vm.ssh_port),
+                "root@127.0.0.1",
+            ]
+        )
 
         with vmsh:
             vmsh.wait_until_line(
-                "mmio dev attached", lambda l: "mmio dev attached" in l
+                "block device driver started",
+                lambda l: "block device driver started" in l,
             )
-
-            mmio_config = "0x1000@0xd0000000:5"
-            res = vm.ssh_cmd(
-                [
-                    "insmod",
-                    "/run/current-system/sw/lib/modules/virtio/virtio_mmio.ko",
-                    f"device={mmio_config}",
-                ]
-            )
-            print("stdout:\n", res.stdout)
-            print("stderr:\n", res.stderr)
 
             res = vm.ssh_cmd(["dmesg"])
             print("stdout:\n", res.stdout)

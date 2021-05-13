@@ -2,8 +2,8 @@ use log::*;
 use std::path::PathBuf;
 
 use clap::{
-    crate_authors, crate_version, value_t, value_t_or_exit, App, AppSettings, Arg, ArgMatches,
-    SubCommand,
+    crate_authors, crate_version, value_t, value_t_or_exit, values_t_or_exit, App, AppSettings,
+    Arg, ArgMatches, SubCommand,
 };
 use nix::unistd::Pid;
 
@@ -16,6 +16,14 @@ fn pid_arg(index: u64) -> Arg<'static, 'static> {
     Arg::with_name("pid")
         .help("Pid of the hypervisor we get the information from")
         .required(true)
+        .index(index)
+}
+
+fn ssh_args(index: u64) -> Arg<'static, 'static> {
+    Arg::with_name("ssh_args")
+        .help("arguments passed to ssh")
+        .required(true)
+        .multiple(true)
         .index(index)
 }
 
@@ -37,6 +45,7 @@ fn inspect(args: &ArgMatches) {
 fn attach(args: &ArgMatches) {
     let opts = AttachOptions {
         pid: parse_pid_arg(&args),
+        ssh_args: values_t_or_exit!(args, "ssh_args", String),
         backing: PathBuf::from(value_t!(args, "backing-file", String).unwrap_or_else(|e| e.exit())),
     };
 
@@ -87,6 +96,7 @@ fn main() {
         .version(crate_version!())
         .author(crate_authors!("\n"))
         .arg(pid_arg(1))
+        .arg(ssh_args(2))
         .arg(
             Arg::with_name("backing-file")
                 .short("f")

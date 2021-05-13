@@ -1,13 +1,7 @@
-{ pkgs ? (import (import ../nix/sources.nix).nixpkgs { })
-, not-os ? (import ../nix/sources.nix).not-os
-}:
+{ pkgs, not-os }:
 let
   inherit (pkgs) stdenv lib;
   inherit (pkgs.pkgsMusl.hostPlatform) system parsed;
-
-  virtio_mmio = pkgs.callPackage ./virtio_mmio.nix {
-    inherit (config.system.build) kernel;
-  };
 
   useMusl = false;
 
@@ -23,7 +17,6 @@ let
         pkgs.gnugrep
         pkgs.kmod
         pkgs.devmem2
-        virtio_mmio
       ];
       environment.pathsToLink = [ "/lib/modules" ];
 
@@ -39,12 +32,12 @@ let
         echo 'nixos' > /proc/sys/kernel/hostname
         ip addr add 127.0.0.1/8 dev lo
         ip addr add ::1/128 dev lo
-        ip link dev lo up
+        ip link set dev lo up
         ip addr add 10.0.2.15/24 dev eth0
       '';
 
       boot.initrd.availableKernelModules = [ "virtio_console" "virtio_mmio" ];
-      # to activate at boot time: boot.initrd.kernelModules = [ "virtio_mmio" ];
+      boot.initrd.kernelModules = [ "virtio_mmio" ];
 
       environment.etc = {
         "hosts".text = ''
@@ -77,10 +70,14 @@ let
       '';
     };
   }).config;
+  inherit (config.system.build) kernel;
+  kerneldir = "${kernel.dev}/lib/modules/${kernel.modDirVersion}/build";
 in
 {
   inherit (config.system.build) runvm kernel squashfs initialRamdisk kernelParams;
+  inherit kerneldir;
   json = pkgs.writeText "not-os.json" (builtins.toJSON {
+    inherit kerneldir;
     inherit (config.system.build) kernel squashfs initialRamdisk;
     inherit (config.boot) kernelParams;
   });
