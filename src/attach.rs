@@ -3,6 +3,7 @@ use crate::result::Result;
 use event_manager::EventManager;
 use event_manager::MutEventSubscriber;
 use log::*;
+use nix::sys::wait::{waitpid, WaitStatus};
 use nix::unistd::Pid;
 use simple_error::bail;
 use simple_error::{require_with, try_with};
@@ -107,6 +108,51 @@ where
     Ok(try_with!(configured.spawn(), "ssh command failed"))
 }
 
+fn stage1_thread(ssh_args: Vec<String>) -> Result<Stage1> {
+    let mut child = ssh_command(&ssh_args, |cmd| {
+        cmd.stdin(Stdio::piped()).arg(
+            r#"
+set -xeu -o pipefail
+tmpdir=$(mktemp -d)
+trap "rm -rf '$tmpdir'" EXIT
+cat > "$tmpdir/stage1.ko"
+insmod "$tmpdir/stage1.ko"
+while ! dmesg | grep -q "virt-blk driver set up"; do
+  sleep 1
+done
+"#,
+        )
+    })?;
+
+    let mut stdin = require_with!(child.stdin.take(), "Failed to open stdin");
+    try_with!(stdin.write_all(STAGE1_EXE), "Failed to write to stdin");
+    drop(stdin);
+
+    info!("wait for ssh to complete");
+    // somehow some other process steals our waitresult sometimes..., Let's
+    match waitpid(Some(nix::unistd::Pid::from_raw(child.id() as i32)), None) {
+        Ok(status) => match status {
+            WaitStatus::Exited(_, status) => {
+                if status != 0 {
+                    bail!("ssh command failed: {}", status);
+                }
+            }
+            _ => {
+                bail!("unexpected wait result: {:?}", status);
+            }
+        },
+        Err(e) => {
+            // we could fix this bug... however eventually we get rid of the ssh
+            // stuff anyway so don't care
+            warn!("a different thread stole our wait result: {}", e);
+        }
+    }
+
+    info!("block device driver started");
+
+    Ok(Stage1 { ssh_args })
+}
+
 fn spawn_stage1(
     ssh_args: &[String],
     device_ready: &Arc<DeviceReady>,
@@ -122,34 +168,11 @@ fn spawn_stage1(
         builder.spawn(move || {
             // wait until vmsh can process block device requests
             device_ready.wait()?;
-            let mut child = ssh_command(&ssh_args, |cmd| {
-                cmd.stdin(Stdio::piped()).arg("--").arg("sh").arg("-c").arg(
-                    r#"
-set -eux -o pipefail
-tmpdir=$(mktemp -d)
-trap "rm -rf '$tmpdir'" EXIT
-cat > "$tmpdir/stage1.ko"
-insmod "$tmpdir/stage1.ko"
-"#,
-                )
-            })?;
-
-            let mut stdin = require_with!(child.stdin.take(), "Failed to open stdin");
-            try_with!(stdin.write_all(STAGE1_EXE), "Failed to write to stdin");
-            // close stdin so that cat no-longer blocks
-            drop(stdin);
-
-            let status = try_with!(child.wait(), "Failed to load stage1 kernel driver");
-            if !status.success() {
-                match status.code() {
-                    Some(code) => bail!("ssh exited with status code: {}", code),
-                    None => bail!("ssh terminated by signal"),
-                }
+            let res = stage1_thread(ssh_args);
+            if let Err(e) = &res {
+                warn!("stage1 failed: {}", e);
             }
-
-            info!("block device driver started");
-
-            Ok(Stage1 { ssh_args })
+            res
         }),
         "failed to create stage1 thread"
     ))
