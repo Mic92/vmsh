@@ -172,8 +172,10 @@ pub fn attach_all_threads(pid: Pid) -> Result<(Vec<Thread>, usize)> {
 
 impl Drop for Thread {
     fn drop(&mut self) {
-        if let Err(e) = ptrace::detach(self.tid, None) {
-            log::warn!("Cannot ptrace::detach from {}: {}", self.tid, e);
-        }
+        match ptrace::detach(self.tid, None) {
+            // ESRCH == thread already terminated
+            Ok(()) | Err(nix::Error::Sys(nix::errno::Errno::ESRCH)) => {}
+            Err(e) => log::warn!("Cannot ptrace::detach from {}: {}", self.tid, e),
+        };
     }
 }

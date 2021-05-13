@@ -53,6 +53,7 @@ where
         log::trace!("process_chain");
         match Request::parse(&mut chain) {
             Ok(request) => {
+                log::trace!("request: {:?}", request);
                 let status = match self.disk.execute(chain.memory(), &request) {
                     Ok(l) => {
                         // TODO: Using `saturating_add` until we consume the recent changes
@@ -91,6 +92,7 @@ where
             self.driver_notify.signal_used_queue(0);
         }
 
+        log::trace!("process_chain done");
         Ok(())
     }
 

@@ -86,6 +86,7 @@ pub struct SingleFdSignalQueue {
 
 impl SignalUsedQueue for SingleFdSignalQueue {
     fn signal_used_queue(&self, _index: u16) {
+        log::debug!("irqfd << {}", _index);
         self.interrupt_status
             .fetch_or(VIRTIO_MMIO_INT_VRING, Ordering::SeqCst);
         if let Err(e) = self.irqfd.write(1) {
