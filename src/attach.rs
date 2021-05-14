@@ -112,7 +112,7 @@ fn stage1_thread(ssh_args: Vec<String>) -> Result<Stage1> {
     let mut child = ssh_command(&ssh_args, |cmd| {
         cmd.stdin(Stdio::piped()).arg(
             r#"
-set -xeu -o pipefail
+set -eu -o pipefail
 tmpdir=$(mktemp -d)
 trap "rm -rf '$tmpdir'" EXIT
 cat > "$tmpdir/stage1.ko"
