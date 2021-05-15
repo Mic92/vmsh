@@ -1,7 +1,7 @@
 use kvm_bindings as kvmb;
 use libc::{c_int, c_ulong, c_void};
 use nix::unistd::Pid;
-use simple_error::{bail, simple_error, try_with};
+use simple_error::{bail, try_with};
 use std::os::unix::prelude::RawFd;
 use std::ptr;
 
@@ -66,7 +66,7 @@ impl Tracee {
             );
         }
         if self.proc.is_some() {
-            bail!("cannot attatch tracee because it is already attach to something else");
+            bail!("cannot attach tracee because it is already attach to something else");
         }
 
         self.proc = Some(injector);
@@ -79,7 +79,7 @@ impl Tracee {
 
     pub fn try_get_proc(&self) -> Result<&Injectee> {
         match &self.proc {
-            None => Err(simple_error!("Programming error: Tracee is not attached.")),
+            None => bail!("programming error: tracee is not attached."),
             Some(proc) => Ok(&proc),
         }
     }
