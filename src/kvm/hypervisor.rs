@@ -32,7 +32,7 @@ pub fn process_write<T: Sized + Copy>(pid: Pid, addr: *mut c_void, val: &T) -> R
 
 /// Hypervisor Memory
 pub struct HvMem<T: Copy> {
-    pub ptr: *mut c_void,
+    pub ptr: libc::uintptr_t,
     pid: Pid,
     tracee: Arc<RwLock<Tracee>>,
     phantom: PhantomData<T>,
@@ -47,7 +47,7 @@ impl<T: Copy> Drop for HvMem<T> {
             }
             Ok(t) => t,
         };
-        if let Err(e) = tracee.munmap(self.ptr, size_of::<T>()) {
+        if let Err(e) = tracee.munmap(self.ptr as *mut c_void, size_of::<T>()) {
             warn!("failed to unmap memory from process: {}", e);
         }
     }
@@ -55,10 +55,10 @@ impl<T: Copy> Drop for HvMem<T> {
 
 impl<T: Copy> HvMem<T> {
     pub fn read(&self) -> Result<T> {
-        process_read(self.pid, self.ptr)
+        process_read(self.pid, self.ptr as *mut c_void)
     }
     pub fn write(&self, val: &T) -> Result<()> {
-        process_write(self.pid, self.ptr, val)
+        process_write(self.pid, self.ptr as *mut c_void, val)
     }
 }
 
@@ -131,6 +131,16 @@ pub struct Hypervisor {
 impl Hypervisor {
     fn attach(pid: Pid, vm_fd: RawFd) -> Tracee {
         Tracee::new(pid, vm_fd, None)
+    }
+
+    /// Must be called from the thread that created Hypervisor before using it in a different thread
+    pub fn prepare_thread_transfer(&self) -> Result<()> {
+        try_with!(self.tracee.write(), "cannot take write lock").disown()
+    }
+
+    /// Must be called from the new thread that wants to use Hypervisor.
+    pub fn finish_thread_transfer(&self) -> Result<()> {
+        try_with!(self.tracee.write(), "cannot take write lock").adopt()
     }
 
     pub fn resume(&self) -> Result<()> {
@@ -292,7 +302,7 @@ impl Hypervisor {
         // `size_of::<T> <= size` bytes.
         let ptr = tracee.mmap(size)?;
         Ok(HvMem {
-            ptr,
+            ptr: ptr as libc::uintptr_t,
             pid: self.pid,
             tracee: self.tracee.clone(),
             phantom: PhantomData,

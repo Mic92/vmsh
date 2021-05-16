@@ -43,6 +43,18 @@ impl Tracee {
         Tracee { pid, vm_fd, proc }
     }
 
+    /// see Process#adopt
+    pub fn adopt(&mut self) -> Result<()> {
+        let proc = self.try_get_proc_mut()?;
+        proc.adopt()
+    }
+
+    /// see Process#disown
+    pub fn disown(&mut self) -> Result<()> {
+        let proc = self.try_get_proc_mut()?;
+        proc.disown()
+    }
+
     /// Attach to pid. The target `proc` will be stopped until `Self.detach` or the end of the
     /// lifetime of self.
     pub fn attach(&mut self) -> Result<()> {
@@ -81,6 +93,13 @@ impl Tracee {
         match &self.proc {
             None => bail!("programming error: tracee is not attached."),
             Some(proc) => Ok(&proc),
+        }
+    }
+
+    fn try_get_proc_mut(&mut self) -> Result<&mut Injectee> {
+        match &mut self.proc {
+            None => bail!("programming error: tracee is not attached."),
+            Some(proc) => Ok(proc),
         }
     }
 

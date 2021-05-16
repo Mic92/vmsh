@@ -1,8 +1,9 @@
 pub mod mmio;
+mod threads;
 mod virtio;
 
-use crate::attach::SubscriberEventManager;
 use crate::device::mmio::{IoPirate, MmioDeviceSpace};
+use crate::device::threads::SubscriberEventManager;
 use crate::device::virtio::block::{self, BlockArgs};
 use crate::device::virtio::{CommonArgs, MmioConfig};
 use crate::kvm::hypervisor::{Hypervisor, VmMem};
@@ -20,6 +21,8 @@ use vm_memory::guest_memory::GuestAddress;
 use vm_memory::mmap::MmapRegion;
 use vm_memory::GuestMemoryRegion;
 use vm_memory::{GuestMemoryMmap, GuestRegionMmap};
+
+pub use crate::device::threads::create_block_device;
 
 // Where BIOS/VGA magic would live on a real PC.
 #[allow(dead_code)] // FIXME
