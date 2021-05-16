@@ -13,6 +13,7 @@ use crate::result::Result;
 use crate::tracer::proc;
 use crate::tracer::ptrace_syscall_info::{get_syscall_info, SyscallInfo};
 
+#[derive(Debug)]
 pub struct Thread {
     pub tid: Pid,
 }
@@ -79,6 +80,14 @@ impl Thread {
         ))
     }
 
+    pub fn detach(&self) -> Result<()> {
+        try_with!(
+            ptrace::detach(self.tid, None),
+            "cannot detach process from ptrace"
+        );
+        Ok(())
+    }
+
     pub fn interrupt(&self) -> Result<()> {
         try_with!(
             interrupt(self.tid),
@@ -130,7 +139,7 @@ impl Thread {
     }
 }
 
-pub fn attach_seize(tid: Pid) -> Result<Thread> {
+pub fn attach_seize(tid: Pid) -> Result<()> {
     // seize seems to be more modern and versatile than `ptrace::attach()`: continue, stop and
     // detach from tracees at (almost) any time
     try_with!(
@@ -138,7 +147,10 @@ pub fn attach_seize(tid: Pid) -> Result<Thread> {
         "cannot seize the process"
     );
     try_with!(interrupt(tid), "cannot interrupt/stop the tracee");
-    Ok(Thread { tid })
+
+    try_with!(waitpid(tid, Some(WaitPidFlag::WSTOPPED)), "waitpid failed");
+
+    Ok(())
 }
 
 pub fn attach_all_threads(pid: Pid) -> Result<(Vec<Thread>, usize)> {
@@ -161,9 +173,7 @@ pub fn attach_all_threads(pid: Pid) -> Result<(Vec<Thread>, usize)> {
             if tid == pid {
                 process_idx = i;
             }
-            let thread = attach_seize(tid);
-            try_with!(waitpid(tid, Some(WaitPidFlag::WSTOPPED)), "waitpid failed");
-            thread
+            attach_seize(tid).map(|_| Thread { tid })
         })
         .collect::<Result<Vec<_>>>()?;
 

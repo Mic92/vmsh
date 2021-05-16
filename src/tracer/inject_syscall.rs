@@ -3,15 +3,15 @@ use libc::{SYS_getpid, SYS_ioctl, SYS_mmap};
 use nix::sys::signal::Signal;
 use nix::sys::wait::{waitpid, WaitStatus};
 use nix::unistd::Pid;
-use simple_error::bail;
-use simple_error::try_with;
+use simple_error::{bail, try_with};
 use std::os::unix::prelude::RawFd;
+use std::thread::{current, ThreadId};
 
+use super::ptrace::attach_seize;
 use crate::cpu::{self, Regs};
 use crate::result::Result;
 use crate::tracer::proc::Mapping;
-use crate::tracer::ptrace;
-use crate::tracer::Tracer;
+use crate::tracer::{ptrace, Tracer};
 
 pub struct Process {
     process_idx: usize,
@@ -19,6 +19,7 @@ pub struct Process {
     saved_text: c_long,
     /// Must never be None during operation. Only deinit() (called by drop) may take() this.
     threads: Option<Vec<ptrace::Thread>>,
+    owner: Option<ThreadId>,
 }
 
 /// save and overwrite main thread state
@@ -70,6 +71,7 @@ pub fn from_tracer(t: Tracer) -> Result<Process> {
         saved_regs,
         saved_text,
         threads: Some(t.threads),
+        owner: t.owner,
     })
 }
 
@@ -80,6 +82,7 @@ pub fn into_tracer(mut p: Process, vcpu_map: Mapping) -> Result<Tracer> {
         process_idx,
         threads,
         vcpu_map,
+        owner: p.owner,
     })
 }
 
@@ -92,6 +95,7 @@ pub fn attach(pid: Pid) -> Result<Process> {
         saved_regs,
         saved_text,
         threads: Some(threads),
+        owner: Some(current().id()),
     })
 }
 
@@ -150,6 +154,60 @@ macro_rules! syscall_args {
 }
 
 impl Process {
+    // PID of the traced process
+    pub fn pid(&self) -> Pid {
+        self.threads.as_ref().unwrap()[self.process_idx].tid
+    }
+
+    fn check_owner(&self) -> Result<()> {
+        if let Some(tracer) = self.owner {
+            if current().id() != tracer {
+                bail!(
+                    "thread was attached from thread {:?}, we are thread {:?}",
+                    self.owner,
+                    current().id()
+                );
+            }
+        } else {
+            bail!("thread is not attached. Call `adopt()` first")
+        }
+        Ok(())
+    }
+
+    /// Associate previously disowned tracer by current thread.
+    /// A non-owned tracer is not functional.
+    pub fn adopt(&mut self) -> Result<()> {
+        if self.owner.is_some() {
+            bail!(
+                "thread cannot be adopted by current thread. Call `disown()` in the previous thread first"
+            );
+        }
+        let threads = self.threads.as_ref().unwrap();
+        for t in threads {
+            attach_seize(t.tid)?;
+        }
+        let (saved_regs, saved_text) = init(threads, self.process_idx)?;
+        self.saved_regs = saved_regs;
+        self.saved_text = saved_text;
+        self.owner = Some(current().id());
+        Ok(())
+    }
+
+    /// Disown traced process from current thread.
+    /// This will continue the execution of the traced process.
+    /// This method is needed before tracer can be used by a new thread.
+    pub fn disown(&mut self) -> Result<()> {
+        if self.owner.is_none() {
+            bail!("thread is already disowned");
+        }
+        self.threads = Some(deinit(self).expect("process was deinited before it was dropped!"));
+        for thread in self.threads.as_ref().unwrap() {
+            thread.detach()?;
+        }
+        self.owner = None;
+        Ok(())
+    }
+
     pub fn ioctl(&self, fd: RawFd, request: c_ulong, arg: c_ulong) -> Result<c_int> {
         let args = syscall_args!(
             self.saved_regs,
@@ -269,6 +327,7 @@ impl Process {
     }
 
     fn syscall(&self, regs: &Regs) -> Result<isize> {
+        self.check_owner()?;
         try_with!(
             self.main_thread().setregs(regs),
             "cannot set system call args"
@@ -388,10 +447,19 @@ int main() {
             .spawn()
             .expect("test program failed");
         let pid = Pid::from_raw(child.id() as i32);
-        {
-            let proc = attach(pid).expect("cannot attach with ptrace");
-            assert_eq!(proc.getpid().expect("getpid failed"), pid.as_raw());
-        }
+        let mut proc = attach(pid).expect("cannot attach with ptrace");
+        assert_eq!(proc.getpid().expect("getpid failed"), pid.as_raw());
+
+        proc.disown().expect("cannot disown");
+        let different_thread = std::thread::spawn(move || {
+            proc.adopt().expect("cannot adopt");
+            proc.getpid().expect("cannot inject getpid")
+        });
+
+        // process should be no longer traced after thread exitted
+        let pid2 = different_thread.join().expect("cannot join thread");
+        assert_eq!(pid.as_raw(), pid2);
+
         drop(write_end);
         let output = child
             .wait_with_output()
