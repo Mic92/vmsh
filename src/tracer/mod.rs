@@ -13,18 +13,25 @@ pub mod ptrace_syscall_info;
 pub mod wrap_syscall;
 
 use proc::Mapping;
+use std::thread::ThreadId;
 
+/// Traces syscalls in a process
 pub struct Tracer {
     pub process_idx: usize,
-    pub threads: Vec<ptrace::Thread>,
+    // thread that owns the tracer
+    pub owner: Option<ThreadId>,
+
+    threads: Vec<ptrace::Thread>,
     pub vcpu_map: Mapping, // TODO support multiple cpus
 }
 
 impl Tracer {
+    /// Borrows thread-leader of the process.
     pub fn main_thread(&self) -> &ptrace::Thread {
         &self.threads[self.process_idx]
     }
 
+    /// Borrows thread-leader of the process mutabile.
     pub fn main_thread_mut(&mut self) -> &mut ptrace::Thread {
         &mut self.threads[self.process_idx]
     }

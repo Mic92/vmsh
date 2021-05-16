@@ -40,6 +40,10 @@ where
 }
 
 fn main() {
+    if env::var("VMSH_SKIP_KERNEL_BUILD").unwrap_or_else(|_| String::from("0")) == "1" {
+        return;
+    }
+
     // Tell Cargo that if the given file changes, to rerun this build script.
     let srcs = [
         "build.rs",

@@ -236,7 +236,7 @@ impl HvSocket {
     ) -> Result<(MT, Vec<RawFd>)> {
         // init msghdr
         let iov = libc::iovec {
-            iov_base: iov_buf_mem.ptr,
+            iov_base: iov_buf_mem.ptr as *mut libc::c_void,
             iov_len: size_of::<MT>(),
         };
         iov_mem.write(&iov)?;

@@ -6,7 +6,10 @@ use nix::sys::wait::{waitpid, WaitStatus};
 use nix::unistd::Pid;
 use simple_error::bail;
 use simple_error::try_with;
-use std::fmt;
+use std::{
+    fmt,
+    thread::{current, ThreadId},
+};
 
 use crate::kvm::hypervisor;
 use crate::kvm::ioctls;
@@ -122,6 +125,7 @@ impl fmt::Display for MmioRw {
 
 /// Contains the state of the thread running a vcpu.
 /// TODO in theory vcpus could change threads which they are run on
+#[derive(Debug)]
 struct Thread {
     ptthread: ptrace::Thread,
     vcpu_map: Mapping,
@@ -183,6 +187,7 @@ impl Thread {
 pub struct KvmRunWrapper {
     process_idx: usize,
     threads: Vec<Thread>,
+    owner: Option<ThreadId>,
 }
 
 impl Drop for KvmRunWrapper {
@@ -211,6 +216,7 @@ impl KvmRunWrapper {
         Ok(KvmRunWrapper {
             process_idx,
             threads,
+            owner: Some(current().id()),
         })
     }
 
@@ -238,6 +244,7 @@ impl KvmRunWrapper {
             process_idx: self.process_idx,
             threads,
             vcpu_map,
+            owner: self.owner,
         })
     }
 
@@ -252,6 +259,7 @@ impl KvmRunWrapper {
         Ok(KvmRunWrapper {
             process_idx: tracer.process_idx,
             threads,
+            owner: tracer.owner,
         })
     }
 
@@ -272,8 +280,24 @@ impl KvmRunWrapper {
         &mut self.threads[self.process_idx]
     }
 
+    fn check_owner(&self) -> Result<()> {
+        if let Some(tracer) = self.owner {
+            if current().id() != tracer {
+                bail!(
+                    "thread was attached from thread {:?}, we are thread {:?}",
+                    self.owner,
+                    current().id()
+                );
+            }
+        } else {
+            bail!("thread is not attached. Call `adopt()` first")
+        }
+        Ok(())
+    }
+
     // TODO Err if third qemu thread terminates?
     pub fn wait_for_ioctl(&mut self) -> Result<Option<MmioRw>> {
+        self.check_owner()?;
         for thread in &mut self.threads {
             if !thread.is_running {
                 try_with!(thread.ptthread.syscall(), "ptrace.thread.syscall() failed");

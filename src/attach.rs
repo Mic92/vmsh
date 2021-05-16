@@ -1,31 +1,16 @@
-use crate::device::Block;
-use crate::result::Result;
-use event_manager::EventManager;
-use event_manager::MutEventSubscriber;
-use log::*;
-use nix::sys::wait::{waitpid, WaitStatus};
+use lazy_static::lazy_static;
+use log::{error, info};
+use nix::sys::signal;
 use nix::unistd::Pid;
-use simple_error::bail;
-use simple_error::{require_with, try_with};
-use std::io::Write;
+use simple_error::try_with;
 use std::path::PathBuf;
-use std::process::Command;
-use std::process::Stdio;
-use std::sync::{Arc, Condvar, Mutex};
-use std::thread::{self, JoinHandle};
-use vm_device::bus::MmioAddress;
-use vm_virtio::device::VirtioDevice;
-use vm_virtio::device::WithDriverSelect;
-use vm_virtio::Queue;
+use std::sync::mpsc::{sync_channel, SyncSender};
+use std::sync::{Arc, Mutex};
 
-use crate::device::{Device, DEVICE_MAX_MEM};
-use crate::kvm::{self, hypervisor::Hypervisor};
-use crate::tracer::wrap_syscall::KvmRunWrapper;
-
-// Arc<Mutex<>> because the same device (a dyn DevicePio/DeviceMmio from IoManager's
-// perspective, and a dyn MutEventSubscriber from EventManager's) is managed by the 2 entities,
-// and isn't Copy-able; so once one of them gets ownership, the other one can't anymore.
-pub type SubscriberEventManager = EventManager<Arc<Mutex<dyn MutEventSubscriber + Send>>>;
+use crate::device::create_block_device;
+use crate::kvm;
+use crate::result::Result;
+use crate::stage1::spawn_stage1;
 
 pub struct AttachOptions {
     pub pid: Pid,
@@ -33,149 +18,46 @@ pub struct AttachOptions {
     pub backing: PathBuf,
 }
 
-// We don't need deep stacks for our driver so let's safe a bit memory
-const DEFAULT_THREAD_STACKSIZE: usize = 8 * 4096;
-
-struct DeviceReady {
-    // supress warning because of https://github.com/rust-lang/rust-clippy/issues/1516
-    #[allow(clippy::mutex_atomic)]
-    lock: Mutex<bool>,
-    condvar: Condvar,
+lazy_static! {
+    static ref SIGNAL_SENDER: Mutex<Option<SyncSender<()>>> = Mutex::new(None);
 }
 
-// supress warning because of https://github.com/rust-lang/rust-clippy/issues/1516
-#[allow(clippy::mutex_atomic)]
-impl DeviceReady {
-    fn new() -> Self {
-        DeviceReady {
-            lock: Mutex::new(false),
-            condvar: Condvar::new(),
+extern "C" fn signal_handler(_: ::libc::c_int) {
+    let sender = match SIGNAL_SENDER.lock().expect("cannot lock sender").take() {
+        Some(s) => {
+            info!("shutdown vmsh");
+            s
         }
-    }
-    fn notify(&self) -> Result<()> {
-        let mut started = try_with!(self.lock.lock(), "failed to lock");
-        *started = true;
-        self.condvar.notify_all();
-        Ok(())
-    }
-
-    fn wait(&self) -> Result<()> {
-        let mut started = try_with!(self.lock.lock(), "failed to lock");
-        while !*started {
-            started = try_with!(self.condvar.wait(started), "failed to wait for condvar");
+        None => {
+            info!("received sigterm. stopping already in progress");
+            return;
         }
-        Ok(())
+    };
+    if let Err(e) = sender.send(()) {
+        error!("cannot notify main process: {}", e);
     }
 }
 
-const STAGE1_EXE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/stage1.ko"));
+fn setup_signal_handler(sender: &SyncSender<()>) -> Result<()> {
+    try_with!(SIGNAL_SENDER.lock(), "cannot get lock").replace(sender.clone());
 
-struct Stage1 {
-    ssh_args: Vec<String>,
-}
+    let sig_action = signal::SigAction::new(
+        signal::SigHandler::Handler(signal_handler),
+        signal::SaFlags::empty(),
+        signal::SigSet::empty(),
+    );
 
-fn cleanup_stage1(ssh_args: &[String]) -> Result<()> {
-    let mut proc = ssh_command(ssh_args, |cmd| cmd.arg(r#"rmmod stage1.ko"#))?;
-    let status = try_with!(proc.wait(), "failed to wait for ssh");
-    if !status.success() {
-        match status.code() {
-            Some(code) => bail!("ssh exited with status code: {}", code),
-            None => bail!("ssh terminated by signal"),
-        }
+    unsafe {
+        try_with!(
+            signal::sigaction(signal::SIGINT, &sig_action),
+            "unable to register SIGINT handler"
+        );
+        try_with!(
+            signal::sigaction(signal::SIGTERM, &sig_action),
+            "unable to register SIGTERM handler"
+        );
     }
     Ok(())
-}
-
-impl Drop for Stage1 {
-    fn drop(&mut self) {
-        debug!("start stage1 cleanup");
-        if let Err(e) = cleanup_stage1(&self.ssh_args) {
-            warn!("could not cleanup stage1: {}", e);
-        }
-    }
-}
-
-fn ssh_command<F>(ssh_args: &[String], mut configure: F) -> Result<std::process::Child>
-where
-    F: FnMut(&mut Command) -> &mut Command,
-{
-    let mut cmd = Command::new("ssh");
-    let cmd_ref = cmd
-        .arg("-oStrictHostKeyChecking=no")
-        .arg("-oUserKnownHostsFile=/dev/null")
-        .args(ssh_args);
-    let configured = configure(cmd_ref);
-    Ok(try_with!(configured.spawn(), "ssh command failed"))
-}
-
-fn stage1_thread(ssh_args: Vec<String>) -> Result<Stage1> {
-    let mut child = ssh_command(&ssh_args, |cmd| {
-        cmd.stdin(Stdio::piped()).arg(
-            r#"
-set -xeu -o pipefail
-tmpdir=$(mktemp -d)
-trap "rm -rf '$tmpdir'" EXIT
-cat > "$tmpdir/stage1.ko"
-insmod "$tmpdir/stage1.ko"
-while ! dmesg | grep -q "virt-blk driver set up"; do
-  sleep 1
-done
-"#,
-        )
-    })?;
-
-    let mut stdin = require_with!(child.stdin.take(), "Failed to open stdin");
-    try_with!(stdin.write_all(STAGE1_EXE), "Failed to write to stdin");
-    drop(stdin);
-
-    info!("wait for ssh to complete");
-    // somehow some other process steals our waitresult sometimes..., Let's
-    match waitpid(Some(nix::unistd::Pid::from_raw(child.id() as i32)), None) {
-        Ok(status) => match status {
-            WaitStatus::Exited(_, status) => {
-                if status != 0 {
-                    bail!("ssh command failed: {}", status);
-                }
-            }
-            _ => {
-                bail!("unexpected wait result: {:?}", status);
-            }
-        },
-        Err(e) => {
-            // we could fix this bug... however eventually we get rid of the ssh
-            // stuff anyway so don't care
-            warn!("a different thread stole our wait result: {}", e);
-        }
-    }
-
-    info!("block device driver started");
-
-    Ok(Stage1 { ssh_args })
-}
-
-fn spawn_stage1(
-    ssh_args: &[String],
-    device_ready: &Arc<DeviceReady>,
-) -> Result<JoinHandle<Result<Stage1>>> {
-    let builder = thread::Builder::new()
-        .name(String::from("stage1"))
-        .stack_size(DEFAULT_THREAD_STACKSIZE);
-
-    let ssh_args = ssh_args.to_vec();
-
-    let device_ready = Arc::clone(device_ready);
-    Ok(try_with!(
-        builder.spawn(move || {
-            // wait until vmsh can process block device requests
-            device_ready.wait()?;
-            let res = stage1_thread(ssh_args);
-            if let Err(e) = &res {
-                warn!("stage1 failed: {}", e);
-            }
-            res
-        }),
-        "failed to create stage1 thread"
-    ))
 }
 
 pub fn attach(opts: &AttachOptions) -> Result<()> {
@@ -188,153 +70,33 @@ pub fn attach(opts: &AttachOptions) -> Result<()> {
     ));
     vm.stop()?;
 
-    let mut event_manager = try_with!(SubscriberEventManager::new(), "cannot create event manager");
-    // TODO add subscriber (wrapped_exit_handler) and stuff?
+    let (sender, receiver) = sync_channel(1);
 
-    // instantiate blkdev
-    let device = try_with!(
-        Device::new(&vm, &mut event_manager, &opts.backing),
-        "cannot create vm"
+    setup_signal_handler(&sender)?;
+
+    let stage1 = try_with!(spawn_stage1(&opts.ssh_args, &sender), "stage1 failed");
+
+    let threads = try_with!(
+        create_block_device(&vm, &sender, &opts.backing),
+        "cannot create block device"
     );
-    info!("mmio dev attached");
-    event_thread(event_manager)?;
-
-    let child = blkdev_monitor_thread(&device)?;
-
-    let device_ready = Arc::new(DeviceReady::new());
-
-    let stage1 = try_with!(spawn_stage1(&opts.ssh_args, &device_ready), "stage1 failed");
-
-    // run guest until driver has inited
-    try_with!(
-        run_kvm_wrapped(&vm, &device, &device_ready),
-        "device init stage with KvmRunWrapper failed"
-    );
-    drop(stage1);
 
     info!("blkdev queue ready.");
+    drop(sender);
+
+    let _ = dbg!(receiver.recv());
+    dbg!(threads.iter().for_each(|t| t.shutdown()));
+    dbg!(stage1.shutdown());
+    if let Err(e) = stage1.join() {
+        error!("stage1 failed: {}", e);
+    }
+    for t in threads {
+        if let Err(e) = t.join() {
+            error!("{}", e);
+        }
+    }
+
     vm.resume()?;
 
-    info!("pause");
-    nix::unistd::pause();
-    let _err = child.join();
-    Ok(())
-}
-
-fn event_thread(mut event_mgr: SubscriberEventManager) -> Result<JoinHandle<()>> {
-    let builder = thread::Builder::new()
-        .name(String::from("event-manager"))
-        .stack_size(DEFAULT_THREAD_STACKSIZE);
-    Ok(try_with!(
-        builder.spawn(move || loop {
-            match event_mgr.run() {
-                Ok(nr) => log::debug!("EventManager: processed {} events", nr),
-                Err(e) => log::warn!("Failed to handle events: {:?}", e),
-            }
-            // TODO if !self.exit_handler.keep_running() { break; }
-        }),
-        "failed to spawn event-manager thread"
-    ))
-}
-
-fn exit_condition(_blkdev: &Arc<Mutex<Block>>) -> Result<bool> {
-    Ok(false)
-    // TODO think of teardown
-    //let blkdev = &try_with!(blkdev.lock(), "cannot get blkdev lock");
-    //Ok(blkdev.selected_queue().map(|q| q.ready).unwrap())
-}
-
-fn blkdev_monitor_thread(device: &Device) -> Result<JoinHandle<()>> {
-    let builder = thread::Builder::new()
-        .name(String::from("blkdev-monitor"))
-        .stack_size(DEFAULT_THREAD_STACKSIZE);
-    let blkdev = device.blkdev.clone();
-    Ok(try_with!(
-        builder.spawn(move || loop {
-            {
-                match exit_condition(&blkdev) {
-                    Err(e) => warn!("cannot evaluate exit condition: {}", e),
-                    Ok(b) => {
-                        if b {
-                            break;
-                        }
-                    }
-                }
-                let blkdev = blkdev.lock().unwrap();
-                debug!("");
-                debug!("dev type {}", blkdev.device_type());
-                debug!("dev features b{:b}", blkdev.device_features());
-                debug!(
-                    "dev interrupt stat b{:b}",
-                    blkdev
-                        .interrupt_status()
-                        .load(std::sync::atomic::Ordering::Relaxed)
-                );
-                debug!("dev status b{:b}", blkdev.device_status());
-                debug!("dev config gen {}", blkdev.config_generation());
-                debug!(
-                    "dev selqueue max size {}",
-                    blkdev.selected_queue().map(Queue::max_size).unwrap()
-                );
-                debug!(
-                    "dev selqueue ready {}",
-                    blkdev.selected_queue().map(|q| q.ready).unwrap()
-                );
-            }
-            std::thread::sleep(std::time::Duration::from_millis(1000));
-        }),
-        "failed to spawn blkdev-monitor"
-    ))
-}
-
-/// returns when blkdev queue is ready
-fn run_kvm_wrapped(
-    vm: &Arc<Hypervisor>,
-    device: &Device,
-    device_ready: &Arc<DeviceReady>,
-) -> Result<()> {
-    let mut mmio_mgr = device.mmio_mgr.lock().unwrap();
-    let device_ready = Arc::clone(device_ready);
-
-    vm.kvmrun_wrapped(|wrapper_mo: &Mutex<Option<KvmRunWrapper>>| {
-        let mmio_space = {
-            let blkdev = device.blkdev.clone();
-            let blkdev = &try_with!(blkdev.lock(), "TODO");
-            blkdev.mmio_cfg.range
-        };
-
-        // Notify stage0 set up blockdevice driver
-        device_ready.notify()?;
-
-        loop {
-            let mut kvm_exit;
-            {
-                let mut wrapper_go = try_with!(wrapper_mo.lock(), "cannot obtain wrapper mutex");
-                let wrapper_g = require_with!(wrapper_go.as_mut(), "KvmRunWrapper not initialized");
-                kvm_exit = try_with!(
-                    wrapper_g.wait_for_ioctl(),
-                    "failed to wait for vmm exit_mmio"
-                );
-            }
-
-            if let Some(mmio_rw) = &mut kvm_exit {
-                let addr = MmioAddress(mmio_rw.addr);
-                let from = mmio_space.base();
-                // virtio mmio space + virtio device specific space
-                let to = from + mmio_space.size() + DEVICE_MAX_MEM;
-                if from <= addr && addr < to {
-                    // intercept op
-                    debug!("mmio access 0x{:x}", addr.0);
-                    try_with!(mmio_mgr.handle_mmio_rw(mmio_rw), "failed to handle MmioRw");
-                } else {
-                    // do nothing, just continue to ingore and pass to hv
-                }
-                if exit_condition(&device.blkdev)? {
-                    break;
-                }
-            }
-        }
-        Ok(())
-    })?;
     Ok(())
 }

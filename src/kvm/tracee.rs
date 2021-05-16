@@ -1,7 +1,7 @@
 use kvm_bindings as kvmb;
 use libc::{c_int, c_ulong, c_void};
 use nix::unistd::Pid;
-use simple_error::{bail, simple_error, try_with};
+use simple_error::{bail, try_with};
 use std::os::unix::prelude::RawFd;
 use std::ptr;
 
@@ -43,6 +43,18 @@ impl Tracee {
         Tracee { pid, vm_fd, proc }
     }
 
+    /// see Process#adopt
+    pub fn adopt(&mut self) -> Result<()> {
+        let proc = self.try_get_proc_mut()?;
+        proc.adopt()
+    }
+
+    /// see Process#disown
+    pub fn disown(&mut self) -> Result<()> {
+        let proc = self.try_get_proc_mut()?;
+        proc.disown()
+    }
+
     /// Attach to pid. The target `proc` will be stopped until `Self.detach` or the end of the
     /// lifetime of self.
     pub fn attach(&mut self) -> Result<()> {
@@ -66,7 +78,7 @@ impl Tracee {
             );
         }
         if self.proc.is_some() {
-            bail!("cannot attatch tracee because it is already attach to something else");
+            bail!("cannot attach tracee because it is already attach to something else");
         }
 
         self.proc = Some(injector);
@@ -79,8 +91,15 @@ impl Tracee {
 
     pub fn try_get_proc(&self) -> Result<&Injectee> {
         match &self.proc {
-            None => Err(simple_error!("Programming error: Tracee is not attached.")),
+            None => bail!("programming error: tracee is not attached."),
             Some(proc) => Ok(&proc),
+        }
+    }
+
+    fn try_get_proc_mut(&mut self) -> Result<&mut Injectee> {
+        match &mut self.proc {
+            None => bail!("programming error: tracee is not attached."),
+            Some(proc) => Ok(proc),
         }
     }
 
