@@ -92,33 +92,25 @@ done
             try_with!(kill(pid, SIGTERM), "cannot terminate stage1 ssh command");
             wait_flag = None;
         }
-
-        match waitpid(Some(pid), wait_flag) {
-            Ok(status) => match status {
-                WaitStatus::StillAlive => {
-                    std::thread::sleep(Duration::from_millis(100));
+        let status = try_with!(waitpid(Some(pid), wait_flag), "waitpid failed");
+        match status {
+            WaitStatus::StillAlive => {
+                std::thread::sleep(Duration::from_millis(100));
+            }
+            WaitStatus::Exited(_, status) => {
+                if status != 0 {
+                    bail!("ssh command failed: {}", status);
                 }
-                WaitStatus::Exited(_, status) => {
-                    if status != 0 {
-                        bail!("ssh command failed: {}", status);
-                    }
+                break;
+            }
+            WaitStatus::Signaled(_, SIGTERM, _) => {
+                if should_stop.load(Ordering::Relaxed) {
                     break;
                 }
-                WaitStatus::Signaled(_, SIGTERM, _) => {
-                    if should_stop.load(Ordering::Relaxed) {
-                        break;
-                    }
-                    bail!("ssh command was stopped by term signal");
-                }
-                status => {
-                    bail!("unexpected wait result: {:?}", status);
-                }
-            },
-            Err(e) => {
-                // we could fix this bug... however eventually we get rid of the ssh
-                // stuff anyway so don't care
-                warn!("a different thread stole our wait result: {}", e);
-                break;
+                bail!("ssh command was stopped by term signal");
+            }
+            status => {
+                bail!("unexpected wait result: {:?}", status);
             }
         };
     }

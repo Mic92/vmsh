@@ -1,7 +1,7 @@
 use lazy_static::lazy_static;
 use log::{error, info};
 use nix::sys::signal;
-use nix::unistd::Pid;
+use nix::unistd::{setpgid, Pid};
 use simple_error::try_with;
 use std::path::PathBuf;
 use std::sync::mpsc::{sync_channel, SyncSender};
@@ -62,6 +62,13 @@ fn setup_signal_handler(sender: &SyncSender<()>) -> Result<()> {
 
 pub fn attach(opts: &AttachOptions) -> Result<()> {
     info!("attaching");
+
+    // We put ourself in a new process group so that we can distinguish in waitpid, between
+    // our own child threads/processes and the ones of the hypervisor
+    try_with!(
+        setpgid(Pid::from_raw(0), Pid::from_raw(0)),
+        "cannot create new process group"
+    );
 
     let vm = Arc::new(try_with!(
         kvm::hypervisor::get_hypervisor(opts.pid),

@@ -1,9 +1,10 @@
 use crate::tracer::Tracer;
 use kvm_bindings as kvmb;
 use log::*;
-use nix::sys::signal::Signal;
 use nix::sys::wait::{waitpid, WaitStatus};
+use nix::unistd::getpgid;
 use nix::unistd::Pid;
+use nix::{sys::signal::Signal, unistd::getpgrp};
 use simple_error::bail;
 use simple_error::try_with;
 use std::{
@@ -187,6 +188,7 @@ impl Thread {
 pub struct KvmRunWrapper {
     process_idx: usize,
     threads: Vec<Thread>,
+    process_group: Pid,
     owner: Option<ThreadId>,
 }
 
@@ -196,6 +198,15 @@ impl Drop for KvmRunWrapper {
             log::warn!("cannot drop KvmRunWrapper: {}", e);
         }
     }
+}
+
+fn get_process_group(pid: Pid) -> Result<Pid> {
+    let process_group = try_with!(getpgid(Some(pid)), "getppid failed");
+
+    if getpgrp() != process_group {
+        bail!("vmsh and hypervisor are in same process group")
+    }
+    Ok(process_group)
 }
 
 impl KvmRunWrapper {
@@ -216,6 +227,7 @@ impl KvmRunWrapper {
         Ok(KvmRunWrapper {
             process_idx,
             threads,
+            process_group: get_process_group(pid)?,
             owner: Some(current().id()),
         })
     }
@@ -249,6 +261,7 @@ impl KvmRunWrapper {
     }
 
     pub fn from_tracer(tracer: Tracer) -> Result<Self> {
+        let pid = tracer.main_thread().tid;
         let vcpu_map = tracer.vcpu_map;
         let threads: Vec<Thread> = tracer
             .threads
@@ -258,6 +271,7 @@ impl KvmRunWrapper {
 
         Ok(KvmRunWrapper {
             process_idx: tracer.process_idx,
+            process_group: get_process_group(pid)?,
             threads,
             owner: tracer.owner,
         })
@@ -313,7 +327,10 @@ impl KvmRunWrapper {
     fn waitpid(&mut self) -> Result<WaitStatus> {
         loop {
             let status = try_with!(
-                waitpid(None, Some(nix::sys::wait::WaitPidFlag::__WALL)),
+                waitpid(
+                    Some(Pid::from_raw(-self.process_group.as_raw())),
+                    Some(nix::sys::wait::WaitPidFlag::__WALL)
+                ),
                 "cannot wait for ioctl syscall"
             );
             if let Some(pid) = status.pid() {
