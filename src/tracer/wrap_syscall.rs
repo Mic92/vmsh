@@ -24,6 +24,7 @@ pub const MMIO_RW_DATA_MAX: usize = 8;
 pub struct MmioRw {
     /// address in the guest physical memory
     pub addr: u64,
+
     pub is_write: bool,
     data: [u8; MMIO_RW_DATA_MAX],
     len: usize,
@@ -203,7 +204,7 @@ impl Drop for KvmRunWrapper {
 fn get_process_group(pid: Pid) -> Result<Pid> {
     let process_group = try_with!(getpgid(Some(pid)), "getppid failed");
 
-    if getpgrp() != process_group {
+    if getpgrp() == process_group {
         bail!("vmsh and hypervisor are in same process group")
     }
     Ok(process_group)
