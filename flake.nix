@@ -105,7 +105,7 @@
           shellHook = ''
             pre-commit install
             export KERNELDIR=$(pwd)/../linux;
-          '' + pkgs.lib.optionalString (true) ''
+          '' + pkgs.lib.optionalString (false) ''
             # when debugging not-os kernel
             export KERNELDIR=${not-os-image.kerneldir};
           '';
