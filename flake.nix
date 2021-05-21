@@ -28,16 +28,18 @@
           "rustfmt-preview"
         ];
 
-        vmsh = pkgs.callPackage ./nix/vmsh.nix {
-          pkgSrc = self;
-        };
-
-        kernel-fhs = pkgs.callPackage ./nix/kernel-fhs.nix {};
-
         rustPlatform = (pkgs.makeRustPlatform {
           cargo = rustToolchain;
           rustc = rustToolchain;
         });
+
+        vmsh = pkgs.callPackage ./nix/vmsh.nix {
+          pkgSrc = self;
+          inherit rustPlatform;
+        };
+
+        kernel-fhs = pkgs.callPackage ./nix/kernel-fhs.nix {};
+
 
         ciDeps = [
           rustToolchain
@@ -94,6 +96,7 @@
             pkgs.cargo-deny
             pkgs.pre-commit
             pkgs.rls
+            pkgs.racer
             pkgs.git # needed for pre-commit install
             fenixPkgs.rust-analyzer
             pkgs.gdb
@@ -102,7 +105,7 @@
           shellHook = ''
             pre-commit install
             export KERNELDIR=$(pwd)/../linux;
-          '' + pkgs.lib.optionalString (false) ''
+          '' + pkgs.lib.optionalString (true) ''
             # when debugging not-os kernel
             export KERNELDIR=${not-os-image.kerneldir};
           '';
