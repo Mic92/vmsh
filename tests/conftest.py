@@ -54,9 +54,12 @@ class VmshPopen(subprocess.Popen):
         threading.Thread(target=self.print_stdout).start()
         threading.Thread(target=self.print_stderr).start()
 
+    def terminate(self) -> None:
+        subprocess.run(["pkill", "--parent", str(self.pid)])
+
     def __exit__(self, exc_type: Any, exc_value: Any, traceback: Any) -> None:
         # we cannot kill sudo, but we can stop vmsh as it drops privileges to our user
-        subprocess.run(["pkill", "--parent", str(self.pid)])
+        self.terminate()
         super().__exit__(exc_type, exc_value, traceback)
 
     def print_stdio_with_prefix(self, stdio: Any) -> None:
