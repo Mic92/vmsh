@@ -383,7 +383,7 @@ impl Drop for Process {
     fn drop(&mut self) {
         debug!("tracer cleanup started");
         let _ = deinit(self); // its ok if it was already deinited
-        debug!("tracer cleanup stopped");
+        debug!("tracer cleanup finished");
     }
 }
 
