@@ -1,5 +1,6 @@
 import conftest
 
+import os
 from root import PROJECT_ROOT
 
 
@@ -47,11 +48,13 @@ def test_virtio_device_space(helpers: conftest.Helpers) -> None:
                 )
                 > 0
             )
+        try:
+            os.kill(vmsh.pid, 0)
+        except ProcessLookupError:
+            pass
+        else:
+            assert False, "vmsh was not terminated properly"
 
-            try:
-                vmsh.wait(timeout=20)
-            except Exception:
-                # vmsh did not crash unexpectedly within timeout. This is good.
-                ()
-            else:
-                assert 0 == "Vmsh did crash unexpectedly. This is bad."
+        # See that the VM is still alive after detaching
+        res = vm.ssh_cmd(["echo", "ping"])
+        assert res.stdout == "ping\n"
