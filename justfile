@@ -80,10 +80,10 @@ build-linux: configure-linux
 
 # Build kernel-less disk image for NixOS
 nixos-image:
-  [[ {{linux_dir}}/nixos.qcow2 -nt nix/nixos-image.nix ]] || \
-  [[ {{linux_dir}}/nixos.qcow2 -nt flake.lock ]] || \
-  (nix build .#nixos-image --out-link nixos-image && \
-  install -m600 "nixos-image/nixos.qcow2" {{linux_dir}}/nixos.qcow2)
+  [[ {{linux_dir}}/nixos.ext4 -nt nix/nixos-image.nix ]] || \
+  [[ {{linux_dir}}/nixos.ext4 -nt flake.lock ]] || \
+  (nix build .#ext4-image --out-link ext4-image && \
+  install -m600 "ext4-image/nixos.img" {{linux_dir}}/nixos.ext4)
 
 # Build kernel/disk image for not os
 notos-image:
@@ -92,13 +92,18 @@ notos-image:
 
 # built image for qemu_nested.sh
 nested-nixos-image: nixos-image
-  ln -f "{{linux_dir}}/nixos.qcow2" {{linux_dir}}/nixos-nested.qcow2
+  [[ {{linux_dir}}/nixos.ext4 -nt {{linux_dir}}/nixos-nested.ext4 ]] || \
+  cp --reflink=auto "{{linux_dir}}/nixos.ext4" {{linux_dir}}/nixos-nested.ext4
+
+vmsh-image: nixos-image
+  [[ {{linux_dir}}/nixos.ext4 -nt {{linux_dir}}/vmsh-image.ext4 ]] || \
+  cp --reflink=auto "{{linux_dir}}/nixos.ext4" {{linux_dir}}/vmsh-image.ext4
 
 # run qemu with kernel build by `build-linux` and filesystem image build by `nixos-image`
 qemu EXTRA_CMDLINE="nokalsr": build-linux nixos-image
   qemu-system-x86_64 \
     -kernel {{linux_dir}}/arch/x86/boot/bzImage \
-    -hda {{linux_dir}}/nixos.qcow2 \
+    -drive format=raw,file={{linux_dir}}/nixos.ext4 \
     -append "root=/dev/sda console=ttyS0 {{EXTRA_CMDLINE}}" \
     -net nic,netdev=user.0,model=virtio \
     -m 512M \
@@ -149,8 +154,8 @@ load-debug-kernel-mod: build-debug-kernel-mod
   just ssh-qemu "rmmod debug-kernel-mod; insmod /mnt/vmsh/tests/debug-kernel-mod/debug-kernel-mod.ko && dmesg"
 
 # Attach block device to first qemu vm found by pidof and owned by our own user
-attach-qemu:
-  cargo run -- attach "{{qemu_pid}}" -- -i nix/ssh_key -p "{{qemu_ssh_port}}" "root@localhost"
+attach-qemu: vmsh-image
+  cargo run -- attach -f "{{linux_dir}}/nixos.ext4" "{{qemu_pid}}" -- -i nix/ssh_key -p "{{qemu_ssh_port}}" "root@localhost"
 
 # Inspect first qemu vm found by pidof and owned by our own user
 inspect-qemu:
