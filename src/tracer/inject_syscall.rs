@@ -1,5 +1,6 @@
 use libc::{c_int, c_long, c_ulong, c_void, off_t, pid_t, size_t, ssize_t, SYS_munmap};
 use libc::{SYS_getpid, SYS_ioctl, SYS_mmap};
+use log::debug;
 use nix::sys::signal::Signal;
 use nix::sys::wait::{waitpid, WaitStatus};
 use nix::unistd::Pid;
@@ -380,7 +381,9 @@ impl Process {
 
 impl Drop for Process {
     fn drop(&mut self) {
+        debug!("tracer cleanup started");
         let _ = deinit(self); // its ok if it was already deinited
+        debug!("tracer cleanup stopped");
     }
 }
 
