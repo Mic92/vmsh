@@ -195,9 +195,11 @@ pub struct KvmRunWrapper {
 
 impl Drop for KvmRunWrapper {
     fn drop(&mut self) {
+        debug!("kvm run wrapper cleanup started");
         if let Err(e) = self.prepare_detach() {
             log::warn!("cannot drop KvmRunWrapper: {}", e);
         }
+        debug!("kvm run wrapper cleanup finished");
     }
 }
 

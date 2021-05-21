@@ -1,3 +1,4 @@
+use log::debug;
 use log::{info, log_enabled, warn, Level};
 use nix::sys::signal::{kill, SIGTERM};
 use nix::sys::wait::{waitpid, WaitPidFlag, WaitStatus};
@@ -36,10 +37,11 @@ fn cleanup_stage1(ssh_args: &[String]) -> Result<()> {
 
 impl Drop for Stage1 {
     fn drop(&mut self) {
-        info!("start stage1 cleanup");
+        debug!("stage1 cleanup started");
         if let Err(e) = cleanup_stage1(&self.ssh_args) {
             warn!("could not cleanup stage1: {}", e);
         }
+        debug!("stage1 cleanup finished");
     }
 }
 

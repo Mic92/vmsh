@@ -96,6 +96,9 @@ pub fn attach(opts: &AttachOptions) -> Result<()> {
         }
     }
 
+    // MMIO exit handler thread took over pthread control
+    // We need ptrace the process again before we can finish.
+    vm.finish_thread_transfer()?;
     vm.resume()?;
 
     Ok(())

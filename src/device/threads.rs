@@ -208,13 +208,16 @@ fn mmio_exit_handler_thread(
 
             info!("mmio dev attached");
 
-            vm.kvmrun_wrapped(|wrapper_mo: &Mutex<Option<KvmRunWrapper>>| {
+            let res = vm.kvmrun_wrapped(|wrapper_mo: &Mutex<Option<KvmRunWrapper>>| {
                 // Signal that our blockdevice driver is ready now
                 handle_mmio_exits(wrapper_mo, &should_stop, &device, &device_ready)?;
 
                 Ok(())
-            })?;
-            Ok(())
+            });
+
+            // we need to return ptrace control before returning to the main thread
+            vm.prepare_thread_transfer()?;
+            res
         },
     );
 
