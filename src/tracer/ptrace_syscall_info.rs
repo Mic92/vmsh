@@ -5,7 +5,11 @@ use simple_error::try_with;
 use std::mem::size_of;
 use std::mem::MaybeUninit;
 
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
 const PTRACE_GET_SYSCALL_INFO: u32 = 0x420e;
+
+#[cfg(not(all(target_os = "linux", target_env = "gnu")))]
+const PTRACE_GET_SYSCALL_INFO: i32 = 0x420e;
 
 #[repr(u8)]
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]

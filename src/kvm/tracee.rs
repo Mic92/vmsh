@@ -2,6 +2,7 @@ use kvm_bindings as kvmb;
 use libc::{c_int, c_ulong, c_void};
 use nix::unistd::Pid;
 use simple_error::{bail, try_with};
+use std::mem::MaybeUninit;
 use std::os::unix::prelude::RawFd;
 use std::ptr;
 
@@ -37,6 +38,14 @@ pub struct Tracee {
     /// This hold especially true for the destructor of for example `VmMem`.
     proc: Option<Injectee>,
 }
+
+#[allow(non_camel_case_types)]
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
+pub type socklen_t = usize;
+
+#[allow(non_camel_case_types)]
+#[cfg(not(all(target_os = "linux", target_env = "gnu")))]
+pub type socklen_t = libc::socklen_t;
 
 impl Tracee {
     pub fn new(pid: Pid, vm_fd: RawFd, proc: Option<Injectee>) -> Tracee {
@@ -174,18 +183,18 @@ impl Tracee {
     #[allow(non_snake_case)]
     pub unsafe fn __CMSG_FIRSTHDR(
         msg_control: *mut libc::c_void,
-        msg_controllen: libc::size_t,
+        msg_controllen: socklen_t,
     ) -> *mut libc::cmsghdr {
-        let msg_hdr = libc::msghdr {
-            msg_name: std::ptr::null_mut::<libc::c_void>(),
-            msg_namelen: 0,
-            msg_iov: std::ptr::null_mut::<libc::iovec>(),
-            msg_iovlen: 0,
-            msg_control,
-            msg_controllen,
-            msg_flags: 0,
-        };
-        libc::CMSG_FIRSTHDR(&msg_hdr as *const libc::msghdr)
+        let mut msg_hdr = MaybeUninit::<libc::msghdr>::zeroed();
+        let p = msg_hdr.as_mut_ptr();
+        (*p).msg_name = std::ptr::null_mut::<libc::c_void>();
+        (*p).msg_namelen = 0;
+        (*p).msg_iov = std::ptr::null_mut::<libc::iovec>();
+        (*p).msg_iovlen = 0;
+        (*p).msg_control = msg_control;
+        (*p).msg_controllen = msg_controllen;
+        (*p).msg_flags = 0;
+        libc::CMSG_FIRSTHDR(p as *const libc::msghdr)
     }
 
     /// Guarantees not to allocate or follow pointers. Pure pointer calculus.

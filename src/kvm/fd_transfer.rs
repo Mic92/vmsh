@@ -3,12 +3,12 @@ use nix::errno::Errno;
 use nix::sys::socket::*;
 use nix::sys::uio::IoVec;
 use simple_error::{bail, try_with};
-use std::mem::size_of;
+use std::mem::{size_of, MaybeUninit};
 use std::os::unix::prelude::*;
 use std::sync::{Arc, RwLock};
 
 use crate::kvm::hypervisor::HvMem;
-use crate::kvm::tracee::Tracee;
+use crate::kvm::tracee::{socklen_t, Tracee};
 use crate::result::Result;
 use crate::tracer::inject_syscall;
 
@@ -240,16 +240,20 @@ impl HvSocket {
             iov_len: size_of::<MT>(),
         };
         iov_mem.write(&iov)?;
-        let msg_hdr = libc::msghdr {
-            msg_name: std::ptr::null_mut::<libc::c_void>(),
-            msg_namelen: 0,
-            msg_iov: iov_mem.ptr as *mut libc::iovec,
-            msg_iovlen: 1,
-            msg_control: cmsg_mem.ptr as *mut libc::c_void,
-            msg_controllen: size_of::<CM>(),
-            msg_flags: 0,
-        };
-        msg_hdr_mem.write(&msg_hdr)?;
+
+        let mut msg_hdr = MaybeUninit::<msghdr>::zeroed();
+        let p = msg_hdr.as_mut_ptr();
+        unsafe {
+            (*p).msg_name = std::ptr::null_mut::<libc::c_void>();
+            (*p).msg_namelen = 0;
+            (*p).msg_iov = iov_mem.ptr as *mut libc::iovec;
+            (*p).msg_iovlen = 1;
+            (*p).msg_control = cmsg_mem.ptr as *mut libc::c_void;
+            (*p).msg_controllen = size_of::<CM>() as socklen_t;
+            (*p).msg_flags = 0;
+        }
+
+        msg_hdr_mem.write(&unsafe { msg_hdr.assume_init() })?;
 
         // recvmsg
         loop {
@@ -286,7 +290,8 @@ impl HvSocket {
             }
             // iterate over SCM_RIGHTS message data
             let cmsg_data: *mut RawFd = Tracee::CMSG_DATA(cmsghdr_ptr) as *mut RawFd;
-            let cmsg_data_len = cmsghdr.cmsg_len - (cmsg_data as usize - cmsghdr_ptr as usize); // cmsg_size - cmsg_hdr_size
+            let cmsg_data_len =
+                cmsghdr.cmsg_len as usize - (cmsg_data as usize - cmsghdr_ptr as usize); // cmsg_size - cmsg_hdr_size
             for offset in 0..(cmsg_data_len / size_of::<RawFd>()) {
                 result.push(*(cmsg_data.add(offset)));
             }
