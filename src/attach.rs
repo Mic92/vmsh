@@ -85,11 +85,11 @@ pub fn attach(opts: &AttachOptions) -> Result<()> {
     drop(sender);
 
     let _ = dbg!(receiver.recv());
-    dbg!(threads.iter().for_each(|t| t.shutdown()));
-    dbg!(stage1.shutdown());
+    stage1.shutdown();
     if let Err(e) = stage1.join() {
         error!("stage1 failed: {}", e);
     }
+    threads.iter().for_each(|t| t.shutdown());
     for t in threads {
         if let Err(e) = t.join() {
             error!("{}", e);

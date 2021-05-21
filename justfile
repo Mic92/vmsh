@@ -118,6 +118,14 @@ qemu-notos:
   print(" ".join(cmd))
   subprocess.run(cmd)
 
+# Attach gdb to vmsh
+gdb:
+  sudo gdb --pid $(pidof vmsh) -ex 'thread apply all bt' -ex 'info threads'
+
+# Attach strace to vmsh
+strace:
+  sudo strace -p $(pidof vmsh) -f
+
 # SSH into vm started by `just qemu`
 ssh-qemu $COMMAND="":
   ssh -i {{invocation_directory()}}/nix/ssh_key \
