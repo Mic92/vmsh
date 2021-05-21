@@ -205,7 +205,7 @@ fn get_process_group(pid: Pid) -> Result<Pid> {
     let process_group = try_with!(getpgid(Some(pid)), "getppid failed");
 
     if getpgrp() == process_group {
-        bail!("vmsh and hypervisor are in same process group")
+        bail!("vmsh and hypervisor are in same process group. Are they sharing a terminal? This is not supported at the moment.")
     }
     Ok(process_group)
 }
