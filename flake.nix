@@ -17,15 +17,15 @@
       let
         pkgs = nixpkgs.legacyPackages.${system};
         fenixPkgs = fenix.packages.${system};
-        rustToolchain = fenixPkgs.latest.withComponents [
-          "cargo"
-          "rustc"
-          # buggy
-          # "rls-preview"
-          "rust-src"
-          "rust-std"
-          "clippy-preview"
-          "rustfmt-preview"
+        rustToolchain = with fenixPkgs; combine [
+          latest.cargo
+          latest.rustc
+          latest.rust-src
+          latest.rust-std
+          latest.clippy-preview
+          latest.rustfmt-preview
+          targets.x86_64-unknown-linux-musl.latest.rust-std
+          # fenix.packages.x86_64-linux.targets.aarch64-unknown-linux-gnu.latest.rust-std
         ];
 
         rustPlatform = (pkgs.makeRustPlatform {

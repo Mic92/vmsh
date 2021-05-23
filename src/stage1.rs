@@ -17,6 +17,7 @@ use crate::interrutable_thread::InterrutableThread;
 use crate::result::Result;
 
 const STAGE1_EXE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/stage1.ko"));
+const STAGE2_EXE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/stage2"));
 
 #[derive(Debug)]
 pub struct Stage1 {
@@ -58,31 +59,60 @@ where
     Ok(try_with!(configured.spawn(), "ssh command failed"))
 }
 
+fn padded_size(size: usize) -> usize {
+    ((size + 512 - 1) / 512) * 512
+}
+
+fn write_padded(f: &mut dyn Write, bytes: &[u8], padded_size: usize) -> Result<()> {
+    try_with!(f.write_all(bytes), "Failed to write");
+    let mut padding = padded_size - bytes.len();
+    while padding != 0 {
+        padding -= try_with!(f.write(&[0]), "Failed to write");
+    }
+    Ok(())
+}
+
 fn stage1_thread(ssh_args: Vec<String>, should_stop: Arc<AtomicBool>) -> Result<Stage1> {
     std::thread::sleep(Duration::from_millis(3000));
 
     let debug_stage1 = if log_enabled!(Level::Debug) { "x" } else { "" };
+
+    let stage1_size = dbg!(padded_size(dbg!(STAGE1_EXE.len())));
+    let stage2_size = dbg!(padded_size(dbg!(STAGE2_EXE.len())));
     let mut child = ssh_command(&ssh_args, |cmd| {
         cmd.stdin(Stdio::piped()).arg(format!(
             r#"
 set -eu{} -o pipefail
+set -x
 tmpdir=$(mktemp -d)
-trap "rm -rf '$tmpdir'" EXIT
-cat > "$tmpdir/stage1.ko"
+#trap "rm -rf '$tmpdir'" EXIT
+dd if=/proc/self/fd/0 of="$tmpdir/stage1.ko" count={} bs=512
+dd if=/proc/self/fd/0 of="$tmpdir/stage2" count={} bs=512
 # cleanup old driver if still loaded
 rmmod stage1 2>/dev/null || true
 insmod "$tmpdir/stage1.ko"
+chmod +x "$tmpdir/stage2"
+"$tmpdir/stage2"
 while ! dmesg | grep -q "virt-blk driver set up"; do
   sleep 1
 done
 "#,
-            debug_stage1
+            debug_stage1,
+            stage1_size / 512,
+            stage2_size / 512
         ))
     })?;
 
     let mut stdin = require_with!(child.stdin.take(), "Failed to open stdin");
-    try_with!(stdin.write_all(STAGE1_EXE), "Failed to write to stdin");
-    drop(stdin);
+    try_with!(
+        write_padded(&mut stdin, STAGE1_EXE, stage1_size),
+        "failed to write stage1"
+    );
+    try_with!(
+        write_padded(&mut stdin, STAGE2_EXE, stage2_size),
+        "failed to write stage2"
+    );
+
     let pid = nix::unistd::Pid::from_raw(child.id() as i32);
 
     info!("wait for ssh to complete");

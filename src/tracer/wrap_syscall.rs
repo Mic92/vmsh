@@ -1,9 +1,12 @@
 use crate::tracer::Tracer;
 use kvm_bindings as kvmb;
 use log::*;
-use nix::sys::wait::{waitpid, WaitStatus};
 use nix::unistd::getpgid;
 use nix::unistd::Pid;
+use nix::{
+    errno::Errno,
+    sys::wait::{waitpid, WaitStatus},
+};
 use nix::{sys::signal::Signal, unistd::getpgrp};
 use simple_error::bail;
 use simple_error::try_with;
@@ -428,8 +431,12 @@ impl KvmRunWrapper {
             return Ok(None);
         } else {
             trace!("kvm-run exit {}", pid);
-            if regs.syscall_ret() != 0 {
-                log::warn!("wrap_syscall: ioctl(KVM_RUN) failed.");
+            let ret = regs.syscall_ret();
+            if ret != 0 {
+                log::warn!(
+                    "wrap_syscall: ioctl(KVM_RUN) failed: {}",
+                    Errno::from_i32(ret as i32)
+                );
                 // hope that hypervisor handles it correctly
                 return Ok(None);
             }

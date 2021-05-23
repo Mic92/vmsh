@@ -14,7 +14,7 @@ tempfile = "3"
 
 [workspace]
 members = ["src/virtio"]
-exclude = ["src/stage1"]
+exclude = ["src/stage1", "src/stage2"]
 
 [dependencies]
 clap = "2"
