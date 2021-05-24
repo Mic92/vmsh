@@ -28,7 +28,9 @@ env_logger = "0.8.*"
 lazy_static = "*"
 
 # src/device/ deps:
-vm-virtio = { git = "https://github.com/rust-vmm/vm-virtio.git", features = ["backend-stdio"], rev = "8ded0b709a21ebd08da8634de02220539254ae88"} # does no kvm operations
+# Switch back to upstream, once https://github.com/rust-vmm/vm-virtio/pull/56 is merged
+vm-virtio = { git = "https://github.com/Mic92/vm-virtio.git", features = ["backend-stdio"], rev = "8a8270924ad691232f9f9b3157e66fddd7ba9975"} # does no kvm operations
+#vm-virtio = { path = "src/vm-virtio", features = ["backend-stdio"] }
 vm-device = { git = "https://github.com/rust-vmm/vm-device", rev = "989c315712b80a538331fe05716323f2f64abf2e" } # does no kvm operations
 
 # src/device/virtio/ deps:
@@ -38,5 +40,6 @@ vm-memory = { version = "0.5.0", features = ["backend-mmap"] }
 log = "0.4.6"
 
 [patch.crates-io]
+#vm-virtio = { path = "src/vm-virtio", features = ["backend-stdio"] }
 vm-memory = { git = "https://github.com/pogobanane/vm-memory.git", rev = "ecf1d8e0fd765759559c586d83760dfaf9812a8c", features = ["backend-mmap"] }
 # vm-memory = { path = "../vm-memory", features = ["backend-mmap"] }

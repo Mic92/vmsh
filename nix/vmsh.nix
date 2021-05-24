@@ -10,5 +10,5 @@ rustPlatform.buildRustPackage {
   src = pkgSrc;
   buildInputs = [ bcc ];
   KERNELDIR = "${kernel.dev}/lib/modules/${kernel.modDirVersion}/build";
-  cargoSha256 = "sha256-Equ4yTDRPEW0M0+63WfxTVn4WY49jCan7EljwaAECBU=";
+  cargoSha256 = "sha256-QsY9V8+qMOMGE/nXg8KMjv7vZfF/RYjRIo7klkkXTYk=";
 }

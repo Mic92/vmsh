@@ -402,7 +402,7 @@ dependencies = [
 [[package]]
 name = "vm-virtio"
 version = "0.1.0"
-source = "git+https://github.com/rust-vmm/vm-virtio.git?rev=8ded0b709a21ebd08da8634de02220539254ae88#8ded0b709a21ebd08da8634de02220539254ae88"
+source = "git+https://github.com/Mic92/vm-virtio.git?rev=8a8270924ad691232f9f9b3157e66fddd7ba9975#8a8270924ad691232f9f9b3157e66fddd7ba9975"
 dependencies = [
  "byteorder",
  "libc",
