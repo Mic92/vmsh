@@ -266,6 +266,8 @@ def qemu_command(image: VmImage, qmp_socket: Path, ssh_port: int = 0) -> List:
         f"user,id=n1,hostfwd=tcp:127.0.0.1:{ssh_port}-:22",
         "-device",
         "virtio-net-pci,netdev=n1",
+        "-virtfs",
+        f"local,path={PROJECT_ROOT},security_model=none,mount_tag=vmsh",
         "-qmp",
         f"unix:{str(qmp_socket)},server,nowait",
         "-no-reboot",
