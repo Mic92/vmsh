@@ -254,7 +254,8 @@ impl<M: GuestAddressSpace + Clone + Send + 'static> VirtioDeviceActions for Bloc
         }
 
         // TODO: Create the backend earlier (as part of `Block::new`)?
-        let disk = StdIoBackend::new(file, features).map_err(Error::Backend)?;
+        let name = Some(*b"vmsh0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0");
+        let disk = StdIoBackend::new(file, features, name).map_err(Error::Backend)?;
 
         let driver_notify = SingleFdSignalQueue {
             irqfd: self.irqfd.clone(),
