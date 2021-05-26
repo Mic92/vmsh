@@ -5,6 +5,8 @@
     pkgs.gnugrep
     pkgs.kmod
     pkgs.devmem2
+    # for debugging
+    pkgs.strace
   ];
 
   environment.pathsToLink = [ "/lib/modules" ];
