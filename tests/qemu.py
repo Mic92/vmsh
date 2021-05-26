@@ -6,7 +6,6 @@ import re
 import socket
 import subprocess
 import time
-import functools
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -26,31 +25,6 @@ class VmImage:
     squashfs: Path
     initial_ramdisk: Path
     kernel_params: List[str]
-
-
-@functools.lru_cache(maxsize=None)
-def nix_build(what: str) -> Any:
-    result = subprocess.run(
-        ["nix", "build", "--json", what],
-        text=True,
-        stdout=subprocess.PIPE,
-        check=True,
-        cwd=PROJECT_ROOT,
-    )
-    return json.loads(result.stdout)
-
-
-def notos_image() -> VmImage:
-    data = nix_build(".#not-os-image.json")
-    with open(data[0]["outputs"]["out"]) as f:
-        data = json.load(f)
-        return VmImage(
-            kernel=Path(data["kernel"]),
-            kerneldir=Path(data["kerneldir"]),
-            squashfs=Path(data["squashfs"]),
-            initial_ramdisk=Path(data["initialRamdisk"]),
-            kernel_params=data["kernelParams"],
-        )
 
 
 class QmpSession:

@@ -84,6 +84,7 @@
 
           # see justfile/nixos-image
           nixos-image = pkgs.callPackage ./nix/nixos-image.nix {};
+          busybox-image = pkgs.callPackage ./nix/busybox-image.nix {};
         };
         # used by `nix develop`
         devShell = pkgs.mkShell {

@@ -12,7 +12,8 @@ from shlex import quote
 from typing import Any, Iterator, List, Type, Union, Callable, Optional
 
 import pytest
-from qemu import QemuVm, VmImage, spawn_qemu, notos_image
+from qemu import QemuVm, VmImage, spawn_qemu
+from nix import notos_image, busybox_image
 from root import PROJECT_ROOT, TEST_ROOT
 
 sys.path.append(str(TEST_ROOT.parent))
@@ -153,6 +154,10 @@ class Helpers:
     @staticmethod
     def notos_image() -> VmImage:
         return notos_image()
+
+    @staticmethod
+    def busybox_image() -> "contextlib._GeneratorContextManager[Path]":
+        return busybox_image()
 
     @staticmethod
     def spawn_vmsh_command(
