@@ -254,7 +254,7 @@ def qemu_command(image: VmImage, qmp_socket: Path, ssh_port: int = 0) -> List:
         "-m",
         "512",
         "-drive",
-        f"index=0,id=drive1,file={image.squashfs},readonly,media=cdrom,format=raw,if=virtio",
+        f"index=0,id=drive1,file={image.squashfs},readonly=on,media=cdrom,format=raw,if=virtio",
         "-kernel",
         f"{image.kernel}/bzImage",
         "-initrd",
