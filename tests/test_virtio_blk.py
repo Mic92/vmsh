@@ -27,8 +27,9 @@ def test_virtio_device_space(helpers: conftest.Helpers) -> None:
                 lambda l: "block device driver started" in l,
             )
 
-            res = vm.ssh_cmd(["dmesg"])
+            res = vm.ssh_cmd(["dmesg"], check=False)
             print("stdout:\n", res.stdout)
+            assert res.returncode == 0
 
             # with DeviceMmioSpace instead of KvmRunWrapper:
             # assert (
@@ -56,5 +57,6 @@ def test_virtio_device_space(helpers: conftest.Helpers) -> None:
             assert False, "vmsh was not terminated properly"
 
         # See that the VM is still alive after detaching
-        res = vm.ssh_cmd(["echo", "ping"])
+        res = vm.ssh_cmd(["echo", "ping"], check=False)
         assert res.stdout == "ping\n"
+        assert res.returncode == 0
