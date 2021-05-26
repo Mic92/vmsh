@@ -6,7 +6,6 @@ import re
 import socket
 import subprocess
 import time
-import functools
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -26,31 +25,6 @@ class VmImage:
     squashfs: Path
     initial_ramdisk: Path
     kernel_params: List[str]
-
-
-@functools.lru_cache(maxsize=None)
-def nix_build(what: str) -> Any:
-    result = subprocess.run(
-        ["nix", "build", "--json", what],
-        text=True,
-        stdout=subprocess.PIPE,
-        check=True,
-        cwd=PROJECT_ROOT,
-    )
-    return json.loads(result.stdout)
-
-
-def notos_image() -> VmImage:
-    data = nix_build(".#not-os-image.json")
-    with open(data[0]["outputs"]["out"]) as f:
-        data = json.load(f)
-        return VmImage(
-            kernel=Path(data["kernel"]),
-            kerneldir=Path(data["kerneldir"]),
-            squashfs=Path(data["squashfs"]),
-            initial_ramdisk=Path(data["initialRamdisk"]),
-            kernel_params=data["kernelParams"],
-        )
 
 
 class QmpSession:
@@ -165,12 +139,14 @@ class QemuVm:
         """
         print(f"wait for ssh on {self.ssh_port}")
         while True:
-            try:
-                self.ssh_cmd(["echo", "ok"])
-                return
-            except subprocess.CalledProcessError:
-                pass
-            time.sleep(1)
+            if (
+                self.ssh_cmd(
+                    ["echo", "ok"], check=False, stderr=subprocess.DEVNULL
+                ).returncode
+                == 0
+            ):
+                break
+            time.sleep(0.1)
 
     def ssh_cmd(
         self,
@@ -254,7 +230,9 @@ def qemu_command(image: VmImage, qmp_socket: Path, ssh_port: int = 0) -> List:
         "-m",
         "512",
         "-drive",
-        f"index=0,id=drive1,file={image.squashfs},readonly,media=cdrom,format=raw,if=virtio",
+        f"id=drive1,file={image.squashfs},readonly=on,media=cdrom,format=raw,if=none",
+        "-device",
+        "virtio-blk-pci,drive=drive1,bootindex=1",
         "-kernel",
         f"{image.kernel}/bzImage",
         "-initrd",
@@ -266,6 +244,8 @@ def qemu_command(image: VmImage, qmp_socket: Path, ssh_port: int = 0) -> List:
         f"user,id=n1,hostfwd=tcp:127.0.0.1:{ssh_port}-:22",
         "-device",
         "virtio-net-pci,netdev=n1",
+        "-virtfs",
+        f"local,path={PROJECT_ROOT},security_model=none,mount_tag=vmsh",
         "-qmp",
         f"unix:{str(qmp_socket)},server,nowait",
         "-no-reboot",
@@ -275,10 +255,11 @@ def qemu_command(image: VmImage, qmp_socket: Path, ssh_port: int = 0) -> List:
 
 
 @contextmanager
-def spawn_qemu(image: VmImage) -> Iterator[QemuVm]:
+def spawn_qemu(image: VmImage, extra_args: List[str] = []) -> Iterator[QemuVm]:
     with TemporaryDirectory() as tempdir:
         qmp_socket = Path(tempdir).joinpath("qmp.sock")
         cmd = qemu_command(image, qmp_socket)
+        cmd += extra_args
 
         tmux_session = f"pytest-{os.getpid()}"
         tmux = [

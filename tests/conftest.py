@@ -9,15 +9,14 @@ from contextlib import contextmanager
 from pathlib import Path
 from queue import Queue
 from shlex import quote
-from typing import Any, Iterator, List, Type, Union, Callable
+from typing import Any, Iterator, List, Type, Union, Callable, Optional
 
 import pytest
-from qemu import QemuVm, VmImage, spawn_qemu, notos_image
+from qemu import QemuVm, VmImage, spawn_qemu
+from nix import notos_image, busybox_image
 from root import PROJECT_ROOT, TEST_ROOT
 
 sys.path.append(str(TEST_ROOT.parent))
-
-build_artifacts = Path("/dev/null")  # folder with cargo-built executables
 
 
 def cargo_build() -> Path:
@@ -28,6 +27,16 @@ def cargo_build() -> Path:
         ["cargo", "build", "--examples"], cwd=PROJECT_ROOT, env=env, check=True
     )
     return PROJECT_ROOT.joinpath("target", "debug")
+
+
+_build_artifacts: Optional[Path] = None
+
+
+def build_artifacts() -> Path:
+    global _build_artifacts
+    if _build_artifacts is None:
+        _build_artifacts = cargo_build()
+    return _build_artifacts
 
 
 @contextmanager
@@ -111,7 +120,7 @@ def spawn_vmsh_command(args: List[str], cargo_executable: str = "vmsh") -> VmshP
     gid = os.getuid()
     groups = ",".join(map(str, os.getgroups()))
     with ensure_debugfs_access():
-        cmd = [str(build_artifacts.joinpath(cargo_executable))]
+        cmd = [str(build_artifacts().joinpath(cargo_executable))]
         cmd += args
         cmd_quoted = " ".join(map(quote, cmd))
 
@@ -147,6 +156,10 @@ class Helpers:
         return notos_image()
 
     @staticmethod
+    def busybox_image() -> "contextlib._GeneratorContextManager[Path]":
+        return busybox_image()
+
+    @staticmethod
     def spawn_vmsh_command(
         args: List[str], cargo_executable: str = "vmsh"
     ) -> VmshPopen:
@@ -158,13 +171,12 @@ class Helpers:
         assert proc.wait() == 0
 
     @staticmethod
-    def spawn_qemu(image: VmImage) -> "contextlib._GeneratorContextManager[QemuVm]":
-        return spawn_qemu(image)
+    def spawn_qemu(
+        image: VmImage, extra_args: List[str] = []
+    ) -> "contextlib._GeneratorContextManager[QemuVm]":
+        return spawn_qemu(image, extra_args)
 
 
 @pytest.fixture
 def helpers() -> Type[Helpers]:
     return Helpers
-
-
-build_artifacts = cargo_build()

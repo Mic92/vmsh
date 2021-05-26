@@ -5,12 +5,16 @@ from root import PROJECT_ROOT
 
 
 def test_virtio_device_space(helpers: conftest.Helpers) -> None:
-    with helpers.spawn_qemu(helpers.notos_image()) as vm:
+    with helpers.busybox_image() as img, helpers.spawn_qemu(
+        helpers.notos_image()
+    ) as vm:
         vm.wait_for_ssh()
         print("ssh available")
         vmsh = helpers.spawn_vmsh_command(
             [
                 "attach",
+                "--backing-file",
+                str(img),
                 str(vm.pid),
                 "--",
                 "-i",
@@ -27,8 +31,9 @@ def test_virtio_device_space(helpers: conftest.Helpers) -> None:
                 lambda l: "block device driver started" in l,
             )
 
-            res = vm.ssh_cmd(["dmesg"])
+            res = vm.ssh_cmd(["dmesg"], check=False)
             print("stdout:\n", res.stdout)
+            assert res.returncode == 0
 
             # with DeviceMmioSpace instead of KvmRunWrapper:
             # assert (
@@ -42,12 +47,7 @@ def test_virtio_device_space(helpers: conftest.Helpers) -> None:
             # )
 
             # with KvmRunWrapper:
-            assert (
-                res.stdout.find(
-                    "virtio_blk virtio3: [vdb] 0 512-byte logical blocks (0 B/0 B)"
-                )
-                > 0
-            )
+            assert res.stdout.find("ext4 filesystem being mounted at /tmp/") > 0
         try:
             os.kill(vmsh.pid, 0)
         except ProcessLookupError:
@@ -56,5 +56,6 @@ def test_virtio_device_space(helpers: conftest.Helpers) -> None:
             assert False, "vmsh was not terminated properly"
 
         # See that the VM is still alive after detaching
-        res = vm.ssh_cmd(["echo", "ping"])
+        res = vm.ssh_cmd(["echo", "ping"], check=False)
         assert res.stdout == "ping\n"
+        assert res.returncode == 0
