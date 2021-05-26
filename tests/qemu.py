@@ -277,10 +277,11 @@ def qemu_command(image: VmImage, qmp_socket: Path, ssh_port: int = 0) -> List:
 
 
 @contextmanager
-def spawn_qemu(image: VmImage) -> Iterator[QemuVm]:
+def spawn_qemu(image: VmImage, extra_args: List[str] = []) -> Iterator[QemuVm]:
     with TemporaryDirectory() as tempdir:
         qmp_socket = Path(tempdir).joinpath("qmp.sock")
         cmd = qemu_command(image, qmp_socket)
+        cmd += extra_args
 
         tmux_session = f"pytest-{os.getpid()}"
         tmux = [

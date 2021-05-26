@@ -158,8 +158,10 @@ class Helpers:
         assert proc.wait() == 0
 
     @staticmethod
-    def spawn_qemu(image: VmImage) -> "contextlib._GeneratorContextManager[QemuVm]":
-        return spawn_qemu(image)
+    def spawn_qemu(
+        image: VmImage, extra_args: List[str] = []
+    ) -> "contextlib._GeneratorContextManager[QemuVm]":
+        return spawn_qemu(image, extra_args)
 
 
 @pytest.fixture
