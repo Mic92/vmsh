@@ -23,12 +23,24 @@
     ip addr add 10.0.2.15/24 dev eth0
   '';
 
-  boot.initrd.availableKernelModules = [ "virtio_console" "virtio_mmio" "9p" "9pnet_virtio" ];
-  boot.initrd.kernelModules = [ "virtio_mmio" "9p" "9pnet_virtio" ];
+  boot.initrd.availableKernelModules = [
+    "virtio_console" "virtio_mmio"
+    # 9p over virtio
+    "9p" "9pnet_virtio" "fscache"
+    # ext4
+    "ext4" "crc16" "mbcache" "jbd2" "crc32c_generic"
+  ];
+  boot.initrd.kernelModules = [
+    "virtio_mmio"
+    # 9p over virtio
+    "9p" "9pnet_virtio" "fscache"
+    # ext4
+    "ext4" "crc16" "mbcache" "jbd2" "crc32c_generic"
+  ];
 
   system.activationScripts.vmsh = ''
     mkdir /vmsh
-    mount -t 9p vmsh /vmsh -o "trans=virtio";
+    mount -t 9p vmsh /vmsh -o trans=virtio
   '';
 
   environment.etc = {
