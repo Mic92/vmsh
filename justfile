@@ -4,9 +4,11 @@
 # vim: set ft=make :
 
 linux_dir := invocation_directory() + "/../linux"
-linux_rev := "v5.11"
+linux_rev := "v5.10.37"
 
 kernel_fhs := `nix build --json '.#kernel-fhs' | jq -r '.[] | .outputs | .out'` + "/bin/linux-kernel-build"
+
+virtio_blk_img := invocation_directory() + "/../linux/nixos.img"
 
 qemu_pid := `pgrep -u $(id -u) qemu-system | awk '{print $1}'`
 qemu_ssh_port := "2222"
@@ -38,10 +40,35 @@ test:
   cargo test
   pytest -n $(nproc --ignore=2) -s tests
 
+# Fuzz - or rather stress test the blkdev (run `just qemu` and `just attach-qemu-img` before)
+stress-test:
+  just ssh-qemu "head -c 10 /dev/vda"
+  just ssh-qemu "tail -c 10 /dev/vda"
+  just ssh-qemu "tail -c 8192 /dev/vda"
+  just ssh-qemu "tail -c 8193 /dev/vda"
+  just ssh-qemu "tail -c 12288 /dev/vda"
+  just ssh-qemu "tail -c 12289 /dev/vda"
+  just ssh-qemu "tail -c 1000000 /dev/vda"
+  just ssh-qemu "mkdir -p /mnt2"
+  just ssh-qemu "mount /dev/vda /mnt2"
+  just ssh-qemu "ls /mnt2"
+  just ssh-qemu "umount /mnt2"
+  just ssh-qemu "hdparm -Tt /dev/vda"
+  just ssh-qemu "hdparm -Tt /dev/vda"
+  just ssh-qemu "hdparm -Tt /dev/vda"
+  just ssh-qemu "hdparm -Tt /dev/vda"
+  just ssh-qemu "hdparm -Tt /dev/vda"
+  just ssh-qemu "hdparm -Tt /dev/vda"
+  just ssh-qemu "hdparm -Tt /dev/vda"
+  just ssh-qemu "hdparm -Tt /dev/vda"
+  [ $(sha256sum {{virtio_blk_img}} | cut -c'1-64') == $(just ssh-qemu "sha256sum /dev/vda" | cut -c'1-64') ] || echo "ok"
+  echo "stress test ok"
+
 # Git clone linux kernel
 clone-linux:
   [[ -d {{linux_dir}} ]] || \
-    git clone https://github.com/torvalds/linux {{linux_dir}}
+    git clone git://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git \\
+    {{linux_dir}}
   git -C {{linux_dir}} checkout {{linux_rev}}
 
 # Configure linux kernel build
@@ -84,6 +111,11 @@ nixos-image:
   [[ {{linux_dir}}/nixos.ext4 -nt flake.lock ]] || \
   (nix build .#nixos-image --out-link nixos-image && \
   install -m600 "nixos-image/nixos.img" {{linux_dir}}/nixos.ext4)
+
+# convert nixos-image.qcow2 to .img
+nixos-image-img: nixos-image
+  if [[ ! -f {{linux_dir}}/nixos.img ]]; then \
+    qemu-img convert {{linux_dir}}/nixos.qcow2 -O raw {{linux_dir}}/nixos.img; fi
 
 # Build kernel/disk image for not os
 notos-image:
@@ -153,6 +185,13 @@ build-debug-kernel-mod:
 # Load debug kernel module into VM started by `just qemu` using ssh
 load-debug-kernel-mod: build-debug-kernel-mod
   just ssh-qemu "rmmod debug-kernel-mod; insmod /mnt/vmsh/tests/debug-kernel-mod/debug-kernel-mod.ko && dmesg"
+
+attach-qemu-img: nixos-image-img
+  cargo run -- \
+  -l info,vmsh::device::virtio::block::inorder_handler=warn,vm_memory::mmap=warn,vm_memory::remote_mem=warn,vmsh::device::threads=debug attach \
+  "{{qemu_pid}}" -f {{virtio_blk_img}} \
+  -- -i nix/ssh_key -p "{{qemu_ssh_port}}" "root@localhost" 
+
 
 # Attach block device to first qemu vm found by pidof and owned by our own user
 attach-qemu: vmsh-image
