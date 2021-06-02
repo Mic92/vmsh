@@ -6,7 +6,10 @@ use std::borrow::{Borrow, BorrowMut};
 use std::fs::OpenOptions;
 use std::ops::DerefMut;
 use std::path::PathBuf;
+use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
+use vm_virtio::device::VirtioDevice;
 use vm_virtio::device::VirtioDeviceType;
 
 use event_manager::{MutEventSubscriber, RemoteEndpoint, Result as EvmgrResult, SubscriberId};
@@ -42,8 +45,10 @@ pub struct Block<M: GuestAddressSpace> {
     virtio_cfg: VirtioConfig<M>,
     pub mmio_cfg: MmioConfig,
     endpoint: RemoteEndpoint<Arc<Mutex<dyn MutEventSubscriber + Send>>>,
+    activated_subscriber: Option<SubscriberId>,
+    pub last_interrupt: Arc<Mutex<Instant>>,
     vmm: Arc<Hypervisor>,
-    irqfd: Arc<EventFd>,
+    pub irqfd: Arc<EventFd>,
     file_path: PathBuf,
     read_only: bool,
     // We'll prob need to remember this for state save/restore unless we pass the info from
@@ -95,6 +100,8 @@ where
             virtio_cfg,
             mmio_cfg,
             endpoint: args.common.event_mgr.remote_endpoint(),
+            activated_subscriber: None,
+            last_interrupt: Arc::new(Mutex::new(Instant::now())),
             vmm: args.common.vmm.clone(),
             irqfd: Arc::new(irqfd),
             file_path: args.file_path,
@@ -138,6 +145,30 @@ where
         // }
 
         Ok(block)
+    }
+
+    // TODO extract to own struct to support locking of entire struct and show irq success rate
+    pub fn irq_ack_timeouts(&self) {
+        let status = self.interrupt_status();
+        let last_interrupt = self.last_interrupt.lock().expect("");
+        let passed = Instant::now().duration_since(*last_interrupt);
+        let INTERRUPT_ACK_TIMEOUT = Duration::from_millis(3);
+        if passed >= INTERRUPT_ACK_TIMEOUT && status.load(Ordering::Acquire) != 0 {
+            // interrupt timed out && has not been acked
+            if let Err(e) = self.irqfd.write(1) {
+                log::error!("Failed write to eventfd when signalling queue: {}", e);
+            } else {
+                log::warn!("re-sending interrupt after {}ms", passed.as_millis());
+            }
+        }
+        //let _sub_id = self.activated_subscriber.expect("programming error: must only be called after having .activate()ed the device");
+        //let foo;
+        //self.endpoint.call_blocking(|mgr| {
+        //let a = mgr.subscriber_mut(sub_id).expect("").lock().expect("");
+        //a.process();
+        //foo = a.inner.last_interrupt;
+        //Ok(())
+        //});
     }
 }
 
@@ -260,6 +291,7 @@ impl<M: GuestAddressSpace + Clone + Send + 'static> VirtioDeviceActions for Bloc
         let driver_notify = SingleFdSignalQueue {
             irqfd: self.irqfd.clone(),
             interrupt_status: self.virtio_cfg.interrupt_status.clone(),
+            last_interrupt: self.last_interrupt.clone(),
         };
 
         let inner = InOrderQueueHandler {
@@ -273,7 +305,7 @@ impl<M: GuestAddressSpace + Clone + Send + 'static> VirtioDeviceActions for Bloc
         // Register the queue handler with the `EventManager`. We could record the `sub_id`
         // (and/or keep a handler clone) for further interaction (i.e. to remove the subscriber at
         // a later time, retrieve state, etc).
-        let _sub_id = self
+        let sub_id = self
             .endpoint
             .call_blocking(move |mgr| -> EvmgrResult<SubscriberId> {
                 Ok(mgr.add_subscriber(handler))
@@ -282,6 +314,9 @@ impl<M: GuestAddressSpace + Clone + Send + 'static> VirtioDeviceActions for Bloc
                 log::warn!("{}", e);
                 Error::Endpoint(e)
             })?;
+        // TODO save subscriber id so that we can write a member function to poll for irq ack
+        // timeouts and edit the subscriber object
+        self.activated_subscriber = Some(sub_id);
 
         log::debug!("activating device: ok");
         self.virtio_cfg.device_activated = true;

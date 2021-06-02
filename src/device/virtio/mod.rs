@@ -74,23 +74,29 @@ pub struct CommonArgs<'a, M, B> {
 pub trait SignalUsedQueue {
     // TODO: Should this return an error? This failing is not really recoverable at the interface
     // level so the expectation is the implementation handles that transparently somehow.
-    fn signal_used_queue(&self, index: u16);
+    fn signal_used_queue(&mut self, index: u16);
 }
 
+use std::time::Instant;
 /// Uses a single irqfd as the basis of signalling any queue (useful for the MMIO transport,
 /// where a single interrupt is shared for everything).
 pub struct SingleFdSignalQueue {
     pub irqfd: Arc<EventFd>,
     pub interrupt_status: Arc<AtomicU8>,
+    pub last_interrupt: Arc<Mutex<Instant>>,
+    //last_acked: Instant,
 }
 
 impl SignalUsedQueue for SingleFdSignalQueue {
-    fn signal_used_queue(&self, _index: u16) {
-        log::debug!("irqfd << {}", _index);
+    fn signal_used_queue(&mut self, _index: u16) {
+        log::trace!("irqfd << {}", _index);
         self.interrupt_status
             .fetch_or(VIRTIO_MMIO_INT_VRING, Ordering::SeqCst);
         if let Err(e) = self.irqfd.write(1) {
             error!("Failed write to eventfd when signalling queue: {}", e);
+        } else {
+            let mut a = self.last_interrupt.lock().expect("");
+            *a = Instant::now();
         }
     }
 }
