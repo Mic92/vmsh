@@ -89,9 +89,8 @@ where
         self.queue.add_used(chain.head_index(), len)?;
 
         if self.queue.needs_notification()? {
-            log::trace!("notification needed: yes; ");
+            log::trace!("notification needed: yes");
             self.driver_notify.signal_used_queue(0);
-            // TODO update signal sent timestamp (in queue?)
         } else {
             log::trace!("notification needed: no");
         }

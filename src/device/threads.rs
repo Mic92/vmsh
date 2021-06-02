@@ -10,7 +10,6 @@ use std::sync::{Condvar, Mutex};
 use vm_device::bus::MmioAddress;
 use vm_virtio::device::VirtioDevice;
 use vm_virtio::device::WithDriverSelect;
-use vm_virtio::Queue;
 
 use crate::device::{Block, Device, DEVICE_MAX_MEM};
 use crate::interrutable_thread::InterrutableThread;
@@ -18,7 +17,7 @@ use crate::kvm::hypervisor::Hypervisor;
 use crate::result::Result;
 use crate::tracer::wrap_syscall::KvmRunWrapper;
 
-const EVENT_LOOP_TIMEOUT_MS: i32 = 10;
+const EVENT_LOOP_TIMEOUT_MS: i32 = 1;
 
 // Arc<Mutex<>> because the same device (a dyn DevicePio/DeviceMmio from IoManager's
 // perspective, and a dyn MutEventSubscriber from EventManager's) is managed by the 2 entities,
@@ -60,34 +59,29 @@ impl DeviceReady {
     }
 }
 
-use simple_error::map_err_with;
 fn event_thread(
     mut event_mgr: SubscriberEventManager,
     device: &Device,
     err_sender: &SyncSender<()>,
 ) -> Result<InterrutableThread<()>> {
     let blkdev = device.blkdev.clone();
+    let ack_handler = {
+        let blkdev = try_with!(blkdev.lock(), "cannot unlock thread");
+        blkdev.irq_ack_handler.clone()
+    };
+
     let res = InterrutableThread::spawn(
         "event-manager",
         err_sender,
         move |should_stop: Arc<AtomicBool>| {
             loop {
-                // TODO why does it hang when you reduce this?
                 match event_mgr.run_with_timeout(EVENT_LOOP_TIMEOUT_MS) {
                     Ok(nr) => log::trace!("EventManager: processed {} events", nr),
                     Err(e) => log::warn!("Failed to handle events: {:?}", e),
                 }
-                // TODO if queue.signal_sent_timestamp > threashold and
-                // blkdev.irq_stauts not acked
-                // send irq
-                // TODO how do i dispatch an event here?
                 {
-                    let blkdev = try_with!(blkdev.lock(), "cannot unlock thread");
-                    //blkdev.irq_ack_timeouts();
-                    let mut ack_handler = blkdev.irq_ack_handler.lock().expect("");
+                    let mut ack_handler = ack_handler.lock().expect("");
                     ack_handler.handle_timeouts();
-                }
-                {
                 }
                 if should_stop.load(Ordering::Relaxed) {
                     break;
@@ -116,7 +110,7 @@ fn blkdev_monitor_thread(
         "blkdev-monitor",
         err_sender,
         move |should_stop: Arc<AtomicBool>| {
-            std::thread::sleep(std::time::Duration::from_millis(10000));
+            //std::thread::sleep(std::time::Duration::from_millis(10000));
             loop {
                 match exit_condition(&blkdev) {
                     Err(e) => warn!("cannot evaluate exit condition: {}", e),
@@ -143,7 +137,7 @@ fn blkdev_monitor_thread(
                     //     blkdev.queue_select(),
                     //     blkdev.selected_queue().unwrap().max_size(),
                     //     blkdev.selected_queue().unwrap().ready,
-                    //     blkdev.selected_queue().unwrap().is_valid()
+                    //     blkdev.selected_queue().unwrap().is_valid() // crashes before activate()
                     // );
                     // debug!(
                     //     "dev queue {}: avail idx {}, next avail idx {}",

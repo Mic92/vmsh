@@ -4,7 +4,7 @@
 # vim: set ft=make :
 
 linux_dir := invocation_directory() + "/../linux"
-linux_rev := "v5.10.37"
+linux_rev := "v5.11"
 
 kernel_fhs := `nix build --json '.#kernel-fhs' | jq -r '.[] | .outputs | .out'` + "/bin/linux-kernel-build"
 

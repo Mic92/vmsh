@@ -75,7 +75,7 @@ pub struct CommonArgs<'a, M, B> {
 pub trait SignalUsedQueue {
     // TODO: Should this return an error? This failing is not really recoverable at the interface
     // level so the expectation is the implementation handles that transparently somehow.
-    fn signal_used_queue(&mut self, index: u16);
+    fn signal_used_queue(&self, index: u16);
 }
 
 /// Uses a single irqfd as the basis of signalling any queue (useful for the MMIO transport,
@@ -83,22 +83,17 @@ pub trait SignalUsedQueue {
 pub struct SingleFdSignalQueue {
     pub irqfd: Arc<EventFd>,
     pub interrupt_status: Arc<AtomicU8>,
-    pub last_interrupt: Arc<Mutex<Instant>>,
     pub ack_handler: Arc<Mutex<IrqAckHandler>>,
-    //last_acked: Instant,
 }
 
 impl SignalUsedQueue for SingleFdSignalQueue {
-    fn signal_used_queue(&mut self, _index: u16) {
+    fn signal_used_queue(&self, _index: u16) {
         log::trace!("irqfd << {}", _index);
         self.interrupt_status
             .fetch_or(VIRTIO_MMIO_INT_VRING, Ordering::SeqCst);
         if let Err(e) = self.irqfd.write(1) {
             error!("Failed write to eventfd when signalling queue: {}", e);
         } else {
-            let mut a = self.last_interrupt.lock().expect("");
-            *a = Instant::now();
-
             let mut handler = self.ack_handler.lock().expect("");
             handler.irq_sent();
         }
@@ -106,8 +101,8 @@ impl SignalUsedQueue for SingleFdSignalQueue {
 }
 
 /// Note: `device::threads::EVENT_LOOP_TIMEOUT_MS` typically determines how often the irq ack
-/// timeout is handled and thus is typically the lower bound. 
-const INTERRUPT_ACK_TIMEOUT: Duration = Duration::from_millis(3);
+/// timeout is handled and thus is typically the lower bound.
+const INTERRUPT_ACK_TIMEOUT: Duration = Duration::from_millis(1);
 
 pub struct IrqAckHandler {
     last_sent: Instant,
@@ -128,11 +123,13 @@ impl IrqAckHandler {
         }
     }
 
+    /// Must be called whenever a new irq is send for which an ack is expected.
     pub fn irq_sent(&mut self) {
         self.total_sent += 1;
         self.last_sent = Instant::now();
     }
 
+    /// Must be called regularly to handle ack timeouts and re-send irqs.
     pub fn handle_timeouts(&mut self) {
         let status = &self.interrupt_status;
         let last_interrupt = self.last_sent;
@@ -143,12 +140,13 @@ impl IrqAckHandler {
                 log::error!("Failed write to eventfd when signalling queue: {}", e);
             } else {
                 self.total_ack_timeouted += 1;
-                log::warn!("re-sending lost interrupt after {}ms. Total lost {:.0}% ({}/{})", 
-                           passed.as_millis(),
-                           100.0 * self.total_ack_timeouted as f64 / self.total_sent as f64,
-                           self.total_ack_timeouted,
-                           self.total_sent,
-                           );
+                log::warn!(
+                    "re-sending lost interrupt after {:.1}ms. Total lost {:.0}% ({}/{})",
+                    passed.as_micros() as f64 / 1000.0,
+                    100.0 * self.total_ack_timeouted as f64 / self.total_sent as f64,
+                    self.total_ack_timeouted,
+                    self.total_sent,
+                );
             }
         }
     }

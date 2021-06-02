@@ -101,7 +101,7 @@
             pkgs.git # needed for pre-commit install
             fenixPkgs.rust-analyzer
             pkgs.gdb
-            # pkgs.libguestfs-with-appliance # needed for just stress-test
+            # pkgs.libguestfs-with-appliance # needed for just attach-qemu-img and thus stress-test
           ];
 
           shellHook = ''
