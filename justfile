@@ -82,8 +82,8 @@ build-linux: configure-linux
 nixos-image:
   [[ {{linux_dir}}/nixos.ext4 -nt nix/nixos-image.nix ]] || \
   [[ {{linux_dir}}/nixos.ext4 -nt flake.lock ]] || \
-  (nix build .#ext4-image --out-link ext4-image && \
-  install -m600 "ext4-image/nixos.img" {{linux_dir}}/nixos.ext4)
+  (nix build .#nixos-image --out-link nixos-image && \
+  install -m600 "nixos-image/nixos.img" {{linux_dir}}/nixos.ext4)
 
 # Build kernel/disk image for not os
 notos-image:
