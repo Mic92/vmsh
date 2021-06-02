@@ -94,8 +94,10 @@ impl SignalUsedQueue for SingleFdSignalQueue {
         if let Err(e) = self.irqfd.write(1) {
             error!("Failed write to eventfd when signalling queue: {}", e);
         } else {
-            let mut handler = self.ack_handler.lock().expect("");
-            handler.irq_sent();
+            match self.ack_handler.lock() {
+                Ok(mut handler) => handler.irq_sent(),
+                Err(e) => error!("Failed to lock IrqAckHandler: {}", e),
+            }
         }
     }
 }
@@ -123,7 +125,7 @@ impl IrqAckHandler {
         }
     }
 
-    /// Must be called whenever a new irq is send for which an ack is expected.
+    /// Must be called whenever a new irq is sent for which an ack is expected.
     pub fn irq_sent(&mut self) {
         self.total_sent += 1;
         self.last_sent = Instant::now();
@@ -131,10 +133,9 @@ impl IrqAckHandler {
 
     /// Must be called regularly to handle ack timeouts and re-send irqs.
     pub fn handle_timeouts(&mut self) {
-        let status = &self.interrupt_status;
-        let last_interrupt = self.last_sent;
-        let passed = Instant::now().duration_since(last_interrupt);
-        if passed >= INTERRUPT_ACK_TIMEOUT && status.load(Ordering::Acquire) != 0 {
+        let passed = Instant::now().duration_since(self.last_sent);
+        let unacked = self.interrupt_status.load(Ordering::Acquire) != 0;
+        if passed >= INTERRUPT_ACK_TIMEOUT && unacked {
             // interrupt timed out && has not been acked
             if let Err(e) = self.irqfd.write(1) {
                 log::error!("Failed write to eventfd when signalling queue: {}", e);

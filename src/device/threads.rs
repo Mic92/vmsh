@@ -80,7 +80,7 @@ fn event_thread(
                     Err(e) => log::warn!("Failed to handle events: {:?}", e),
                 }
                 {
-                    let mut ack_handler = ack_handler.lock().expect("");
+                    let mut ack_handler = try_with!(ack_handler.lock(), "failed to lock");
                     ack_handler.handle_timeouts();
                 }
                 if should_stop.load(Ordering::Relaxed) {
