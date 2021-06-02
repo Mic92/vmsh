@@ -18,6 +18,8 @@ use crate::kvm::hypervisor::Hypervisor;
 use crate::result::Result;
 use crate::tracer::wrap_syscall::KvmRunWrapper;
 
+const EVENT_LOOP_TIMEOUT_MS: i32 = 10;
+
 // Arc<Mutex<>> because the same device (a dyn DevicePio/DeviceMmio from IoManager's
 // perspective, and a dyn MutEventSubscriber from EventManager's) is managed by the 2 entities,
 // and isn't Copy-able; so once one of them gets ownership, the other one can't anymore.
@@ -70,7 +72,8 @@ fn event_thread(
         err_sender,
         move |should_stop: Arc<AtomicBool>| {
             loop {
-                match event_mgr.run_with_timeout(5) {
+                // TODO why does it hang when you reduce this?
+                match event_mgr.run_with_timeout(EVENT_LOOP_TIMEOUT_MS) {
                     Ok(nr) => log::trace!("EventManager: processed {} events", nr),
                     Err(e) => log::warn!("Failed to handle events: {:?}", e),
                 }
@@ -80,7 +83,11 @@ fn event_thread(
                 // TODO how do i dispatch an event here?
                 {
                     let blkdev = try_with!(blkdev.lock(), "cannot unlock thread");
-                    blkdev.irq_ack_timeouts();
+                    //blkdev.irq_ack_timeouts();
+                    let mut ack_handler = blkdev.irq_ack_handler.lock().expect("");
+                    ack_handler.handle_timeouts();
+                }
+                {
                 }
                 if should_stop.load(Ordering::Relaxed) {
                     break;
