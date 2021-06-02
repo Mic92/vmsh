@@ -41,27 +41,27 @@ test:
   pytest -n $(nproc --ignore=2) -s tests
 
 # Fuzz - or rather stress test the blkdev (run `just qemu` and `just attach-qemu-img` before)
-stress-test:
-  just ssh-qemu "head -c 10 /dev/vda"
-  just ssh-qemu "tail -c 10 /dev/vda"
-  just ssh-qemu "tail -c 8192 /dev/vda"
-  just ssh-qemu "tail -c 8193 /dev/vda"
-  just ssh-qemu "tail -c 12288 /dev/vda"
-  just ssh-qemu "tail -c 12289 /dev/vda"
-  just ssh-qemu "tail -c 1000000 /dev/vda"
+stress-test DEV="/dev/vda":
+  just ssh-qemu "head -c 10 {{DEV}}"
+  just ssh-qemu "tail -c 10 {{DEV}}"
+  just ssh-qemu "tail -c 8192 {{DEV}}"
+  just ssh-qemu "tail -c 8193 {{DEV}}"
+  just ssh-qemu "tail -c 12288 {{DEV}}"
+  just ssh-qemu "tail -c 12289 {{DEV}}"
+  just ssh-qemu "tail -c 1000000 {{DEV}}"
   just ssh-qemu "mkdir -p /mnt2"
-  just ssh-qemu "mount /dev/vda /mnt2"
+  just ssh-qemu "mount {{DEV}} /mnt2"
   just ssh-qemu "ls /mnt2"
   just ssh-qemu "umount /mnt2"
-  just ssh-qemu "hdparm -Tt /dev/vda"
-  just ssh-qemu "hdparm -Tt /dev/vda"
-  just ssh-qemu "hdparm -Tt /dev/vda"
-  just ssh-qemu "hdparm -Tt /dev/vda"
-  just ssh-qemu "hdparm -Tt /dev/vda"
-  just ssh-qemu "hdparm -Tt /dev/vda"
-  just ssh-qemu "hdparm -Tt /dev/vda"
-  just ssh-qemu "hdparm -Tt /dev/vda"
-  [ $(sha256sum {{virtio_blk_img}} | cut -c'1-64') == $(just ssh-qemu "sha256sum /dev/vda" | cut -c'1-64') ] || echo "ok"
+  just ssh-qemu "hdparm -Tt {{DEV}}"
+  just ssh-qemu "hdparm -Tt {{DEV}}"
+  just ssh-qemu "hdparm -Tt {{DEV}}"
+  just ssh-qemu "hdparm -Tt {{DEV}}"
+  just ssh-qemu "hdparm -Tt {{DEV}}"
+  just ssh-qemu "hdparm -Tt {{DEV}}"
+  just ssh-qemu "hdparm -Tt {{DEV}}"
+  just ssh-qemu "hdparm -Tt {{DEV}}"
+  [ $(sha256sum {{virtio_blk_img}} | cut -c'1-64') == $(just ssh-qemu "sha256sum {{DEV}}" | cut -c'1-64') ] || echo "ok"
   echo "stress test ok"
 
 # Git clone linux kernel
@@ -191,7 +191,6 @@ attach-qemu-img: nixos-image-img
   -l info,vmsh::device::virtio::block::inorder_handler=warn,vm_memory::mmap=warn,vm_memory::remote_mem=warn,vmsh::device::threads=debug attach \
   "{{qemu_pid}}" -f {{virtio_blk_img}} \
   -- -i nix/ssh_key -p "{{qemu_ssh_port}}" "root@localhost" 
-
 
 # Attach block device to first qemu vm found by pidof and owned by our own user
 attach-qemu: vmsh-image
