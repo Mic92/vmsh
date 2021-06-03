@@ -1,6 +1,6 @@
 use event_manager::EventManager;
 use event_manager::MutEventSubscriber;
-use log::{debug, info, log_enabled, warn, Level};
+use log::{debug, info, log_enabled, trace, warn, Level};
 use simple_error::{require_with, try_with};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -10,13 +10,14 @@ use std::sync::{Condvar, Mutex};
 use vm_device::bus::MmioAddress;
 use vm_virtio::device::VirtioDevice;
 use vm_virtio::device::WithDriverSelect;
-use vm_virtio::Queue;
 
 use crate::device::{Block, Device, DEVICE_MAX_MEM};
 use crate::interrutable_thread::InterrutableThread;
 use crate::kvm::hypervisor::Hypervisor;
 use crate::result::Result;
 use crate::tracer::wrap_syscall::KvmRunWrapper;
+
+const EVENT_LOOP_TIMEOUT_MS: i32 = 1;
 
 // Arc<Mutex<>> because the same device (a dyn DevicePio/DeviceMmio from IoManager's
 // perspective, and a dyn MutEventSubscriber from EventManager's) is managed by the 2 entities,
@@ -60,16 +61,27 @@ impl DeviceReady {
 
 fn event_thread(
     mut event_mgr: SubscriberEventManager,
+    device: &Device,
     err_sender: &SyncSender<()>,
 ) -> Result<InterrutableThread<()>> {
+    let blkdev = device.blkdev.clone();
+    let ack_handler = {
+        let blkdev = try_with!(blkdev.lock(), "cannot unlock thread");
+        blkdev.irq_ack_handler.clone()
+    };
+
     let res = InterrutableThread::spawn(
         "event-manager",
         err_sender,
         move |should_stop: Arc<AtomicBool>| {
             loop {
-                match event_mgr.run_with_timeout(500) {
-                    Ok(nr) => log::debug!("EventManager: processed {} events", nr),
+                match event_mgr.run_with_timeout(EVENT_LOOP_TIMEOUT_MS) {
+                    Ok(nr) => log::trace!("EventManager: processed {} events", nr),
                     Err(e) => log::warn!("Failed to handle events: {:?}", e),
+                }
+                {
+                    let mut ack_handler = try_with!(ack_handler.lock(), "failed to lock");
+                    ack_handler.handle_timeouts();
                 }
                 if should_stop.load(Ordering::Relaxed) {
                     break;
@@ -97,40 +109,57 @@ fn blkdev_monitor_thread(
     let res = InterrutableThread::spawn(
         "blkdev-monitor",
         err_sender,
-        move |should_stop: Arc<AtomicBool>| loop {
-            match exit_condition(&blkdev) {
-                Err(e) => warn!("cannot evaluate exit condition: {}", e),
-                Ok(b) => {
-                    if b {
-                        return Ok(());
+        move |should_stop: Arc<AtomicBool>| {
+            //std::thread::sleep(std::time::Duration::from_millis(10000));
+            loop {
+                match exit_condition(&blkdev) {
+                    Err(e) => warn!("cannot evaluate exit condition: {}", e),
+                    Ok(b) => {
+                        if b {
+                            return Ok(());
+                        }
                     }
                 }
-            }
-            {
-                let blkdev = try_with!(blkdev.lock(), "cannot unlock thread");
-                debug!("");
-                debug!("dev type {}", blkdev.device_type());
-                debug!("dev features b{:b}", blkdev.device_features());
-                debug!(
-                    "dev interrupt stat b{:b}",
-                    blkdev.interrupt_status().load(Ordering::Relaxed)
-                );
-                debug!("dev status b{:b}", blkdev.device_status());
-                debug!("dev config gen {}", blkdev.config_generation());
-                debug!(
-                    "dev selqueue max size {}",
-                    blkdev.selected_queue().map(Queue::max_size).unwrap()
-                );
-                debug!(
-                    "dev selqueue ready {}",
-                    blkdev.selected_queue().map(|q| q.ready).unwrap()
-                );
-            }
+                {
+                    let blkdev = try_with!(blkdev.lock(), "cannot unlock thread");
+                    // debug!("");
+                    // debug!("dev type {}", blkdev.device_type());
+                    // debug!("dev features b{:b}", blkdev.device_features());
+                    // debug!(
+                    //     "dev interrupt stat b{:b}",
+                    //     blkdev.interrupt_status().load(Ordering::Relaxed)
+                    // );
+                    // debug!("dev status b{:b}", blkdev.device_status());
+                    // debug!("dev config gen {}", blkdev.config_generation());
+                    // debug!(
+                    //     "dev queue {}: max size: {}, ready: {}, is valid: {}",
+                    //     //blkdev.selected_queue().map(Queue::max_size).unwrap()
+                    //     blkdev.queue_select(),
+                    //     blkdev.selected_queue().unwrap().max_size(),
+                    //     blkdev.selected_queue().unwrap().ready,
+                    //     blkdev.selected_queue().unwrap().is_valid() // crashes before activate()
+                    // );
+                    // debug!(
+                    //     "dev queue {}: avail idx {}, next avail idx {}",
+                    //     blkdev.queue_select(),
+                    //     blkdev.selected_queue().unwrap().avail_idx(Ordering::Relaxed).unwrap(),
+                    //     blkdev.selected_queue().unwrap().next_avail(),
+                    //     );
+                    debug!(
+                        "dev queue {}: irq status b{:b}",
+                        blkdev.queue_select(),
+                        blkdev.interrupt_status().load(Ordering::SeqCst),
+                    );
 
-            if should_stop.load(Ordering::Relaxed) {
-                return Ok(());
+                    //debug!("occasional irqfd << 1");
+                    //blkdev.irqfd.write(1).unwrap();
+                }
+
+                if should_stop.load(Ordering::Relaxed) {
+                    return Ok(());
+                }
+                std::thread::sleep(std::time::Duration::from_millis(10000));
             }
-            std::thread::sleep(std::time::Duration::from_millis(1000));
         },
     );
 
@@ -170,7 +199,7 @@ fn handle_mmio_exits(
             let to = from + mmio_space.size() + DEVICE_MAX_MEM;
             if from <= addr && addr < to {
                 // intercept op
-                debug!("mmio access 0x{:x}", addr.0);
+                trace!("mmio access 0x{:x}", addr.0);
                 try_with!(mmio_mgr.handle_mmio_rw(mmio_rw), "failed to handle MmioRw");
             } else {
                 // do nothing, just continue to ingore and pass to hv
@@ -237,7 +266,7 @@ pub fn create_block_device(
     );
 
     let device_ready = Arc::new(DeviceReady::new());
-    let mut threads = vec![event_thread(event_manager, err_sender)?];
+    let mut threads = vec![event_thread(event_manager, &device, err_sender)?];
 
     if log_enabled!(Level::Debug) {
         threads.push(blkdev_monitor_thread(&device, err_sender)?);

@@ -24,7 +24,7 @@ use crate::device::virtio::features::{
     VIRTIO_F_IN_ORDER, VIRTIO_F_RING_EVENT_IDX, VIRTIO_F_VERSION_1,
 };
 use crate::device::virtio::{
-    MmioConfig, SingleFdSignalQueue, QUEUE_MAX_SIZE, VIRTIO_MMIO_QUEUE_NOTIFY_OFFSET,
+    IrqAckHandler, MmioConfig, SingleFdSignalQueue, QUEUE_MAX_SIZE, VIRTIO_MMIO_QUEUE_NOTIFY_OFFSET,
 };
 use crate::kvm::hypervisor::Hypervisor;
 
@@ -42,6 +42,7 @@ pub struct Block<M: GuestAddressSpace> {
     virtio_cfg: VirtioConfig<M>,
     pub mmio_cfg: MmioConfig,
     endpoint: RemoteEndpoint<Arc<Mutex<dyn MutEventSubscriber + Send>>>,
+    pub irq_ack_handler: Arc<Mutex<IrqAckHandler>>,
     vmm: Arc<Hypervisor>,
     irqfd: Arc<EventFd>,
     file_path: PathBuf,
@@ -83,20 +84,27 @@ where
         // Used to send notifications to the driver.
         //let irqfd = EventFd::new(EFD_NONBLOCK).map_err(Error::EventFd)?;
         log::debug!("register irqfd on gsi {}", args.common.mmio_cfg.gsi);
-        let irqfd = args
-            .common
-            .vmm
-            .irqfd(args.common.mmio_cfg.gsi)
-            .map_err(Error::Simple)?;
+        let irqfd = Arc::new(
+            args.common
+                .vmm
+                .irqfd(args.common.mmio_cfg.gsi)
+                .map_err(Error::Simple)?,
+        );
 
         let mmio_cfg = args.common.mmio_cfg;
+
+        let irq_ack_handler = Arc::new(Mutex::new(IrqAckHandler::new(
+            virtio_cfg.interrupt_status.clone(),
+            irqfd.clone(),
+        )));
 
         let block = Arc::new(Mutex::new(Block {
             virtio_cfg,
             mmio_cfg,
             endpoint: args.common.event_mgr.remote_endpoint(),
+            irq_ack_handler,
             vmm: args.common.vmm.clone(),
-            irqfd: Arc::new(irqfd),
+            irqfd,
             file_path: args.file_path,
             read_only: args.read_only,
             _root_device: args.root_device,
@@ -260,6 +268,7 @@ impl<M: GuestAddressSpace + Clone + Send + 'static> VirtioDeviceActions for Bloc
         let driver_notify = SingleFdSignalQueue {
             irqfd: self.irqfd.clone(),
             interrupt_status: self.virtio_cfg.interrupt_status.clone(),
+            ack_handler: self.irq_ack_handler.clone(),
         };
 
         let inner = InOrderQueueHandler {

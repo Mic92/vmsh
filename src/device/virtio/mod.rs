@@ -8,6 +8,7 @@ pub mod block;
 
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use crate::kvm::hypervisor::Hypervisor;
 use event_manager::{EventManager, MutEventSubscriber};
@@ -82,15 +83,72 @@ pub trait SignalUsedQueue {
 pub struct SingleFdSignalQueue {
     pub irqfd: Arc<EventFd>,
     pub interrupt_status: Arc<AtomicU8>,
+    pub ack_handler: Arc<Mutex<IrqAckHandler>>,
 }
 
 impl SignalUsedQueue for SingleFdSignalQueue {
     fn signal_used_queue(&self, _index: u16) {
-        log::debug!("irqfd << {}", _index);
+        log::trace!("irqfd << {}", _index);
         self.interrupt_status
             .fetch_or(VIRTIO_MMIO_INT_VRING, Ordering::SeqCst);
         if let Err(e) = self.irqfd.write(1) {
             error!("Failed write to eventfd when signalling queue: {}", e);
+        } else {
+            match self.ack_handler.lock() {
+                Ok(mut handler) => handler.irq_sent(),
+                Err(e) => error!("Failed to lock IrqAckHandler: {}", e),
+            }
+        }
+    }
+}
+
+/// Note: `device::threads::EVENT_LOOP_TIMEOUT_MS` typically determines how often the irq ack
+/// timeout is handled and thus is typically the lower bound.
+const INTERRUPT_ACK_TIMEOUT: Duration = Duration::from_millis(1);
+
+pub struct IrqAckHandler {
+    last_sent: Instant,
+    interrupt_status: Arc<AtomicU8>,
+    irqfd: Arc<EventFd>,
+    total_sent: usize,
+    total_ack_timeouted: usize,
+}
+
+impl IrqAckHandler {
+    pub fn new(interrupt_status: Arc<AtomicU8>, irqfd: Arc<EventFd>) -> Self {
+        IrqAckHandler {
+            last_sent: Instant::now(),
+            interrupt_status,
+            irqfd,
+            total_sent: 0,
+            total_ack_timeouted: 0,
+        }
+    }
+
+    /// Must be called whenever a new irq is sent for which an ack is expected.
+    pub fn irq_sent(&mut self) {
+        self.total_sent += 1;
+        self.last_sent = Instant::now();
+    }
+
+    /// Must be called regularly to handle ack timeouts and re-send irqs.
+    pub fn handle_timeouts(&mut self) {
+        let passed = Instant::now().duration_since(self.last_sent);
+        let unacked = self.interrupt_status.load(Ordering::Acquire) != 0;
+        if passed >= INTERRUPT_ACK_TIMEOUT && unacked {
+            // interrupt timed out && has not been acked
+            if let Err(e) = self.irqfd.write(1) {
+                log::error!("Failed write to eventfd when signalling queue: {}", e);
+            } else {
+                self.total_ack_timeouted += 1;
+                log::warn!(
+                    "re-sending lost interrupt after {:.1}ms. Total lost {:.0}% ({}/{})",
+                    passed.as_micros() as f64 / 1000.0,
+                    100.0 * self.total_ack_timeouted as f64 / self.total_sent as f64,
+                    self.total_ack_timeouted,
+                    self.total_sent,
+                );
+            }
         }
     }
 }

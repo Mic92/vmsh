@@ -89,7 +89,10 @@ where
         self.queue.add_used(chain.head_index(), len)?;
 
         if self.queue.needs_notification()? {
+            log::trace!("notification needed: yes");
             self.driver_notify.signal_used_queue(0);
+        } else {
+            log::trace!("notification needed: no");
         }
 
         log::trace!("process_chain done");
