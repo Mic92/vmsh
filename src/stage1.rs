@@ -17,7 +17,6 @@ use crate::interrutable_thread::InterrutableThread;
 use crate::result::Result;
 
 const STAGE1_EXE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/stage1.ko"));
-const STAGE2_EXE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/stage2"));
 
 #[derive(Debug)]
 pub struct Stage1 {
@@ -78,7 +77,6 @@ fn stage1_thread(ssh_args: Vec<String>, should_stop: Arc<AtomicBool>) -> Result<
     let debug_stage1 = if log_enabled!(Level::Debug) { "x" } else { "" };
 
     let stage1_size = dbg!(padded_size(dbg!(STAGE1_EXE.len())));
-    let stage2_size = dbg!(padded_size(dbg!(STAGE2_EXE.len())));
     let mut child = ssh_command(&ssh_args, |cmd| {
         cmd.stdin(Stdio::piped()).arg(format!(
             r#"
@@ -87,19 +85,15 @@ set -x
 tmpdir=$(mktemp -d)
 #trap "rm -rf '$tmpdir'" EXIT
 dd if=/proc/self/fd/0 of="$tmpdir/stage1.ko" count={} bs=512
-dd if=/proc/self/fd/0 of="$tmpdir/stage2" count={} bs=512
 # cleanup old driver if still loaded
 rmmod stage1 2>/dev/null || true
 insmod "$tmpdir/stage1.ko"
-chmod +x "$tmpdir/stage2"
-"$tmpdir/stage2"
 while ! dmesg | grep -q "virt-blk driver set up"; do
   sleep 1
 done
 "#,
             debug_stage1,
             stage1_size / 512,
-            stage2_size / 512
         ))
     })?;
 
@@ -107,10 +101,6 @@ done
     try_with!(
         write_padded(&mut stdin, STAGE1_EXE, stage1_size),
         "failed to write stage1"
-    );
-    try_with!(
-        write_padded(&mut stdin, STAGE2_EXE, stage2_size),
-        "failed to write stage2"
     );
 
     let pid = nix::unistd::Pid::from_raw(child.id() as i32);

@@ -12,9 +12,12 @@ default-run = "vmsh"
 [dev-dependencies]
 tempfile = "3"
 
+[build-dependencies]
+build-utils = { path = "src/build-utils" }
+
 [workspace]
 members = ["src/virtio"]
-exclude = ["src/stage1", "src/stage2"]
+exclude = ["src/stage1", "src/stage2", "src/build-utils"]
 
 [dependencies]
 clap = "2"
