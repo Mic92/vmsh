@@ -4,7 +4,6 @@
 # vim: set ft=make :
 
 linux_dir := invocation_directory() + "/../linux"
-linux_rev := "v5.11"
 
 kernel_fhs := `nix build --json '.#kernel-fhs' | jq -r '.[] | .outputs | .out'` + "/bin/linux-kernel-build"
 
@@ -67,9 +66,12 @@ stress-test DEV="/dev/vda":
 # Git clone linux kernel
 clone-linux:
   [[ -d {{linux_dir}} ]] || \
-    git clone git://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git \\
+    git clone https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git \
     {{linux_dir}}
-  git -C {{linux_dir}} checkout {{linux_rev}}
+  set -x; tag="v$(nix eval --raw --inputs-from . nixpkgs#linuxPackages_latest.kernel.version)"; \
+  [[ $(git -C {{linux_dir}} describe --tags) == "$tag" ]] || \
+     git -C {{linux_dir}} fetch https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git HEAD:stable && \
+     git -C {{linux_dir}} checkout "$tag"
 
 # Configure linux kernel build
 configure-linux: clone-linux
