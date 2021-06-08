@@ -71,7 +71,8 @@ clone-linux:
   set -x; tag="v$(nix eval --raw --inputs-from . nixpkgs#linuxPackages_latest.kernel.version)"; \
   [[ $(git -C {{linux_dir}} describe --tags) == "$tag" ]] || \
      git -C {{linux_dir}} fetch https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git HEAD:stable && \
-     git -C {{linux_dir}} checkout "$tag"
+     git -C {{linux_dir}} checkout "$tag" && \
+     rm -f {{linux_dir}}/.config
 
 # Configure linux kernel build
 configure-linux: clone-linux
