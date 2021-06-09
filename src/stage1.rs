@@ -76,14 +76,13 @@ fn stage1_thread(ssh_args: Vec<String>, should_stop: Arc<AtomicBool>) -> Result<
 
     let debug_stage1 = if log_enabled!(Level::Debug) { "x" } else { "" };
 
-    let stage1_size = dbg!(padded_size(dbg!(STAGE1_EXE.len())));
-    let mut child = ssh_command(&ssh_args, |cmd| {
+    let stage1_size = padded_size(STAGE1_EXE.len());
+    let mut child = ssh_command(&ssh_args, |cmd| -> &mut Command {
         cmd.stdin(Stdio::piped()).arg(format!(
             r#"
 set -eu{} -o pipefail
-set -x
 tmpdir=$(mktemp -d)
-#trap "rm -rf '$tmpdir'" EXIT
+trap "rm -rf '$tmpdir'" EXIT
 dd if=/proc/self/fd/0 of="$tmpdir/stage1.ko" count={} bs=512
 # cleanup old driver if still loaded
 rmmod stage1 2>/dev/null || true

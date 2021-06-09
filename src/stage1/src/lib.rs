@@ -3,6 +3,7 @@
 
 mod printk;
 
+use core::include_bytes;
 use core::panic::PanicInfo;
 use core::ptr;
 
@@ -15,6 +16,7 @@ const MMIO_IRQ: usize = 5;
 const IORESOURCE_MEM: libc::c_ulong = 0x00000200;
 const IORESOURCE_IRQ: libc::c_ulong = 0x00000400;
 const MAX_ERRNO: libc::c_ulong = 4095;
+const UMH_WAIT_EXEC: libc::c_int = 1;
 
 // kernel structures
 type phys_addr_t = usize;
@@ -28,90 +30,8 @@ type platform_device = libc::c_void;
 type property_entry = libc::c_void;
 /// same as struct file
 type file = libc::c_void;
-/// same as struct kobject
-type kobject = libc::c_void;
-type address_space = libc::c_void;
-
-#[repr(C)]
-pub struct lock_class_key {
-    a: libc::c_uint,
-}
-
-/// from <linux/sysfs.h>
-#[repr(C)]
-pub struct attribute {
-    name: *const libc::c_char,
-    mode: umode_t,
-    /// XXX we skip initializing some fields here present if DEBUG_LOCK_ALLOC is enabled
-    /// We assume that most general purpose kernels won't have it
-    ignore_lockdep: bool,
-    key: *mut lock_class_key,
-    skey: lock_class_key,
-}
-
-/// from <linux/sysfs.h>
-/// XXX this struct could change (i.e. become larger over time)
-#[repr(C)]
-pub struct bin_attribute {
-    attr: attribute,
-    size: libc::size_t,
-    private: *mut libc::c_void,
-    address_space: *mut address_space,
-    read: unsafe extern "C" fn(
-        *mut file,
-        *mut kobject,
-        *mut bin_attribute,
-        *mut libc::c_char,
-        libc::loff_t,
-        libc::size_t,
-    ) -> libc::ssize_t,
-    // actually a function pointer
-    write: *mut libc::c_void,
-    // actually a function pointer
-    mmap: *mut libc::c_void,
-}
-
-use core::cmp;
-use core::include_bytes;
 
 const STAGE2_EXE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/stage2"));
-
-unsafe extern "C" fn read_stage2_binary(
-    _: *mut file,
-    _: *mut kobject,
-    _: *mut bin_attribute,
-    buf: *mut libc::c_char,
-    off: libc::loff_t,
-    size: libc::size_t,
-) -> libc::ssize_t {
-    let read = cmp::min(
-        size,
-        STAGE2_EXE.len() - cmp::min(off as usize, STAGE2_EXE.len()),
-    );
-    memcpy(
-        buf as *mut libc::c_void,
-        (STAGE2_EXE.as_ptr() as *mut libc::c_void).add(off as usize),
-        read,
-    );
-    read as libc::ssize_t
-}
-
-const VMSH_BINARY_ATTR: bin_attribute = bin_attribute {
-    attr: attribute {
-        name: c_str!("vmsh").as_ptr() as *const libc::c_char,
-        mode: 0o755,
-        ignore_lockdep: false,
-        key: ptr::null_mut(),
-        skey: lock_class_key { a: 0 },
-    },
-    private: ptr::null_mut(),
-    address_space: ptr::null_mut(),
-    /// TODO
-    size: 0,
-    mmap: ptr::null_mut(),
-    write: ptr::null_mut(),
-    read: read_stage2_binary,
-};
 
 /// This function is called on panic.
 #[panic_handler]
@@ -152,6 +72,16 @@ pub struct platform_device_info {
     properties: *const property_entry,
 }
 
+struct PlatformDevice {
+    dev: *mut platform_device,
+}
+
+impl Drop for PlatformDevice {
+    fn drop(&mut self) {
+        unsafe { platform_device_unregister(self.dev) }
+    }
+}
+
 extern "C" {
     pub fn platform_device_register_full(
         pdevinfo: *const platform_device_info,
@@ -159,13 +89,28 @@ extern "C" {
     pub fn platform_device_unregister(pdev: *mut platform_device);
     pub fn memcpy(dest: *mut libc::c_void, src: *const libc::c_void, count: libc::size_t);
 
-    pub fn sysfs_create_bin_file(kobj: *mut kobject, attr: *const bin_attribute) -> libc::c_int;
-    pub fn sysfs_remove_bin_file(kobj: *mut kobject, attr: *const bin_attribute);
+    pub fn filp_open(name: *const libc::c_char, flags: libc::c_int, mode: umode_t) -> *mut file;
+    pub fn fput(file: *mut file);
+    pub fn kernel_write(
+        file: *mut file,
+        buf: *const libc::c_void,
+        count: libc::size_t,
+        pos: libc::loff_t,
+    ) -> libc::ssize_t;
 
-    static kernel_kobj: *mut kobject;
+    pub fn call_usermodehelper(
+        path: *const libc::c_char,
+        argv: *mut *mut libc::c_char,
+        envp: *mut *mut libc::c_char,
+        wait: libc::c_int,
+    ) -> libc::c_int;
 }
 
-unsafe fn register_virtio_mmio(base: usize, size: usize, irq: usize) -> *mut platform_device {
+unsafe fn register_virtio_mmio(
+    base: usize,
+    size: usize,
+    irq: usize,
+) -> Result<PlatformDevice, libc::c_int> {
     let resources: [resource; 2] = [
         resource {
             name: ptr::null(),
@@ -205,11 +150,15 @@ unsafe fn register_virtio_mmio(base: usize, size: usize, irq: usize) -> *mut pla
         properties: ptr::null(),
     };
 
-    platform_device_register_full(&info)
+    let dev = platform_device_register_full(&info);
+    if is_err_value(dev) {
+        return Err(err_value(dev) as libc::c_int);
+    }
+    Ok(PlatformDevice { dev })
 }
 
 /// Holds the device we create by this code, so we can unregister it later
-static mut BLK_DEV: *mut platform_device = ptr::null_mut();
+static mut BLK_DEV: Option<PlatformDevice> = None;
 
 /// re-implementation of IS_ERR_VALUE
 fn is_err_value(x: *const libc::c_void) -> bool {
@@ -221,29 +170,114 @@ fn err_value(ptr: *const libc::c_void) -> libc::c_long {
     ptr as libc::c_long
 }
 
+struct KFile {
+    file: *mut file,
+}
+
+impl KFile {
+    fn open(
+        name: &str,
+        flags: libc::c_int,
+        mode: umode_t,
+    ) -> core::result::Result<KFile, libc::c_int> {
+        let file = unsafe { filp_open(name.as_ptr() as *const libc::c_char, flags, mode) };
+        if is_err_value(file) {
+            return Err(err_value(file) as libc::c_int);
+        }
+        Ok(KFile { file })
+    }
+
+    fn write_all(
+        &mut self,
+        data: &[u8],
+        pos: libc::loff_t,
+    ) -> core::result::Result<libc::size_t, libc::c_int> {
+        let mut out: libc::size_t = 0;
+        let mut count = data.len();
+        let mut p = data.as_ptr();
+
+        /* sys_write only can write MAX_RW_COUNT aka 2G-4K bytes at most */
+        while count != 0 {
+            let rv = unsafe { kernel_write(self.file, p as *const libc::c_void, count, pos) };
+
+            match -rv as libc::c_int {
+                0 => break,
+                libc::EINTR | libc::EAGAIN => continue,
+                1..=libc::c_int::MAX => {
+                    return if out == 0 {
+                        Err(-rv as libc::c_int)
+                    } else {
+                        Ok(out)
+                    }
+                }
+                _ => {}
+            }
+
+            p = unsafe { p.add(rv as usize) };
+            out += rv as usize;
+            count -= rv as usize;
+        }
+
+        Ok(out)
+    }
+}
+
+impl Drop for KFile {
+    fn drop(&mut self) {
+        unsafe { fput(self.file) };
+    }
+}
+
+const STAGE2_PATH: &str = c_str!("/dev/.vmsh");
+
 /// # Safety
 ///
 /// this code is not thread-safe as it uses static globals
 #[no_mangle]
 pub unsafe fn init_vmsh_stage1() -> libc::c_int {
     printkln!("stage1: init");
-
-    let ret = sysfs_create_bin_file(kernel_kobj, &VMSH_BINARY_ATTR);
-    if ret != 0 {
-        printkln!("stage1: could not register sysfs entry for vmsh: {}", ret);
-        return ret as libc::c_int;
+    // we never delete this file, however deleting files is complex and requires accessing
+    // internal structs that might change.
+    let mut file = match KFile::open(STAGE2_PATH, libc::O_WRONLY | libc::O_CREAT, 0o755) {
+        Ok(f) => f,
+        Err(e) => {
+            printkln!("stage1: cannot open /dev/.vmsh: {}", e);
+            return e;
+        }
+    };
+    if let Err(res) = file.write_all(STAGE2_EXE, 0) {
+        printkln!("stage1: cannot write /dev/.vmsh: {}", res);
+        return res;
     }
 
-    BLK_DEV = register_virtio_mmio(MMIO_BASE, MMIO_SIZE, MMIO_IRQ);
-    if is_err_value(BLK_DEV) {
-        printkln!(
-            "stage1: initializing virt-blk driver failed: {}",
-            err_value(BLK_DEV)
-        );
-        sysfs_remove_bin_file(kernel_kobj, &VMSH_BINARY_ATTR);
-        return err_value(BLK_DEV) as libc::c_int;
-    }
+    let dev = match register_virtio_mmio(MMIO_BASE, MMIO_SIZE, MMIO_IRQ) {
+        Ok(v) => Some(v),
+        Err(res) => {
+            printkln!("stage1: failed to register mmio device: {}", res);
+            return res;
+        }
+    };
     printkln!("stage1: virt-blk driver set up");
+
+    let envp: *mut *mut libc::c_char = { ptr::null_mut() };
+    let argv: *mut *mut libc::c_char = {
+        STAGE2_EXE.as_ptr();
+        ptr::null_mut()
+    };
+
+    let err = call_usermodehelper(
+        STAGE2_EXE.as_ptr() as *const libc::c_char,
+        argv,
+        envp,
+        UMH_WAIT_EXEC,
+    );
+
+    if err != 0 {
+        printkln!("stage1: failed to spawn stage2: {}", err);
+    }
+
+    printkln!("stage1: spawned stage2");
+    BLK_DEV = dev;
     0
 }
 
@@ -253,6 +287,5 @@ pub unsafe fn init_vmsh_stage1() -> libc::c_int {
 #[no_mangle]
 pub unsafe fn cleanup_vmsh_stage1() {
     printkln!("stage1: cleanup");
-    platform_device_unregister(BLK_DEV);
-    sysfs_remove_bin_file(kernel_kobj, &VMSH_BINARY_ATTR);
+    BLK_DEV.take();
 }
