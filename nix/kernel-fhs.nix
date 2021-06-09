@@ -20,5 +20,5 @@ buildFHSUserEnv {
     openssl
     zlib
   ];
-  runScript = "bash -c";
+  inherit runScript;
 }
