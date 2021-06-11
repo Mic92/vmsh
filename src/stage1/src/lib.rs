@@ -30,6 +30,7 @@ type platform_device = libc::c_void;
 type property_entry = libc::c_void;
 /// same as struct file
 type file = libc::c_void;
+type task_struct = libc::c_void;
 
 const STAGE2_EXE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/stage2"));
 
@@ -90,7 +91,7 @@ extern "C" {
     pub fn memcpy(dest: *mut libc::c_void, src: *const libc::c_void, count: libc::size_t);
 
     pub fn filp_open(name: *const libc::c_char, flags: libc::c_int, mode: umode_t) -> *mut file;
-    pub fn fput(file: *mut file);
+    pub fn filp_close(filp: *mut file, id: *mut libc::c_void) -> libc::c_int;
     pub fn kernel_write(
         file: *mut file,
         buf: *const libc::c_void,
@@ -104,6 +105,18 @@ extern "C" {
         envp: *mut *mut libc::c_char,
         wait: libc::c_int,
     ) -> libc::c_int;
+
+    pub fn flush_delayed_fput();
+    pub fn kthread_create_on_node(
+        threadfn: unsafe extern "C" fn(data: *mut libc::c_void) -> libc::c_int,
+        data: *mut libc::c_void,
+        node: libc::c_int,
+        namefmt: *const libc::c_char,
+        ...
+    ) -> *mut task_struct;
+
+    pub fn wake_up_process(p: *mut task_struct);
+    pub fn kthread_stop(k: *mut task_struct) -> libc::c_int;
 }
 
 unsafe fn register_virtio_mmio(
@@ -159,6 +172,7 @@ unsafe fn register_virtio_mmio(
 
 /// Holds the device we create by this code, so we can unregister it later
 static mut BLK_DEV: Option<PlatformDevice> = None;
+static mut STAGE2_SPAWNER: Option<*mut task_struct> = None;
 
 /// re-implementation of IS_ERR_VALUE
 fn is_err_value(x: *const libc::c_void) -> bool {
@@ -224,18 +238,16 @@ impl KFile {
 
 impl Drop for KFile {
     fn drop(&mut self) {
-        unsafe { fput(self.file) };
+        let res = unsafe { filp_close(self.file, ptr::null_mut()) };
+        if res != 0 {
+            printkln!("stage1: error closing file: {}", res)
+        }
     }
 }
 
 const STAGE2_PATH: &str = c_str!("/dev/.vmsh");
 
-/// # Safety
-///
-/// this code is not thread-safe as it uses static globals
-#[no_mangle]
-pub unsafe fn init_vmsh_stage1() -> libc::c_int {
-    printkln!("stage1: init");
+unsafe extern "C" fn spawn_stage2(_data: *mut libc::c_void) -> libc::c_int {
     // we never delete this file, however deleting files is complex and requires accessing
     // internal structs that might change.
     let mut file = match KFile::open(STAGE2_PATH, libc::O_WRONLY | libc::O_CREAT, 0o755) {
@@ -245,10 +257,48 @@ pub unsafe fn init_vmsh_stage1() -> libc::c_int {
             return e;
         }
     };
-    if let Err(res) = file.write_all(STAGE2_EXE, 0) {
-        printkln!("stage1: cannot write /dev/.vmsh: {}", res);
-        return res;
+    match file.write_all(STAGE2_EXE, 0) {
+        Ok(n) => {
+            if n != STAGE2_EXE.len() {
+                printkln!(
+                    "{}: incomplete write ({} != {})",
+                    STAGE2_PATH,
+                    n,
+                    STAGE2_EXE.len()
+                );
+                return -libc::EIO;
+            }
+        }
+        Err(res) => {
+            printkln!("stage1: cannot write /dev/.vmsh: {}", res);
+            return res;
+        }
     }
+    drop(file);
+    flush_delayed_fput();
+
+    let mut envp: [*mut libc::c_char; 1] = [ptr::null_mut()];
+    let mut argv: [*mut libc::c_char; 2] =
+        [STAGE2_PATH.as_ptr() as *mut libc::c_char, ptr::null_mut()];
+
+    let res = call_usermodehelper(
+        STAGE2_PATH.as_ptr() as *mut libc::c_char,
+        argv.as_mut_ptr(),
+        envp.as_mut_ptr(),
+        UMH_WAIT_EXEC,
+    );
+    if res != 0 {
+        printkln!("stage1: failed to spawn stage2: {}", res);
+    }
+    res
+}
+
+/// # Safety
+///
+/// this code is not thread-safe as it uses static globals
+#[no_mangle]
+pub unsafe fn init_vmsh_stage1() -> libc::c_int {
+    printkln!("stage1: init");
 
     let dev = match register_virtio_mmio(MMIO_BASE, MMIO_SIZE, MMIO_IRQ) {
         Ok(v) => Some(v),
@@ -259,25 +309,25 @@ pub unsafe fn init_vmsh_stage1() -> libc::c_int {
     };
     printkln!("stage1: virt-blk driver set up");
 
-    let envp: *mut *mut libc::c_char = { ptr::null_mut() };
-    let argv: *mut *mut libc::c_char = {
-        STAGE2_EXE.as_ptr();
-        ptr::null_mut()
-    };
-
-    let err = call_usermodehelper(
-        STAGE2_EXE.as_ptr() as *const libc::c_char,
-        argv,
-        envp,
-        UMH_WAIT_EXEC,
+    // We cannot close a file synchronusly outside of a kthread
+    // Within a kthread we can use `flush_delayed_fput`
+    let thread = kthread_create_on_node(
+        spawn_stage2,
+        ptr::null_mut(),
+        0,
+        c_str!("vmsh-stage2-spawner").as_ptr() as *const libc::c_char,
     );
-
-    if err != 0 {
-        printkln!("stage1: failed to spawn stage2: {}", err);
+    if is_err_value(thread) {
+        printkln!(
+            "stage1: failed to spawn kernel thread: {}",
+            err_value(thread)
+        );
+        return err_value(thread) as libc::c_int;
     }
+    wake_up_process(thread);
 
-    printkln!("stage1: spawned stage2");
     BLK_DEV = dev;
+    STAGE2_SPAWNER = Some(thread);
     0
 }
 
@@ -287,5 +337,8 @@ pub unsafe fn init_vmsh_stage1() -> libc::c_int {
 #[no_mangle]
 pub unsafe fn cleanup_vmsh_stage1() {
     printkln!("stage1: cleanup");
+    if let Some(task) = STAGE2_SPAWNER.take() {
+        kthread_stop(task);
+    }
     BLK_DEV.take();
 }

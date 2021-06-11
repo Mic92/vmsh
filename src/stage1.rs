@@ -87,9 +87,6 @@ dd if=/proc/self/fd/0 of="$tmpdir/stage1.ko" count={} bs=512
 # cleanup old driver if still loaded
 rmmod stage1 2>/dev/null || true
 insmod "$tmpdir/stage1.ko"
-while ! dmesg | grep -q "virt-blk driver set up"; do
-  sleep 1
-done
 "#,
             debug_stage1,
             stage1_size / 512,
