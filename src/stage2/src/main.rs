@@ -2,6 +2,8 @@ use nix::unistd;
 use nix::unistd::Pid;
 use simple_error::{bail, try_with};
 use std::fs;
+use std::fs::OpenOptions;
+use std::io::Write;
 use std::os::unix::fs::MetadataExt;
 use std::process::exit;
 use user_namespace::IdMap;
@@ -16,12 +18,16 @@ mod mount_context;
 mod mountns;
 mod namespace;
 mod procfs;
+mod pty;
 mod result;
 mod sys_ext;
 mod tmp;
 mod user_namespace;
 
 fn run_stage2(target_pid: Pid) -> Result<()> {
+    // get a console to report errors as quick as possible
+    try_with!(pty::forward_thread(), "failed to spawn forward thread");
+
     let dev = try_with!(find_vmsh_blockdev(), "cannot find block_device");
 
     let (uid_map, gid_map) = try_with!(
@@ -125,9 +131,20 @@ fn run_stage2(target_pid: Pid) -> Result<()> {
     Ok(())
 }
 
+fn log_to_kmsg(msg: &str) {
+    let mut v = match OpenOptions::new().write(true).open("/dev/kmsg") {
+        Ok(v) => v,
+        Err(_) => return,
+    };
+    let _ = v.write_all(msg.as_bytes());
+}
+
 fn main() {
+    log_to_kmsg("[stage2] start\n");
     if let Err(e) = run_stage2(Pid::from_raw(1)) {
-        eprintln!("{}", e);
+        // print to both allocated pty and kmsg
+        log_to_kmsg(&format!("[stage2] {}\n", e));
+        eprintln!("{}", &e);
         exit(1);
     }
 }

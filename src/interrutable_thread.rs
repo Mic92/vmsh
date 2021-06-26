@@ -1,3 +1,4 @@
+use log::info;
 use simple_error::bail;
 use std::fmt::Debug;
 use std::io;
@@ -68,9 +69,19 @@ where
             self.should_stop.load(Ordering::Acquire),
             "shutdown() needs to be called before join()"
         );
+        let name = self.name();
+        info!("join {} thread...", name);
         match self.handle.join() {
-            Err(e) => bail!("could not join thread: {:?}", e),
+            Err(e) => bail!("could not join thread ({}): {:?}", name, e),
             Ok(v) => v,
+        }
+    }
+
+    pub fn name(&self) -> String {
+        if let Some(name) = self.handle.thread().name() {
+            name.to_string()
+        } else {
+            format!("{:?}", &self.handle.thread().id())
         }
     }
 }
