@@ -7,7 +7,7 @@ linux_dir := invocation_directory() + "/../linux"
 
 kernel_fhs := `nix build --json '.#kernel-fhs' | jq -r '.[] | .outputs | .out'` + "/bin/linux-kernel-build"
 
-virtio_blk_img := invocation_directory() + "/../linux/nixos.img"
+virtio_blk_img := invocation_directory() + "/../linux/nixos.ext4"
 
 qemu_pid := `pgrep -u $(id -u) qemu-system | awk '{print $1}'`
 qemu_ssh_port := "2222"
@@ -91,6 +91,7 @@ configure-linux: clone-linux
     {{kernel_fhs}} "scripts/config --set-val BPF_SYSCALL y"
     {{kernel_fhs}} "scripts/config --set-val IKHEADERS y"
     {{kernel_fhs}} "scripts/config --set-val VIRTIO_MMIO y"
+    {{kernel_fhs}} "scripts/config --set-val VSOCKETS y"
     {{kernel_fhs}} "scripts/config --set-val PTDUMP_CORE y"
     {{kernel_fhs}} "scripts/config --set-val PTDUMP_DEBUGFS y"
   fi
@@ -113,13 +114,8 @@ build-linux: configure-linux
 nixos-image:
   [[ {{linux_dir}}/nixos.ext4 -nt nix/nixos-image.nix ]] || \
   [[ {{linux_dir}}/nixos.ext4 -nt flake.lock ]] || \
-  (nix build .#nixos-image --out-link nixos-image && \
+  (nix build --builders '' .#nixos-image --out-link nixos-image && \
   install -m600 "nixos-image/nixos.img" {{linux_dir}}/nixos.ext4)
-
-# convert nixos-image.qcow2 to .img
-nixos-image-img: nixos-image
-  if [[ ! -f {{linux_dir}}/nixos.img ]]; then \
-    qemu-img convert {{linux_dir}}/nixos.qcow2 -O raw {{linux_dir}}/nixos.img; fi
 
 # Build kernel/disk image for not os
 notos-image:
@@ -148,6 +144,7 @@ qemu EXTRA_CMDLINE="nokalsr": build-linux nixos-image
     -virtfs local,path={{invocation_directory()}}/..,security_model=none,mount_tag=home \
     -virtfs local,path={{linux_dir}},security_model=none,mount_tag=linux \
     -nographic -enable-kvm \
+    -device vhost-vsock-pci,id=vhost-vsock-pci0,guest-cid=3
 
 # run qemu with filesystem/kernel from notos (same as in tests)
 qemu-notos:
@@ -190,15 +187,15 @@ build-debug-kernel-mod:
 load-debug-kernel-mod: build-debug-kernel-mod
   just ssh-qemu "rmmod debug-kernel-mod; insmod /mnt/vmsh/tests/debug-kernel-mod/debug-kernel-mod.ko && dmesg"
 
-attach-qemu-img: nixos-image-img
+attach-qemu-img: nixos-image
   cargo run -- \
   -l info,vmsh::device::virtio::block::inorder_handler=warn,vm_memory::mmap=warn,vm_memory::remote_mem=warn,vmsh::device::threads=debug attach \
   "{{qemu_pid}}" -f {{virtio_blk_img}} \
-  -- -i nix/ssh_key -p "{{qemu_ssh_port}}" "root@localhost" 
+  -- -i {{invocation_directory()}}/nix/ssh_key -p "{{qemu_ssh_port}}" "root@localhost"
 
 # Attach block device to first qemu vm found by pidof and owned by our own user
 attach-qemu: vmsh-image
-  cargo run -- attach -f "{{linux_dir}}/nixos.ext4" "{{qemu_pid}}" -- -i nix/ssh_key -p "{{qemu_ssh_port}}" "root@localhost"
+  cargo run -- attach -f "{{linux_dir}}/nixos.ext4" "{{qemu_pid}}" -- -i {{invocation_directory()}}/nix/ssh_key -p "{{qemu_ssh_port}}" "root@localhost"
 
 # Inspect first qemu vm found by pidof and owned by our own user
 inspect-qemu:
