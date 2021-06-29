@@ -101,7 +101,7 @@ impl Tracee {
     pub fn try_get_proc(&self) -> Result<&Injectee> {
         match &self.proc {
             None => bail!("programming error: tracee is not attached."),
-            Some(proc) => Ok(&proc),
+            Some(proc) => Ok(proc),
         }
     }
 

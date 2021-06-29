@@ -33,7 +33,7 @@ fn parse_pid_arg(args: &ArgMatches) -> Pid {
 
 fn inspect(args: &ArgMatches) {
     let opts = InspectOptions {
-        pid: parse_pid_arg(&args),
+        pid: parse_pid_arg(args),
     };
 
     if let Err(err) = inspect::inspect(&opts) {
@@ -44,7 +44,7 @@ fn inspect(args: &ArgMatches) {
 
 fn attach(args: &ArgMatches) {
     let opts = AttachOptions {
-        pid: parse_pid_arg(&args),
+        pid: parse_pid_arg(args),
         ssh_args: values_t_or_exit!(args, "ssh_args", String),
         backing: PathBuf::from(value_t!(args, "backing-file", String).unwrap_or_else(|e| e.exit())),
     };
@@ -56,7 +56,7 @@ fn attach(args: &ArgMatches) {
 }
 
 fn coredump(args: &ArgMatches) {
-    let pid = parse_pid_arg(&args);
+    let pid = parse_pid_arg(args);
     let path =
         value_t!(args, "PATH", PathBuf).unwrap_or_else(|_| PathBuf::from(format!("core.{}", pid)));
 
@@ -76,7 +76,7 @@ fn setup_logging(matches: &clap::ArgMatches) {
 
     let loglevel = matches.value_of("loglevel");
     if let Some(level) = loglevel {
-        env_logger::Builder::new().parse_filters(&level).init();
+        env_logger::Builder::new().parse_filters(level).init();
         return;
     }
 
@@ -137,9 +137,9 @@ fn main() {
     let matches = main_app.get_matches();
     setup_logging(&matches);
     match matches.subcommand() {
-        ("inspect", Some(sub_matches)) => inspect(&sub_matches),
-        ("attach", Some(sub_matches)) => attach(&sub_matches),
-        ("coredump", Some(sub_matches)) => coredump(&sub_matches),
+        ("inspect", Some(sub_matches)) => inspect(sub_matches),
+        ("attach", Some(sub_matches)) => attach(sub_matches),
+        ("coredump", Some(sub_matches)) => coredump(sub_matches),
         ("", None) => unreachable!(), // beause of AppSettings::SubCommandRequiredElseHelp
         _ => unreachable!(),
     }

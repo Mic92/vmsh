@@ -44,7 +44,8 @@ fn wait_connection(sock: File, should_stop: &Arc<AtomicBool>) -> Result<Option<F
     }
     let conn_fd = try_with!(accept(sock.as_raw_fd()), "failed to accept connection");
     let conn_file: File = unsafe { File::from_raw_fd(conn_fd.as_raw_fd()) };
-    return Ok(Some(conn_file));
+
+    Ok(Some(conn_file))
 }
 
 fn pty_serve(vsock: File, should_stop: Arc<AtomicBool>) -> Result<()> {

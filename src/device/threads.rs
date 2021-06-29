@@ -261,7 +261,7 @@ pub fn create_block_device(
     let mut event_manager = try_with!(SubscriberEventManager::new(), "cannot create event manager");
     // instantiate blkdev
     let device = try_with!(
-        Device::new(&vm, &mut event_manager, backing_file),
+        Device::new(vm, &mut event_manager, backing_file),
         "cannot create vm"
     );
 

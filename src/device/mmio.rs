@@ -67,7 +67,7 @@ impl IoPirate {
                 "write to mmio device (0x{:x}) failed",
                 mmio_rw.addr
             )?;
-            mmio_rw.answer_read(&slice)?;
+            mmio_rw.answer_read(slice)?;
         }
         Ok(())
     }
