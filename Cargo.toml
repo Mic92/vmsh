@@ -20,15 +20,18 @@ members = ["src/virtio", "src/ioutils"]
 exclude = ["src/stage1", "src/stage2", "src/build-utils"]
 
 [dependencies]
-clap = "2"
+clap = { version = "2", default-features = false }
 ioutils = { path = "src/ioutils" }
 nix = "0.21.*"
 libc = "0.2.*"
-bcc = "0.0.*"
+
+# drops regex dependency -> faster build
+# https://github.com/rust-bpf/rust-bcc/pull/179
+bcc = { git = "https://github.com/Mic92/rust-bcc.git" }
 simple-error = "0.2.*"
 kvm-bindings = "0.4.*"
 virtio = { path = "src/virtio" }
-env_logger = "0.8.*"
+env_logger = { version = "0.8.*", default-features = false }
 lazy_static = "*"
 container-pid = "0.1.0"
 
