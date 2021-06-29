@@ -177,6 +177,12 @@ ssh-qemu $COMMAND="":
 nested-qemu: nested-nixos-image
   just ssh-qemu qemu-nested
 
+# Copy programs from the host store to the guest nix store
+qemu-copy STORE_PATH:
+  mkdir -p target/mnt
+  sudo mount {{virtio_blk_img}} {{invocation_directory()}}/target/mnt
+  sudo nix copy {{STORE_PATH}} --to {{invocation_directory()}}/target/mnt
+  sudo umount {{invocation_directory()}}/target/mnt
 # Build debug kernel module for VM using kernel build by `just build-linux`
 build-debug-kernel-mod:
   # don't invoke linux kernel build every time because it is a bit slow...
