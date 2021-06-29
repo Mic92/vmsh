@@ -160,6 +160,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9a3a5bfb195931eeb336b2a7b4d761daec841b97f947d34394601737a7bba5e4"
 
 [[package]]
+name = "ioutils"
+version = "0.0.1"
+dependencies = [
+ "libc",
+ "nix",
+]
+
+[[package]]
 name = "kvm-bindings"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -461,6 +469,7 @@ dependencies = [
  "container-pid",
  "env_logger",
  "event-manager",
+ "ioutils",
  "kvm-bindings",
  "lazy_static",
  "libc",
