@@ -22,6 +22,9 @@ class VsockServer:
         )
         self.connections.append(conn)
 
+    def recv(self) -> str:
+        return self.connections[0].recv(4096).decode("utf-8")
+
 
 DEBUG_STAGE2 = os.getenv("TEST_DEBUG_STAGE2", False)
 
@@ -45,10 +48,18 @@ def test_stage2(helpers: conftest.Helpers) -> None:
         with helpers.spawn_qemu(helpers.notos_image(), extra_args) as vm:
             vm.wait_for_ssh()
             cmd = ["strace", "-f"] if DEBUG_STAGE2 else []
-            cmd.append("/vmsh/src/stage2/target/debug/stage2")
+            cmd += [
+                "/vmsh/src/stage2/target/debug/stage2",
+                "/bin/sh",
+                "-c",
+                "echo -n works",
+            ]
 
             res = vm.ssh_cmd(cmd, check=False, stdout=None)
             assert len(monitor_server.connections) == 1
-            print(monitor_server.connections[0].recv(4096).decode("utf-8"))
+            output = monitor_server.recv()
+            assert output == "process finished with exit status: 0\n"
             assert len(pty_server.connections) == 1
+            prog_output = pty_server.recv()
+            assert prog_output == "works"
             assert res.returncode == 0

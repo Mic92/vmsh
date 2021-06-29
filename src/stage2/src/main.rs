@@ -1,6 +1,7 @@
 use nix::unistd;
 use nix::unistd::Pid;
 use simple_error::{bail, try_with};
+use std::env;
 use std::ffi::OsString;
 use std::fs;
 use std::fs::OpenOptions;
@@ -176,11 +177,17 @@ fn log_to_kmsg(msg: &str) {
 
 fn main() {
     log_to_kmsg("[stage2] start\n");
+    let args = env::args().collect::<Vec<_>>();
+    let command = if args.len() > 2 {
+        Some(args[1].clone())
+    } else {
+        None
+    };
     // TODO
     let opts = Options {
+        command,
         target_pid: Pid::from_raw(1),
-        command: None,
-        args: vec![],
+        args: (&args[2..]).to_vec(),
         home: None,
     };
     if let Err(e) = run_stage2(&opts) {
