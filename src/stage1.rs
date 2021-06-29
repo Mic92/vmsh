@@ -93,6 +93,7 @@ insmod "$tmpdir/stage1.ko"
         ))
     })?;
 
+    info!("wait for payload to be written");
     let mut stdin = require_with!(child.stdin.take(), "Failed to open stdin");
     try_with!(
         write_padded(&mut stdin, STAGE1_EXE, stage1_size),

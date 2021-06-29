@@ -31,6 +31,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "ioutils"
+version = "0.0.1"
+dependencies = [
+ "libc",
+ "nix",
+]
+
+[[package]]
 name = "libc"
 version = "0.2.94"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -59,6 +67,7 @@ name = "stage2"
 version = "0.1.0"
 dependencies = [
  "container-pid",
+ "ioutils",
  "libc",
  "nix",
  "simple-error",

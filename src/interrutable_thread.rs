@@ -44,7 +44,6 @@ where
         let handle = builder.spawn(move || {
             let res = func(should_stop2);
             if res.is_err() {
-                dbg!(&res);
                 err_sender
                     .send(())
                     .expect("Could not send result back. Parent died");

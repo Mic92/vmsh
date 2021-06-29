@@ -6,6 +6,7 @@ use std::sync::mpsc::sync_channel;
 use std::sync::Arc;
 
 use crate::device::create_block_device;
+use crate::pty::{monitor_thread, pty_thread};
 use crate::result::Result;
 use crate::stage1::spawn_stage1;
 use crate::{kvm, signal_handler};
@@ -29,6 +30,9 @@ pub fn attach(opts: &AttachOptions) -> Result<()> {
     let (sender, receiver) = sync_channel(1);
 
     signal_handler::setup(&sender)?;
+
+    let pty_thread = try_with!(pty_thread(&sender), "cannot create pty forwarder");
+    let monitor_thread = try_with!(monitor_thread(&sender), "cannot create monitor forwarder");
 
     let stage1 = try_with!(spawn_stage1(&opts.ssh_args, &sender), "stage1 failed");
 

@@ -121,7 +121,7 @@ fn dump_dmesg() -> Result<()> {
 impl BlockDevice {
     pub fn mount(&self, mountpoint: &Path, selinux_context: &Option<String>) -> Result<()> {
         let dev_file = try_with!(
-            DeviceFile::new(mountpoint, &self),
+            DeviceFile::new(mountpoint, self),
             "cannot create block device file"
         );
         let filesystems = try_with!(get_filesystems(), "could not read supported filesystems");
