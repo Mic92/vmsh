@@ -144,7 +144,7 @@ qemu EXTRA_CMDLINE="nokalsr": build-linux nixos-image
     -virtfs local,path={{invocation_directory()}}/..,security_model=none,mount_tag=home \
     -virtfs local,path={{linux_dir}},security_model=none,mount_tag=linux \
     -nographic -enable-kvm \
-    -device vhost-vsock-pci,id=vhost-vsock-pci0,guest-cid=3
+    -device vhost-vsock-pci,id=vhost-vsock-pci0,guest-cid=$$
 
 # run qemu with filesystem/kernel from notos (same as in tests)
 qemu-notos:
@@ -183,6 +183,7 @@ qemu-copy STORE_PATH:
   sudo mount {{virtio_blk_img}} {{invocation_directory()}}/target/mnt
   sudo nix copy {{STORE_PATH}} --to {{invocation_directory()}}/target/mnt
   sudo umount {{invocation_directory()}}/target/mnt
+
 # Build debug kernel module for VM using kernel build by `just build-linux`
 build-debug-kernel-mod:
   # don't invoke linux kernel build every time because it is a bit slow...
