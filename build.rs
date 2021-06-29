@@ -3,7 +3,7 @@ use std::fs;
 use std::os::unix::fs::symlink;
 use std::process::Command;
 
-use build_utils::{copy_out, log, run, stage_dir};
+use build_utils::{copy_out, log, rebuild_if_dir_changed, run, stage_dir};
 
 fn fallback_kernel_dir() -> String {
     let proc = Command::new("uname")
@@ -26,16 +26,10 @@ fn main() {
     }
 
     // Tell Cargo that if the given file changes, to rerun this build script.
-    let srcs = [
-        "build.rs",
-        "module.c",
-        "Makefile",
-        "src/lib.rs",
-        "src/printk.rs",
-    ];
+    let srcs = ["build.rs", "module.c", "Makefile"];
+
     for src in &srcs {
-        // In theory this breaks paths on windows, but so does the linux build system.
-        println!("cargo:rerun-if-changed=src/stage1/{}", src);
+        println!("rerun-if-env-changed=src/stage1/{}", src);
     }
 
     // Re-run build if kernel dir changes
@@ -44,6 +38,10 @@ fn main() {
     let kernel_dir = env::var("KERNELDIR").unwrap_or_else(|_| fallback_kernel_dir());
 
     let stage1_dir = stage_dir("stage1");
+    let stage2_dir = stage_dir("stage2");
+
+    rebuild_if_dir_changed(&stage1_dir.join("src"));
+    rebuild_if_dir_changed(&stage2_dir.join("src"));
 
     log!("cd {} && cargo build --release", stage1_dir.display(),);
 

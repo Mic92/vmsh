@@ -1,5 +1,7 @@
 use std::env;
 use std::fs;
+use std::fs::DirEntry;
+use std::io;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -39,4 +41,26 @@ pub fn copy_out(source: &Path) {
     println!("cp {} {}", source.display(), target.display());
     fs::copy(source, target)
         .unwrap_or_else(|e| panic!("failed to copy {}: {}", source.display(), e));
+}
+
+fn visit_dirs(dir: &Path, cb: &dyn Fn(&DirEntry)) -> io::Result<()> {
+    if dir.is_dir() {
+        for entry in fs::read_dir(dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_dir() {
+                visit_dirs(&path, cb)?;
+            } else {
+                cb(&entry);
+            }
+        }
+    }
+    Ok(())
+}
+
+pub fn rebuild_if_dir_changed(dir: &Path) {
+    visit_dirs(dir, &|e| {
+        println!("cargo:rerun-if-changed={}", e.path().display())
+    })
+    .expect("failed to list dir");
 }
