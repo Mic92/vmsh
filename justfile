@@ -92,6 +92,8 @@ configure-linux: clone-linux
     {{kernel_fhs}} "scripts/config --set-val IKHEADERS y"
     {{kernel_fhs}} "scripts/config --set-val VIRTIO_MMIO y"
     {{kernel_fhs}} "scripts/config --set-val VSOCKETS y"
+    {{kernel_fhs}} "scripts/config --set-val VIRTIO_VSOCKETS y"
+    {{kernel_fhs}} "scripts/config --set-val DRM n"
     {{kernel_fhs}} "scripts/config --set-val PTDUMP_CORE y"
     {{kernel_fhs}} "scripts/config --set-val PTDUMP_DEBUGFS y"
   fi
