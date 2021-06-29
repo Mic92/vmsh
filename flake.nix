@@ -91,6 +91,7 @@
           inherit (vmsh) buildInputs;
           RUST_SRC_PATH = "${rustToolchain}/lib/rustlib/src/rust/library";
           nativeBuildInputs = ciDeps ++ [
+            pkgs.socat
             pkgs.jq # needed for justfile
             pkgs.just
             pkgs.cargo-watch
