@@ -200,11 +200,11 @@ attach-qemu-img: nixos-image
   cargo run -- \
   -l info,vmsh::device::virtio::block::inorder_handler=warn,vm_memory::mmap=warn,vm_memory::remote_mem=warn,vmsh::device::threads=debug attach \
   "{{qemu_pid}}" -f {{virtio_blk_img}} \
-  -- -i {{invocation_directory()}}/nix/ssh_key -p "{{qemu_ssh_port}}" "root@localhost"
+  -- --ssh-args " -i {{invocation_directory()}}/nix/ssh_key -p {{qemu_ssh_port}} root@localhost"
 
 # Attach block device to first qemu vm found by pidof and owned by our own user
 attach-qemu: vmsh-image
-  cargo run -- attach -f "{{linux_dir}}/nixos.ext4" "{{qemu_pid}}" -- -i {{invocation_directory()}}/nix/ssh_key -p "{{qemu_ssh_port}}" "root@localhost"
+  cargo run -- attach -f "{{linux_dir}}/nixos.ext4" "{{qemu_pid}}" --ssh-args " -i {{invocation_directory()}}/nix/ssh_key -p {{qemu_ssh_port}} root@localhost" -- /nix/var/nix/profiles/system/sw/bin/ls -la
 
 # Inspect first qemu vm found by pidof and owned by our own user
 inspect-qemu:

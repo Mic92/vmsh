@@ -245,9 +245,12 @@ impl Drop for KFile {
     }
 }
 
-const STAGE2_PATH: &str = c_str!("/dev/.vmsh");
+static mut STAGE2_PATH: &str = c_str!("/dev/.vmsh");
 
 unsafe extern "C" fn spawn_stage2(_data: *mut libc::c_void) -> libc::c_int {
+    let argc = STAGE2_OPTS.argc as usize;
+    let args = core::slice::from_raw_parts(STAGE2_OPTS.argv, argc);
+
     // we never delete this file, however deleting files is complex and requires accessing
     // internal structs that might change.
     let mut file = match KFile::open(STAGE2_PATH, libc::O_WRONLY | libc::O_CREAT, 0o755) {
@@ -278,8 +281,9 @@ unsafe extern "C" fn spawn_stage2(_data: *mut libc::c_void) -> libc::c_int {
     flush_delayed_fput();
 
     let mut envp: [*mut libc::c_char; 1] = [ptr::null_mut()];
-    let mut argv: [*mut libc::c_char; 2] =
-        [STAGE2_PATH.as_ptr() as *mut libc::c_char, ptr::null_mut()];
+    let mut argv: [*mut libc::c_char; 256] = [ptr::null_mut(); 256];
+    argv[0] = STAGE2_PATH.as_ptr() as *mut libc::c_char;
+    argv[1..(argc - 1)].clone_from_slice(&args[..(argc - 1)]);
 
     let res = call_usermodehelper(
         STAGE2_PATH.as_ptr() as *mut libc::c_char,
@@ -293,12 +297,21 @@ unsafe extern "C" fn spawn_stage2(_data: *mut libc::c_void) -> libc::c_int {
     res
 }
 
+struct Stage2Opts {
+    argc: libc::c_int,
+    argv: *mut *mut libc::c_char,
+}
+static mut STAGE2_OPTS: Stage2Opts = Stage2Opts {
+    argc: 0,
+    argv: ptr::null_mut(),
+};
+
 /// # Safety
 ///
 /// this code is not thread-safe as it uses static globals
 #[no_mangle]
-pub unsafe fn init_vmsh_stage1() -> libc::c_int {
-    printkln!("stage1: init");
+pub unsafe fn init_vmsh_stage1(argc: libc::c_int, argv: *mut *mut libc::c_char) -> libc::c_int {
+    printkln!("stage1: init with {} arguments", argc);
 
     let dev = match register_virtio_mmio(MMIO_BASE, MMIO_SIZE, MMIO_IRQ) {
         Ok(v) => Some(v),
@@ -308,6 +321,8 @@ pub unsafe fn init_vmsh_stage1() -> libc::c_int {
         }
     };
     printkln!("stage1: virt-blk driver set up");
+
+    STAGE2_OPTS = Stage2Opts { argc, argv };
 
     // We cannot close a file synchronusly outside of a kthread
     // Within a kthread we can use `flush_delayed_fput`

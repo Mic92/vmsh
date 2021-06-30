@@ -13,7 +13,8 @@ use crate::{kvm, signal_handler};
 
 pub struct AttachOptions {
     pub pid: Pid,
-    pub ssh_args: Vec<String>,
+    pub ssh_args: String,
+    pub command: Vec<String>,
     pub backing: PathBuf,
 }
 
@@ -34,7 +35,10 @@ pub fn attach(opts: &AttachOptions) -> Result<()> {
     let pty_thread = try_with!(pty_thread(&sender), "cannot create pty forwarder");
     let monitor_thread = try_with!(monitor_thread(&sender), "cannot create monitor forwarder");
 
-    let stage1 = try_with!(spawn_stage1(&opts.ssh_args, &sender), "stage1 failed");
+    let stage1 = try_with!(
+        spawn_stage1(opts.ssh_args.as_str(), &opts.command, &sender),
+        "stage1 failed"
+    );
 
     let mut threads = try_with!(
         create_block_device(&vm, &sender, &opts.backing),
