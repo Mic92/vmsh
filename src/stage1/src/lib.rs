@@ -4,6 +4,7 @@
 mod printk;
 
 use core::include_bytes;
+use core::mem::size_of;
 use core::panic::PanicInfo;
 use core::ptr;
 
@@ -261,9 +262,6 @@ impl Drop for KFile {
 static mut STAGE2_PATH: &str = c_str!("/dev/.vmsh");
 
 unsafe extern "C" fn spawn_stage2(_data: *mut libc::c_void) -> libc::c_int {
-    let argc = STAGE2_OPTS.argc as usize;
-    let args = core::slice::from_raw_parts(STAGE2_OPTS.argv, argc);
-
     // we never delete this file, however deleting files is complex and requires accessing
     // internal structs that might change.
     let mut file = match KFile::open(STAGE2_PATH, libc::O_WRONLY | libc::O_CREAT, 0o755) {
@@ -296,7 +294,12 @@ unsafe extern "C" fn spawn_stage2(_data: *mut libc::c_void) -> libc::c_int {
     let mut envp: [*mut libc::c_char; 1] = [ptr::null_mut()];
     let mut argv: [*mut libc::c_char; 256] = [ptr::null_mut(); 256];
     argv[0] = STAGE2_PATH.as_ptr() as *mut libc::c_char;
-    argv[1..(argc - 1)].clone_from_slice(&args[..(argc - 1)]);
+    // clone_from_slice uses wrong relocation type
+    memcpy(
+        argv.as_ptr().add(1) as *mut libc::c_void,
+        STAGE2_OPTS.argv as *mut libc::c_void,
+        (STAGE2_OPTS.argc as usize) * size_of::<*mut libc::c_char>(),
+    );
 
     let res = call_usermodehelper(
         STAGE2_PATH.as_ptr() as *mut libc::c_char,
