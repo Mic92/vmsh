@@ -36,7 +36,20 @@ const STAGE2_EXE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/stage2"));
 
 /// This function is called on panic.
 #[panic_handler]
-fn panic(_info: &PanicInfo) -> ! {
+fn panic(info: &PanicInfo) -> ! {
+    if let Some(location) = info.location() {
+        printkln!(
+            "[stage1] panic occurred at\n{}:{}",
+            location.file(),
+            location.line(),
+        );
+        // we don't seem to have enough stack space to print this?
+        //if let Some(s) = info.payload().downcast_ref::<&str>() {
+        //    printk!("cause: {:?}\n", s);
+        //}
+    } else {
+        printkln!("[stage1] panic occurred at unknown location...");
+    }
     loop {}
 }
 

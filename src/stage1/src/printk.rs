@@ -69,7 +69,8 @@ macro_rules! printk {
     ($fmt:expr) => ({
         let msg = c_str!($fmt);
         let ptr = msg.as_ptr() as *const ::libc::c_char;
-        crate::printk::printk(ptr);
+        #[allow(unused_unsafe)]
+        unsafe { crate::printk::printk(ptr) };
     });
 
     // Dynamic implementation that processes format arguments
