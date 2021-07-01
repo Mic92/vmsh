@@ -29,11 +29,11 @@ fn main() {
     let srcs = ["build.rs", "module.c", "Makefile"];
 
     for src in &srcs {
-        println!("rerun-if-env-changed=src/stage1/{}", src);
+        println!("cargo:rerun-if-changed=src/stage1/{}", src);
     }
 
     // Re-run build if kernel dir changes
-    println!("rerun-if-env-changed=KERNELDIR");
+    println!("cargo:rerun-if-env-changed=KERNELDIR");
 
     let kernel_dir = env::var("KERNELDIR").unwrap_or_else(|_| fallback_kernel_dir());
 
