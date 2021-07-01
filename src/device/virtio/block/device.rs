@@ -7,7 +7,7 @@ use std::fs::OpenOptions;
 use std::ops::DerefMut;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use virtio_device::VirtioDeviceType;
+use virtio_device::{VirtioDevice, VirtioDeviceType};
 
 use event_manager::{MutEventSubscriber, RemoteEndpoint, Result as EvmgrResult, SubscriberId};
 use virtio_blk::stdio_executor::StdIoBackend;
@@ -300,7 +300,7 @@ impl<M: GuestAddressSpace + Clone + Send + 'static> VirtioDeviceActions for Bloc
     }
 
     fn reset(&mut self) -> Result<()> {
-        // Not implemented for now.
+        self.set_device_status(0);
         Ok(())
     }
 }
