@@ -7,9 +7,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::SyncSender;
 use std::sync::Arc;
 use std::sync::{Condvar, Mutex};
+use virtio_device::{VirtioDevice, WithDriverSelect};
 use vm_device::bus::MmioAddress;
-use vm_virtio::device::VirtioDevice;
-use vm_virtio::device::WithDriverSelect;
 
 use crate::device::{Block, Device, DEVICE_MAX_MEM};
 use crate::interrutable_thread::InterrutableThread;

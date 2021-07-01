@@ -336,6 +336,38 @@ dependencies = [
 ]
 
 [[package]]
+name = "virtio-blk"
+version = "0.1.0"
+source = "git+https://github.com/rust-vmm/vm-virtio.git?rev=333eb78471a7707df7d277b9116073337df19503#333eb78471a7707df7d277b9116073337df19503"
+dependencies = [
+ "log",
+ "virtio-device",
+ "virtio-queue",
+ "vm-memory",
+ "vmm-sys-util",
+]
+
+[[package]]
+name = "virtio-device"
+version = "0.1.0"
+source = "git+https://github.com/rust-vmm/vm-virtio.git?rev=333eb78471a7707df7d277b9116073337df19503#333eb78471a7707df7d277b9116073337df19503"
+dependencies = [
+ "log",
+ "virtio-queue",
+ "vm-memory",
+]
+
+[[package]]
+name = "virtio-queue"
+version = "0.1.0"
+source = "git+https://github.com/rust-vmm/vm-virtio.git?rev=333eb78471a7707df7d277b9116073337df19503#333eb78471a7707df7d277b9116073337df19503"
+dependencies = [
+ "log",
+ "vm-memory",
+ "vmm-sys-util",
+]
+
+[[package]]
 name = "vm-device"
 version = "0.1.0"
 source = "git+https://github.com/rust-vmm/vm-device?rev=989c315712b80a538331fe05716323f2f64abf2e#989c315712b80a538331fe05716323f2f64abf2e"
@@ -392,9 +424,11 @@ dependencies = [
  "simple-error",
  "tempfile",
  "virtio",
+ "virtio-blk",
+ "virtio-device",
+ "virtio-queue",
  "vm-device",
  "vm-memory",
- "vm-virtio",
  "vmm-sys-util",
 ]
 

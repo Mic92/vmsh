@@ -7,16 +7,16 @@ use std::fs::OpenOptions;
 use std::ops::DerefMut;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use vm_virtio::device::VirtioDeviceType;
+use virtio_device::VirtioDeviceType;
 
 use event_manager::{MutEventSubscriber, RemoteEndpoint, Result as EvmgrResult, SubscriberId};
+use virtio_blk::stdio_executor::StdIoBackend;
+use virtio_device::{VirtioConfig, VirtioDeviceActions, VirtioMmioDevice};
+use virtio_queue::Queue;
 use vm_device::bus::MmioAddress;
 use vm_device::device_manager::MmioManager;
 use vm_device::{DeviceMmio, MutDeviceMmio};
 use vm_memory::GuestAddressSpace;
-use vm_virtio::block::stdio_executor::StdIoBackend;
-use vm_virtio::device::{VirtioConfig, VirtioDeviceActions, VirtioMmioDevice};
-use vm_virtio::Queue;
 use vmm_sys_util::eventfd::EventFd;
 
 use crate::device::virtio::block::{BLOCK_DEVICE_ID, VIRTIO_BLK_F_FLUSH, VIRTIO_BLK_F_RO};
@@ -262,8 +262,9 @@ impl<M: GuestAddressSpace + Clone + Send + 'static> VirtioDeviceActions for Bloc
         }
 
         // TODO: Create the backend earlier (as part of `Block::new`)?
-        let name = Some(*b"vmsh0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0");
-        let disk = StdIoBackend::new(file, features, name).map_err(Error::Backend)?;
+        let disk = StdIoBackend::new(file, features)
+            .map_err(Error::Backend)?
+            .with_device_id(*b"vmsh0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0");
 
         let driver_notify = SingleFdSignalQueue {
             irqfd: self.irqfd.clone(),

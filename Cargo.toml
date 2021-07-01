@@ -37,7 +37,9 @@ container-pid = "0.1.0"
 
 # src/device/ deps:
 # Switch back to upstream, once https://github.com/rust-vmm/vm-virtio/pull/56 is merged
-vm-virtio = { git = "https://github.com/Mic92/vm-virtio.git", features = ["backend-stdio"], rev = "8a8270924ad691232f9f9b3157e66fddd7ba9975"} # does no kvm operations
+virtio-blk = { git = "https://github.com/rust-vmm/vm-virtio.git", features = ["backend-stdio"], rev = "333eb78471a7707df7d277b9116073337df19503"} # does no kvm operations
+virtio-device = { git = "https://github.com/rust-vmm/vm-virtio.git", rev = "333eb78471a7707df7d277b9116073337df19503"}
+virtio-queue = { git = "https://github.com/rust-vmm/vm-virtio.git", rev = "333eb78471a7707df7d277b9116073337df19503"}
 #vm-virtio = { path = "src/vm-virtio", features = ["backend-stdio"] }
 vm-device = { git = "https://github.com/rust-vmm/vm-device", rev = "989c315712b80a538331fe05716323f2f64abf2e" } # does no kvm operations
 
