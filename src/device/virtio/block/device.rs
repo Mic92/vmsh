@@ -47,6 +47,11 @@ pub struct Block<M: GuestAddressSpace> {
     irqfd: Arc<EventFd>,
     file_path: PathBuf,
     read_only: bool,
+    sub_id: Option<SubscriberId>,
+
+    // Before resetting we return the handler to the mmio thread for cleanup
+    #[allow(dead_code)]
+    handler: Option<Arc<Mutex<dyn MutEventSubscriber + Send>>>,
     // We'll prob need to remember this for state save/restore unless we pass the info from
     // the outside.
     _root_device: bool,
@@ -107,6 +112,8 @@ where
             irqfd,
             file_path: args.file_path,
             read_only: args.read_only,
+            sub_id: None,
+            handler: None,
             _root_device: args.root_device,
         }));
 
@@ -147,39 +154,11 @@ where
 
         Ok(block)
     }
-}
 
-// We now implement `WithVirtioConfig` and `WithDeviceOps` to get the automatic implementation
-// for `VirtioDevice`.
-impl<M: GuestAddressSpace + Clone + Send + 'static> VirtioDeviceType for Block<M> {
-    fn device_type(&self) -> u32 {
-        BLOCK_DEVICE_ID
-    }
-}
-
-impl<M: GuestAddressSpace + Clone + Send + 'static> Borrow<VirtioConfig<M>> for Block<M> {
-    fn borrow(&self) -> &VirtioConfig<M> {
-        &self.virtio_cfg
-    }
-}
-
-impl<M: GuestAddressSpace + Clone + Send + 'static> BorrowMut<VirtioConfig<M>> for Block<M> {
-    fn borrow_mut(&mut self) -> &mut VirtioConfig<M> {
-        &mut self.virtio_cfg
-    }
-}
-
-impl<M: GuestAddressSpace + Clone + Send + 'static> VirtioDeviceActions for Block<M> {
-    type E = Error;
-
-    /// make sure to set self.vmm.wrapper to Some() before activating. Typically this is done by
-    /// activating during vmm.kvmrun_wrapped()
-    fn activate(&mut self) -> Result<()> {
+    fn _activate(&mut self) -> Result<()> {
         if self.virtio_cfg.device_activated {
             return Err(Error::AlreadyActivated);
         }
-
-        log::debug!("activating device");
 
         // We do not support legacy drivers.
         if self.virtio_cfg.driver_features & (1 << VIRTIO_F_VERSION_1) == 0 {
@@ -280,10 +259,9 @@ impl<M: GuestAddressSpace + Clone + Send + 'static> VirtioDeviceActions for Bloc
 
         let handler = Arc::new(Mutex::new(QueueHandler { inner, ioeventfd }));
 
-        // Register the queue handler with the `EventManager`. We could record the `sub_id`
-        // (and/or keep a handler clone) for further interaction (i.e. to remove the subscriber at
-        // a later time, retrieve state, etc).
-        let _sub_id = self
+        // Register the queue handler with the `EventManager`. We record the `sub_id`
+        // (and/or keep a handler clone) to remove the subscriber when resetting the device
+        let sub_id = self
             .endpoint
             .call_blocking(move |mgr| -> EvmgrResult<SubscriberId> {
                 Ok(mgr.add_subscriber(handler))
@@ -292,15 +270,66 @@ impl<M: GuestAddressSpace + Clone + Send + 'static> VirtioDeviceActions for Bloc
                 log::warn!("{}", e);
                 Error::Endpoint(e)
             })?;
+        self.sub_id = Some(sub_id);
 
         log::debug!("activating device: ok");
         self.virtio_cfg.device_activated = true;
 
         Ok(())
     }
+    fn _reset(&mut self) -> Result<()> {
+        // we remove the handler here, since we need to free up the ioeventfd resources
+        // in the mmio thread rather the eventmanager thread.
+        if let Some(sub_id) = self.sub_id.take() {
+            let handler = self
+                .endpoint
+                .call_blocking(move |mgr| mgr.remove_subscriber(sub_id))
+                .map_err(|e| {
+                    log::warn!("{}", e);
+                    Error::Endpoint(e)
+                })?;
+            self.handler = Some(handler);
+        }
+        Ok(())
+    }
+}
+
+// We now implement `WithVirtioConfig` and `WithDeviceOps` to get the automatic implementation
+// for `VirtioDevice`.
+impl<M: GuestAddressSpace + Clone + Send + 'static> VirtioDeviceType for Block<M> {
+    fn device_type(&self) -> u32 {
+        BLOCK_DEVICE_ID
+    }
+}
+
+impl<M: GuestAddressSpace + Clone + Send + 'static> Borrow<VirtioConfig<M>> for Block<M> {
+    fn borrow(&self) -> &VirtioConfig<M> {
+        &self.virtio_cfg
+    }
+}
+
+impl<M: GuestAddressSpace + Clone + Send + 'static> BorrowMut<VirtioConfig<M>> for Block<M> {
+    fn borrow_mut(&mut self) -> &mut VirtioConfig<M> {
+        &mut self.virtio_cfg
+    }
+}
+
+impl<M: GuestAddressSpace + Clone + Send + 'static> VirtioDeviceActions for Block<M> {
+    type E = Error;
+
+    /// make sure to set self.vmm.wrapper to Some() before activating. Typically this is done by
+    /// activating during vmm.kvmrun_wrapped()
+    fn activate(&mut self) -> Result<()> {
+        let ret = self._activate();
+        if let Err(ref e) = ret {
+            log::warn!("failed to activate block device: {:?}", e);
+        }
+        ret
+    }
 
     fn reset(&mut self) -> Result<()> {
         self.set_device_status(0);
+        self._reset()?;
         Ok(())
     }
 }

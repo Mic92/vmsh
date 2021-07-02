@@ -243,6 +243,9 @@ fn mmio_exit_handler_thread(
                 Ok(())
             });
 
+            // drop remote resources like ioeventfd before disowning traced process.
+            drop(device);
+
             // we need to return ptrace control before returning to the main thread
             vm.prepare_thread_transfer()?;
             res

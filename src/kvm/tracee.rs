@@ -325,6 +325,11 @@ impl Tracee {
         proc.munmap(addr, length)
     }
 
+    pub fn close(&self, fd: RawFd) -> Result<i32> {
+        let proc = self.try_get_proc()?;
+        proc.close(fd)
+    }
+
     pub fn check_extension(&self, cap: c_int) -> Result<c_int> {
         self.vm_ioctl(KVM_CHECK_EXTENSION(), cap as c_ulong)
     }

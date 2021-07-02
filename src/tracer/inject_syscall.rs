@@ -269,7 +269,7 @@ impl Process {
         self.syscall(&args).map(|v| v as c_int)
     }
 
-    pub fn close(&self, fd: c_int) -> Result<c_int> {
+    pub fn close(&self, fd: RawFd) -> Result<c_int> {
         let args = syscall_args!(self.saved_regs, libc::SYS_close as c_ulong, fd);
 
         self.syscall(&args).map(|v| v as c_int)
