@@ -53,7 +53,7 @@ where
     // shell split first argument into multiple
     let cmd_ref = cmd
         .arg("-c")
-        .arg(r#"set -xf; set -- $1 "$2"; exec ssh -oStrictHostKeyChecking=no -oUserKnownHostsFile=/dev/null "$@""#)
+        .arg(r#"set -f; set -- $1 "$2"; exec ssh -oStrictHostKeyChecking=no -oUserKnownHostsFile=/dev/null "$@""#)
         .arg("--")
         .arg(ssh_args);
     let configured = configure(cmd_ref);
