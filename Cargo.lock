@@ -11,7 +11,7 @@ checksum = "cdb031dd78e28731d87d56cc8ffef4a8f36ca26c38fe2de700543e627f8a464a"
 [[package]]
 name = "bcc"
 version = "0.0.32-alpha.0"
-source = "git+https://github.com/Mic92/rust-bcc.git#5919c2a80e84f29018326287fed19a550e79db8c"
+source = "git+https://github.com/rust-bpf/rust-bcc.git?rev=f456aa57cd969c241773b872219ea54f1d43bd3b#f456aa57cd969c241773b872219ea54f1d43bd3b"
 dependencies = [
  "bcc-sys",
  "bitflags",
@@ -338,7 +338,7 @@ dependencies = [
 [[package]]
 name = "virtio-blk"
 version = "0.1.0"
-source = "git+https://github.com/Mic92/vm-virtio.git?rev=333eb78471a7707df7d277b9116073337df19503#333eb78471a7707df7d277b9116073337df19503"
+source = "git+https://github.com/Mic92/vm-virtio.git?rev=f3f31f60aebb2698c2464636bfc433df4bab190e#f3f31f60aebb2698c2464636bfc433df4bab190e"
 dependencies = [
  "log",
  "virtio-device",
@@ -350,7 +350,7 @@ dependencies = [
 [[package]]
 name = "virtio-device"
 version = "0.1.0"
-source = "git+https://github.com/Mic92/vm-virtio.git?rev=333eb78471a7707df7d277b9116073337df19503#333eb78471a7707df7d277b9116073337df19503"
+source = "git+https://github.com/Mic92/vm-virtio.git?rev=f3f31f60aebb2698c2464636bfc433df4bab190e#f3f31f60aebb2698c2464636bfc433df4bab190e"
 dependencies = [
  "log",
  "virtio-queue",
@@ -360,7 +360,7 @@ dependencies = [
 [[package]]
 name = "virtio-queue"
 version = "0.1.0"
-source = "git+https://github.com/Mic92/vm-virtio.git?rev=333eb78471a7707df7d277b9116073337df19503#333eb78471a7707df7d277b9116073337df19503"
+source = "git+https://github.com/Mic92/vm-virtio.git?rev=f3f31f60aebb2698c2464636bfc433df4bab190e#f3f31f60aebb2698c2464636bfc433df4bab190e"
 dependencies = [
  "log",
  "vm-memory",
