@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use std::sync::mpsc::sync_channel;
 use std::sync::Arc;
 
-use crate::device::create_block_device;
+use crate::device::create_devices;
 use crate::pty::{monitor_thread, pty_thread};
 use crate::result::Result;
 use crate::stage1::spawn_stage1;
@@ -41,8 +41,8 @@ pub fn attach(opts: &AttachOptions) -> Result<()> {
     );
 
     let mut threads = try_with!(
-        create_block_device(&vm, &sender, &opts.backing),
-        "cannot create block device"
+        create_devices(&vm, &sender, &opts.backing),
+        "cannot create devices"
     );
 
     threads.push(pty_thread);

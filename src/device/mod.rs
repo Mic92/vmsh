@@ -2,27 +2,26 @@ pub mod mmio;
 mod threads;
 mod virtio;
 
-use crate::device::mmio::{IoPirate, MmioDeviceSpace};
+use crate::device::mmio::IoPirate;
 use crate::device::threads::SubscriberEventManager;
 use crate::device::virtio::block::{self, BlockArgs};
+use crate::device::virtio::console::{self, ConsoleArgs};
 use crate::device::virtio::{CommonArgs, MmioConfig};
-use crate::kvm::hypervisor::{Hypervisor, VmMem};
+use crate::kvm::hypervisor::Hypervisor;
 use crate::result::Result;
 use crate::tracer::proc::Mapping;
 use libc::pid_t;
-use log::*;
 use simple_error::{bail, try_with};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use vm_device::bus::{MmioAddress, MmioRange};
-use vm_device::device_manager::IoManager;
 use vm_device::device_manager::MmioManager;
 use vm_memory::guest_memory::GuestAddress;
 use vm_memory::mmap::MmapRegion;
 use vm_memory::GuestMemoryRegion;
 use vm_memory::{GuestMemoryMmap, GuestRegionMmap};
 
-pub use crate::device::threads::create_block_device;
+pub use crate::device::threads::create_devices;
 
 // Where BIOS/VGA magic would live on a real PC.
 #[allow(dead_code)] // FIXME
@@ -31,11 +30,15 @@ const FIRST_ADDR_PAST_32BITS: u64 = 1 << 32;
 const MEM_32BIT_GAP_SIZE: u64 = 768 << 20;
 /// The start of the memory area reserved for MMIO devices.
 pub const MMIO_MEM_START: u64 = FIRST_ADDR_PAST_32BITS - MEM_32BIT_GAP_SIZE;
-
 /// max mem space per device
 pub const DEVICE_MAX_MEM: u64 = 0x1000;
+pub const BLOCK_MEM_START : u64 = MMIO_MEM_START;
+pub const CONSOLE_MEM_START : u64 = BLOCK_MEM_START + DEVICE_MAX_MEM;
+pub const MMIO_MEM_STOP: u64 = CONSOLE_MEM_START + DEVICE_MAX_MEM;
+
 
 pub type Block = block::Block<Arc<GuestMemoryMmap>>;
+pub type Console = console::Console<Arc<GuestMemoryMmap>>;
 
 fn convert(pid: pid_t, mappings: &[Mapping]) -> Result<GuestMemoryMmap> {
     let mut regions: Vec<Arc<GuestRegionMmap>> = vec![];
@@ -72,97 +75,82 @@ fn convert(pid: pid_t, mappings: &[Mapping]) -> Result<GuestMemoryMmap> {
     ))
 }
 
-pub struct Device {
-    vmm: Arc<Hypervisor>,
+pub struct DeviceSpace {
     pub blkdev: Arc<Mutex<Block>>,
-    /// None if not attached to the Hv
-    pub mmio_device_mem: Option<VmMem<MmioDeviceSpace>>,
-    pub mmio_device_space: MmioDeviceSpace,
+    pub console: Arc<Mutex<Console>>,
     pub mmio_mgr: Arc<Mutex<IoPirate>>,
 }
 
-impl Device {
+impl DeviceSpace {
     pub fn new(
         vmm: &Arc<Hypervisor>,
         event_mgr: &mut SubscriberEventManager,
         backing: &Path,
-    ) -> Result<Device> {
+    ) -> Result<DeviceSpace> {
         let guest_memory = try_with!(vmm.get_maps(), "cannot get guests memory");
-        let mem: Arc<GuestMemoryMmap> = Arc::new(try_with!(
+        let mem = Arc::new(try_with!(
             convert(vmm.pid.as_raw(), &guest_memory),
             "cannot convert Mapping to GuestMemoryMmap"
         ));
 
-        info!("mmio range start {:x}", MMIO_MEM_START);
-        let range = MmioRange::new(MmioAddress(MMIO_MEM_START), 0x1000).unwrap();
-        let mmio_cfg = MmioConfig { range, gsi: 5 };
+        let block_range = MmioRange::new(MmioAddress(BLOCK_MEM_START), 0x1000).unwrap();
+        let block_mmio_cfg = MmioConfig { range: block_range, gsi: 5 };
 
-        // TODO is there more we have to do with this mgr?
-        let device_manager = Arc::new(Mutex::new(IoManager::new()));
-        let _guard = device_manager.lock().unwrap();
+        let console_range = MmioRange::new(MmioAddress(CONSOLE_MEM_START), 0x1000).unwrap();
+        let console_mmio_cfg = MmioConfig { range: console_range, gsi: 5 };
+
         // IoManager replacement:
         let device_manager = Arc::new(Mutex::new(IoPirate::default()));
-        let guard = device_manager.lock().unwrap();
-        guard.mmio_device(MmioAddress(MMIO_MEM_START));
+        let blkdev = {
+          let guard = device_manager.lock().unwrap();
+          guard.mmio_device(MmioAddress(BLOCK_MEM_START));
 
-        let common = CommonArgs {
-            mem,
-            vmm: vmm.clone(),
-            event_mgr,
-            mmio_mgr: guard,
-            mmio_cfg,
+          let common = CommonArgs {
+              mem: Arc::clone(&mem),
+              vmm: vmm.clone(),
+              event_mgr,
+              mmio_mgr: guard,
+              mmio_cfg: block_mmio_cfg,
+          };
+          let args = BlockArgs {
+              common,
+              file_path: backing.to_path_buf(),
+              read_only: false,
+              root_device: true,
+              advertise_flush: true,
+          };
+          match Block::new(args) {
+              Ok(v) => v,
+              Err(e) => bail!("cannot create block device: {:?}", e),
+          }
+        };
+        let console = {
+            let guard = device_manager.lock().unwrap();
+            guard.mmio_device(MmioAddress(CONSOLE_MEM_START));
+
+            let common = CommonArgs {
+                mem,
+                vmm: vmm.clone(),
+                event_mgr,
+                mmio_mgr: guard,
+                mmio_cfg: console_mmio_cfg,
+            };
+            let args = ConsoleArgs {
+                common,
+            };
+
+            match Console::new(args) {
+                Ok(v) => v,
+                Err(e) => bail!("cannot create console device: {:?}", e),
+            }
         };
 
-        let args = BlockArgs {
-            common,
-            file_path: backing.to_path_buf(),
-            read_only: false,
-            root_device: true,
-            advertise_flush: true,
-        };
-
-        let blkdev: Arc<Mutex<Block>> = match Block::new(args) {
-            Ok(v) => v,
-            Err(e) => bail!("cannot create block device: {:?}", e),
-        };
-
-        // create device space
-        let mmio_dev_space;
-        {
-            let blkdev = blkdev.lock().unwrap();
-            mmio_dev_space = MmioDeviceSpace::new(&blkdev);
-        }
-
-        let device = Device {
-            vmm: vmm.clone(),
+        let device = DeviceSpace {
             blkdev,
-            mmio_device_mem: None,
-            mmio_device_space: mmio_dev_space,
+            console,
             mmio_mgr: device_manager,
         };
 
-        //device.attach_device_space()?;
         Ok(device)
-    }
-
-    // vmm.stopped
-    pub fn attach_device_space(&mut self) -> Result<()> {
-        let mmio_device_mem = self.vmm.vm_add_mem(MMIO_MEM_START, false)?;
-        self.mmio_device_mem = Some(mmio_device_mem);
-        self.mmio_device_mem
-            .as_ref()
-            .unwrap()
-            .mem
-            .write(&self.mmio_device_space)?;
-        Ok(())
-    }
-
-    pub fn update_device_mem(&self) -> Result<()> {
-        let mmio_device_mem = self
-            .mmio_device_mem
-            .as_ref()
-            .expect("don't call this function when there is not device space attached");
-        mmio_device_mem.mem.write(&self.mmio_device_space)?;
-        Ok(())
     }
 }
