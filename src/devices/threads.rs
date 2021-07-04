@@ -174,11 +174,11 @@ fn handle_mmio_exits(
         if let Some(mmio_rw) = &mut kvm_exit {
             if MMIO_MEM_START <= mmio_rw.addr && mmio_rw.addr < MMIO_MEM_STOP {
                 // intercept op
-                warn!("mmio access 0x{:x}", mmio_rw.addr);
+                trace!("mmio access 0x{:x}", mmio_rw.addr);
                 try_with!(mmio_mgr.handle_mmio_rw(mmio_rw), "failed to handle MmioRw");
             } else {
-                //warn!("ignore addr: {}", mmio_rw.addr)
                 // do nothing, just continue to ignore and pass to hv
+                //trace!("ignore addr: {}", mmio_rw.addr)
             }
         }
 
