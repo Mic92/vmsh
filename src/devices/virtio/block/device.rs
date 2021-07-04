@@ -136,12 +136,6 @@ where
             return Err(Error::BadFeatures(self.virtio_cfg.driver_features));
         }
 
-        // Set the appropriate queue configuration flag if the `EVENT_IDX` features has been
-        // negotiated.
-        if self.virtio_cfg.driver_features & (1 << VIRTIO_F_RING_EVENT_IDX) != 0 {
-            self.virtio_cfg.queues[0].set_event_idx(true);
-        }
-
         // Register the queue event fd. Something like this, but in a pirate fashion.
         // let ioeventfd = EventFd::new(EFD_NONBLOCK).map_err(Error::EventFd)?;
         // self.vm_fd

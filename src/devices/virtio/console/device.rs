@@ -46,6 +46,14 @@ pub struct Console<M: GuestAddressSpace> {
     handler: Option<Arc<Mutex<dyn MutEventSubscriber + Send>>>,
 }
 
+// Does host provide console size?
+const VIRTIO_CONSOLE_F_SIZE: u32 = 0;
+// Does host provide multiple ports?
+const VIRTIO_CONSOLE_F_MULTIPORT: u32 = 1;
+// Does host support emergency write?
+const VIRTIO_CONSOLE_F_EMERG_WRITE: u32 = 2;
+
+
 impl<M> Console<M>
 where
     M: GuestAddressSpace + Clone + Send + 'static,
@@ -60,9 +68,9 @@ where
         // The queue handling logic for this device uses the buffers in order, so we enable the
         // corresponding feature as well.
         let mut device_features =
-            1 << VIRTIO_F_VERSION_1 | 1 << VIRTIO_F_IN_ORDER | 1 << VIRTIO_F_RING_EVENT_IDX;
+            1 << VIRTIO_F_VERSION_1 | 1 << VIRTIO_F_IN_ORDER | 1 << VIRTIO_F_RING_EVENT_IDX | 1 << VIRTIO_CONSOLE_F_SIZE;
 
-        // A block device has a single queue.
+        // A console device has two queue.
         let queues = vec![Queue::new(args.common.mem, QUEUE_MAX_SIZE)];
         let config_space = build_config_space();
         let virtio_cfg = VirtioConfig::new(device_features, queues, config_space);
@@ -112,12 +120,6 @@ where
         // We do not support legacy drivers.
         if self.virtio_cfg.driver_features & (1 << VIRTIO_F_VERSION_1) == 0 {
             return Err(Error::BadFeatures(self.virtio_cfg.driver_features));
-        }
-
-        // Set the appropriate queue configuration flag if the `EVENT_IDX` features has been
-        // negotiated.
-        if self.virtio_cfg.driver_features & (1 << VIRTIO_F_RING_EVENT_IDX) != 0 {
-            self.virtio_cfg.queues[0].set_event_idx(true);
         }
 
         // Register the queue event fd. Something like this, but in a pirate fashion.
