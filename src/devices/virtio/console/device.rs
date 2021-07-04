@@ -32,9 +32,6 @@ use crate::tracer::inject_syscall;
 use crate::tracer::wrap_syscall::KvmRunWrapper;
 use simple_error::map_err_with;
 
-// This Block device can only use the MMIO transport for now, but we plan to reuse large parts of
-// the functionality when we implement virtio PCI as well, for example by having a base generic
-// type, and then separate concrete instantiations for `MmioConfig` and `PciConfig`.
 pub struct Console<M: GuestAddressSpace> {
     virtio_cfg: VirtioConfig<M>,
     pub mmio_cfg: MmioConfig,
@@ -263,7 +260,7 @@ impl<M: GuestAddressSpace + Clone + Send + 'static> VirtioDeviceActions for Cons
     fn activate(&mut self) -> Result<()> {
         let ret = self._activate();
         if let Err(ref e) = ret {
-            log::warn!("failed to activate block device: {:?}", e);
+            log::warn!("failed to activate console device: {:?}", e);
         }
         ret
     }

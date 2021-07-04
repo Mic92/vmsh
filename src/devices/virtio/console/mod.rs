@@ -63,7 +63,7 @@ fn build_config_space() -> Vec<u8> {
     unsafe { any_as_u8_slice(&config) }.to_vec()
 }
 
-// Arguments required when building a block device.
+// Arguments required when building a console device.
 pub struct ConsoleArgs<'a, M, B> {
     pub common: CommonArgs<'a, M, B>,
 }

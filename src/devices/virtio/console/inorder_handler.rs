@@ -29,7 +29,7 @@ impl From<virtio_queue::Error> for Error {
     }
 }
 
-// This object is used to process the queue of a block device without making any assumptions
+// This object is used to process the queue of a console device without making any assumptions
 // about the notification mechanism. We're using a specific backend for now (the `StdIoBackend`
 // object), but the aim is to have a way of working with generic backends and turn this into
 // a more flexible building block. The name comes from processing and returning descriptor
