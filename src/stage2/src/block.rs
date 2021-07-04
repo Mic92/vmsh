@@ -201,5 +201,5 @@ pub fn find_vmsh_blockdev() -> Result<BlockDevice> {
         return Ok(BlockDevice { dev_type });
     }
 
-    bail!("no vmsh block device found process found");
+    bail!("no vmsh block device found");
 }
