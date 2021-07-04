@@ -334,15 +334,14 @@ static mut STAGE2_OPTS: Stage2Opts = Stage2Opts {
 pub unsafe fn init_vmsh_stage1(argc: libc::c_int, argv: *mut *mut libc::c_char) -> libc::c_int {
     printkln!("stage1: init with {} arguments", argc);
 
-    let blk_dev = None;
-    //let blk_dev = match register_virtio_mmio(MMIO_DEVICE_ID, MMIO_BASE, MMIO_SIZE, MMIO_IRQ) {
-    //    Ok(v) => Some(v),
-    //    Err(res) => {
-    //        printkln!("stage1: failed to register block mmio device: {}", res);
-    //        return res;
-    //    }
-    //};
-    //printkln!("stage1: virt-blk driver set up");
+    let blk_dev = match register_virtio_mmio(MMIO_DEVICE_ID, MMIO_BASE, MMIO_SIZE, MMIO_IRQ) {
+        Ok(v) => Some(v),
+        Err(res) => {
+            printkln!("stage1: failed to register block mmio device: {}", res);
+            return res;
+        }
+    };
+    printkln!("stage1: virt-blk driver set up");
 
     let console_dev = match register_virtio_mmio(MMIO_DEVICE_ID + 1, MMIO_BASE + MMIO_SIZE, MMIO_SIZE, MMIO_IRQ) {
         Ok(v) => Some(v),
