@@ -71,12 +71,12 @@ where
             1 << VIRTIO_F_VERSION_1 | 1 << VIRTIO_F_IN_ORDER | 1 << VIRTIO_F_RING_EVENT_IDX | 1 << VIRTIO_CONSOLE_F_SIZE;
 
         // A console device has two queue.
-        let queues = vec![Queue::new(args.common.mem, QUEUE_MAX_SIZE)];
+        let queues = vec![Queue::new(args.common.mem.clone(), QUEUE_MAX_SIZE); 2];
+
         let config_space = build_config_space();
         let virtio_cfg = VirtioConfig::new(device_features, queues, config_space);
 
         // Used to send notifications to the driver.
-        //let irqfd = EventFd::new(EFD_NONBLOCK).map_err(Error::EventFd)?;
         log::debug!("register irqfd on gsi {}", args.common.mmio_cfg.gsi);
         let irqfd = Arc::new(
             args.common
@@ -177,9 +177,6 @@ where
                 let _ = wrapper_go.replace(wrapper);
             }
         }
-
-
-        let mut features = self.virtio_cfg.driver_features;
 
         let driver_notify = SingleFdSignalQueue {
             irqfd: self.irqfd.clone(),
