@@ -1,4 +1,4 @@
-use crate::device::Block;
+use crate::devices::Block;
 use crate::result::Result;
 use crate::tracer::wrap_syscall::{MmioRw, MMIO_RW_DATA_MAX};
 use simple_error::map_err_with;
@@ -179,7 +179,7 @@ impl MmioDeviceSpace {
 mod test {
     #[test]
     fn assert_mmio_device_space_size() {
-        use crate::device::mmio::MmioDeviceSpace;
+        use crate::devices::mmio::MmioDeviceSpace;
         use std::mem::size_of;
         assert_eq!(0x100, size_of::<MmioDeviceSpace>());
     }

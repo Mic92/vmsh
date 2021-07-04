@@ -9,9 +9,9 @@ use std::sync::Arc;
 use std::sync::{Condvar, Mutex};
 use virtio_device::{VirtioDevice, WithDriverSelect};
 
-use crate::device::MMIO_MEM_START;
-use crate::device::MMIO_MEM_STOP;
-use crate::device::DeviceSpace;
+use crate::devices::MMIO_MEM_START;
+use crate::devices::MMIO_MEM_STOP;
+use crate::devices::DeviceSpace;
 use crate::interrutable_thread::InterrutableThread;
 use crate::kvm::hypervisor::Hypervisor;
 use crate::result::Result;

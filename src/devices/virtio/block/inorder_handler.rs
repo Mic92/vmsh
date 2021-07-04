@@ -11,7 +11,7 @@ use virtio_blk::stdio_executor::{self, StdIoBackend};
 use virtio_queue::{DescriptorChain, Queue};
 use vm_memory::{self, Bytes, GuestAddressSpace};
 
-use crate::device::virtio::SignalUsedQueue;
+use crate::devices::virtio::SignalUsedQueue;
 
 #[derive(Debug)]
 pub enum Error {

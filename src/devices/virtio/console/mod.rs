@@ -8,7 +8,7 @@ use event_manager::Error as EvmgrError;
 use vm_device::bus;
 use vmm_sys_util::errno;
 
-use crate::device::virtio::CommonArgs;
+use crate::devices::virtio::CommonArgs;
 use simple_error::SimpleError;
 
 pub use device::Console;

@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use std::sync::mpsc::sync_channel;
 use std::sync::Arc;
 
-use crate::device::create_devices;
+use crate::devices::create_devices;
 use crate::pty::{monitor_thread, pty_thread};
 use crate::result::Result;
 use crate::stage1::spawn_stage1;

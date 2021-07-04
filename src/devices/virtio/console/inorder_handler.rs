@@ -9,7 +9,7 @@ use nix::sys::uio::RemoteIoVec;
 use virtio_queue::{DescriptorChain, Queue};
 use vm_memory::{self, GuestAddressSpace};
 
-use crate::device::virtio::{SignalUsedQueue, QUEUE_MAX_SIZE};
+use crate::devices::virtio::{SignalUsedQueue, QUEUE_MAX_SIZE};
 
 #[derive(Debug)]
 pub enum Error {

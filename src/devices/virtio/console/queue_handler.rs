@@ -7,8 +7,8 @@ use log::error;
 use vm_memory::GuestAddressSpace;
 use vmm_sys_util::epoll::EventSet;
 
-use crate::device::virtio::console::inorder_handler::InOrderQueueHandler;
-use crate::device::virtio::SingleFdSignalQueue;
+use crate::devices::virtio::console::inorder_handler::InOrderQueueHandler;
+use crate::devices::virtio::SingleFdSignalQueue;
 use crate::kvm::hypervisor::IoEventFd;
 
 const IOEVENT_DATA: u32 = 0;
