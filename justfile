@@ -138,14 +138,18 @@ qemu EXTRA_CMDLINE="nokalsr": build-linux nixos-image
   qemu-system-x86_64 \
     -kernel {{linux_dir}}/arch/x86/boot/bzImage \
     -drive format=raw,file={{linux_dir}}/nixos.ext4 \
-    -append "root=/dev/sda console=ttyS0 {{EXTRA_CMDLINE}}" \
+    -append "root=/dev/sda console=hvc0 {{EXTRA_CMDLINE}}" \
     -net nic,netdev=user.0,model=virtio \
     -m 512M \
     -netdev user,id=user.0,hostfwd=tcp:127.0.0.1:{{qemu_ssh_port}}-:22 \
     -cpu host \
     -virtfs local,path={{invocation_directory()}}/..,security_model=none,mount_tag=home \
     -virtfs local,path={{linux_dir}},security_model=none,mount_tag=linux \
-    -nographic -enable-kvm \
+    -nographic -serial null -enable-kvm \
+    -device virtio-serial \
+    -chardev stdio,mux=on,id=char0 \
+    -mon chardev=char0,mode=readline \
+    -device virtconsole,chardev=char0,id=vmsh,nr=0 \
     -device vhost-vsock-pci,id=vhost-vsock-pci0,guest-cid=$$
 
 # run qemu with filesystem/kernel from notos (same as in tests)
