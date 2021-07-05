@@ -35,6 +35,7 @@ class Memory(Iterable):
     """
     A continous block of memory. Offset can be physical or virtual
     """
+
     def __init__(self, data: bytes, offset: int) -> None:
         self.data = data
         self.offset = offset
@@ -100,14 +101,32 @@ class Memory(Iterable):
     def __len__(self) -> int:
         return len(self.data)
 
+    def map(self, virt_offset: int) -> "MappedMemory":
+        return MappedMemory(self.data, self.offset, virt_offset)
+
 
 class MappedMemory(Memory):
     """
     Contineous physical memory that is mapped virtual contineous
     """
+
     def __init__(self, data: bytes, phys_offset: int, virt_offset: int) -> None:
         super().__init__(data, phys_offset)
         self.virt_offset = virt_offset
+
+    @overload
+    def __getitem__(self, index: int) -> int:
+        ...
+
+    @overload
+    def __getitem__(self, index: slice) -> "MappedMemory":
+        ...
+
+    def __getitem__(self, key: Union[int, slice]) -> Union[int, "MappedMemory"]:
+        r = super().__getitem__(key)
+        if isinstance(r, Memory):
+            return r.map(self.virt_offset + r.offset - self.offset)
+        return r
 
     def phys_addr(self, virt_addr: int) -> int:
         "translate virtual address to physical address"
