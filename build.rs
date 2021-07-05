@@ -1,5 +1,6 @@
 use std::env;
 use std::fs;
+use std::fs::File;
 use std::os::unix::fs::symlink;
 use std::process::Command;
 
@@ -63,6 +64,7 @@ fn main() {
         libstage1_symlink.display()
     );
     let _ = fs::remove_file(&libstage1_symlink);
+
     symlink(&libstage1_object, &libstage1_symlink).unwrap_or_else(|_| {
         panic!(
             "failed to symlink {} to {}",
@@ -70,6 +72,8 @@ fn main() {
             libstage1_symlink.display()
         )
     });
+
+    File::create(stage1_dir.join(".libstage1.o.cmd")).unwrap();
 
     log!(
         "make -C {} M={} RUST_DIR={}",
