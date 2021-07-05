@@ -1,29 +1,8 @@
 import subprocess
 import conftest
-import socket
 import os
-from threading import Thread
-from typing import List
-
-
-class VsockServer:
-    def __init__(self, port: int) -> None:
-        self.port = port
-        self.s = socket.socket(socket.AF_VSOCK, socket.SOCK_STREAM)
-        self.s.bind((socket.VMADDR_CID_HOST, port))
-        self.s.listen()
-        self.connections: List[socket.socket] = []
-        Thread(target=self.accept).start()
-
-    def accept(self) -> None:
-        (conn, (remote_cid, remote_port)) = self.s.accept()
-        print(
-            f"Received connection from {remote_cid}:{remote_port} on port {self.port}"
-        )
-        self.connections.append(conn)
-
-    def recv(self) -> str:
-        return self.connections[0].recv(4096).decode("utf-8")
+import socket
+from tempfile import TemporaryDirectory
 
 
 DEBUG_STAGE2 = os.getenv("TEST_DEBUG_STAGE2", False)
@@ -33,33 +12,37 @@ def test_stage2(helpers: conftest.Helpers) -> None:
     root = helpers.root()
     proc = subprocess.run(["cargo", "build"], cwd=root.joinpath("..", "src", "stage2"))
     assert proc.returncode == 0
-    # TODO
-    with helpers.busybox_image() as image:
+    with TemporaryDirectory() as temp, helpers.busybox_image() as image:
+        sock_path = f"{temp}/sock"
         extra_args = [
             "-drive",
             f"index=1,id=drive2,file={image},format=raw,if=none",
             "-device",
             "virtio-blk-pci,drive=drive2,serial=vmsh0,bootindex=2,serial=vmsh0",
+            "-device",
+            "virtio-serial",
+            "-chardev",
+            f"socket,path={sock_path},server,nowait,id=char0",
+            "-device",
+            "virtconsole,chardev=char0,id=vmsh",
         ]
 
-        monitor_server = VsockServer(9998)
-        pty_server = VsockServer(9999)
-
         with helpers.spawn_qemu(helpers.notos_image(), extra_args) as vm:
+            client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            client.connect(sock_path)
+
             vm.wait_for_ssh()
             cmd = ["strace", "-f"] if DEBUG_STAGE2 else []
             cmd += [
                 "/vmsh/src/stage2/target/debug/stage2",
                 "/bin/sh",
                 "-c",
-                "echo -n works",
+                "echo works",
             ]
 
             res = vm.ssh_cmd(cmd, check=False, stdout=None)
-            assert len(monitor_server.connections) == 1
-            output = monitor_server.recv()
-            assert output == "process finished with exit status: 0\n"
-            assert len(pty_server.connections) == 1
-            prog_output = pty_server.recv()
-            assert prog_output == "works"
             assert res.returncode == 0
+            out = client.recv(4096).decode("utf-8")
+            print(out)
+            lines = out.strip().split("\r\n")
+            assert lines == ["works", "process finished with exit status: 0"]
