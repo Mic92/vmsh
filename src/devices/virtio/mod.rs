@@ -12,9 +12,9 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use crate::kvm::hypervisor::{Hypervisor, IoEventFd};
+use crate::result::Result;
 use crate::tracer::inject_syscall;
 use crate::tracer::wrap_syscall::KvmRunWrapper;
-use crate::result::Result;
 use event_manager::{EventManager, MutEventSubscriber};
 use log::error;
 
@@ -158,7 +158,11 @@ impl IrqAckHandler {
     }
 }
 
-pub fn register_ioeventfd(vmm: &Arc<Hypervisor>, mmio_cfg: &MmioConfig, queue_idx: u64) -> Result<IoEventFd> {
+pub fn register_ioeventfd(
+    vmm: &Arc<Hypervisor>,
+    mmio_cfg: &MmioConfig,
+    queue_idx: u64,
+) -> Result<IoEventFd> {
     // Register the queue event fd. Something like this, but in a pirate fashion.
     // let ioeventfd = EventFd::new(EFD_NONBLOCK).map_err(Error::EventFd)?;
     // self.vm_fd

@@ -26,7 +26,6 @@ pub const VIRTIO_CONSOLE_F_MULTIPORT: u32 = 1;
 #[allow(unused)]
 pub const VIRTIO_CONSOLE_F_EMERG_WRITE: u32 = 2;
 
-
 #[derive(Debug)]
 pub enum Error {
     AlreadyActivated,

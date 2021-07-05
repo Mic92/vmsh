@@ -6,7 +6,6 @@ use std::sync::mpsc::sync_channel;
 use std::sync::Arc;
 
 use crate::devices::create_devices;
-use crate::pty::pty_thread;
 use crate::result::Result;
 use crate::stage1::spawn_stage1;
 use crate::{kvm, signal_handler};
@@ -32,19 +31,15 @@ pub fn attach(opts: &AttachOptions) -> Result<()> {
 
     signal_handler::setup(&sender)?;
 
-    let pty_thread = try_with!(pty_thread(&sender), "cannot create pty forwarder");
-
     let stage1 = try_with!(
         spawn_stage1(opts.ssh_args.as_str(), &opts.command, &sender),
         "stage1 failed"
     );
 
-    let mut threads = try_with!(
+    let threads = try_with!(
         create_devices(&vm, &sender, &opts.backing),
         "cannot create devices"
     );
-
-    threads.push(pty_thread);
 
     info!("blkdev queue ready.");
     drop(sender);

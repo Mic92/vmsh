@@ -17,12 +17,12 @@ use crate::result::Result;
 mod block;
 mod capabilities;
 mod cmd;
+mod console;
 mod lsm;
 mod mount_context;
 mod mountns;
 mod namespace;
 mod procfs;
-mod pty;
 mod result;
 mod sys_ext;
 mod user_namespace;
@@ -36,7 +36,7 @@ struct Options {
 
 fn run_stage2(opts: &Options) -> Result<()> {
     // get a console to report errors as quick as possible
-    let (pty, pts) = try_with!(pty::setup_pty(), "failed to setup pty");
+    try_with!(console::setup(), "failed to setup console");
 
     let dev = try_with!(find_vmsh_blockdev(), "cannot find block_device");
 
@@ -145,17 +145,16 @@ fn run_stage2(opts: &Options) -> Result<()> {
     }
 
     // we need to start threads after creating namespaces
-    try_with!(
-        pty::forward_thread(pty),
-        "failed to spawn pty forward thread"
-    );
+    //try_with!(
+    //    pty::forward_thread(pty),
+    //    "failed to spawn pty forward thread"
+    //);
 
     let cmd = Cmd::new(
         opts.command.clone(),
         opts.args.clone(),
         opts.target_pid,
         opts.home.clone(),
-        pts,
     )?;
 
     let mut child = cmd.spawn()?;

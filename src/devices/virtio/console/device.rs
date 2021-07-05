@@ -17,12 +17,14 @@ use vm_device::{DeviceMmio, MutDeviceMmio};
 use vm_memory::GuestAddressSpace;
 use vmm_sys_util::eventfd::EventFd;
 
-use crate::devices::virtio::console::VIRTIO_CONSOLE_F_SIZE;
 use crate::devices::virtio::console::log_handler::LogQueueHandler;
+use crate::devices::virtio::console::VIRTIO_CONSOLE_F_SIZE;
 use crate::devices::virtio::features::{
     VIRTIO_F_IN_ORDER, VIRTIO_F_RING_EVENT_IDX, VIRTIO_F_VERSION_1,
 };
-use crate::devices::virtio::{IrqAckHandler, MmioConfig, QUEUE_MAX_SIZE, SingleFdSignalQueue, register_ioeventfd};
+use crate::devices::virtio::{
+    register_ioeventfd, IrqAckHandler, MmioConfig, SingleFdSignalQueue, QUEUE_MAX_SIZE,
+};
 use crate::kvm::hypervisor::Hypervisor;
 
 //use super::queue_handler::QueueHandler;
@@ -127,7 +129,7 @@ where
                 .open("/proc/self/fd/0"),
             "could not open console"
         )
-            .map_err(Error::Simple)?;
+        .map_err(Error::Simple)?;
 
         //let rx_fd = register_ioeventfd(&self.vmm, &self.mmio_cfg, 0).map_err(Error::Simple)?;
         let tx_fd = register_ioeventfd(&self.vmm, &self.mmio_cfg, 1).map_err(Error::Simple)?;

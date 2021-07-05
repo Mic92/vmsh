@@ -4,15 +4,12 @@ use std::collections::HashMap;
 use std::env;
 use std::ffi::OsString;
 use std::fs::File;
-use std::io;
 use std::io::{BufRead, BufReader};
 use std::os::unix::ffi::OsStringExt;
-use std::os::unix::process::CommandExt;
 use std::process::Child;
 use std::process::Command;
 
 use crate::procfs;
-use crate::pty::Pts;
 use crate::result::Result;
 
 pub struct Cmd {
@@ -20,7 +17,6 @@ pub struct Cmd {
     command: String,
     arguments: Vec<String>,
     home: Option<OsString>,
-    pts: Pts,
 }
 
 fn read_environment(pid: unistd::Pid) -> Result<HashMap<OsString, OsString>> {
@@ -54,7 +50,6 @@ impl Cmd {
         args: Vec<String>,
         pid: unistd::Pid,
         home: Option<OsString>,
-        pts: Pts,
     ) -> Result<Cmd> {
         let arguments = if command.is_none() {
             vec![String::from("-l")]
@@ -72,7 +67,6 @@ impl Cmd {
             command,
             arguments,
             home,
-            pts,
             environment: variables,
         })
     }
@@ -88,21 +82,10 @@ impl Cmd {
             self.environment.insert(OsString::from("HOME"), path);
         }
 
-        let pts = self.pts.clone();
-
-        let child = unsafe {
-            Command::new(&self.command)
-                .args(&self.arguments)
-                .envs(self.environment)
-                .pre_exec(move || {
-                    if let Err(e) = pts.attach() {
-                        eprintln!("failed to attach to terminal: {}", e);
-                        return Err(io::Error::from_raw_os_error(libc::EINVAL));
-                    }
-                    Ok(())
-                })
-                .spawn()
-        };
+        let child = Command::new(&self.command)
+            .args(&self.arguments)
+            .envs(self.environment)
+            .spawn();
         Ok(try_with!(
             child,
             "failed to spawn {} {}",

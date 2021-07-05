@@ -26,10 +26,10 @@ use crate::devices::virtio::features::{
 use crate::devices::virtio::{IrqAckHandler, MmioConfig, SingleFdSignalQueue, QUEUE_MAX_SIZE};
 use crate::kvm::hypervisor::Hypervisor;
 
+use super::super::register_ioeventfd;
 use super::inorder_handler::InOrderQueueHandler;
 use super::queue_handler::QueueHandler;
 use super::{build_config_space, BlockArgs, Error, Result};
-use super::super::register_ioeventfd;
 
 // This Block device can only use the MMIO transport for now, but we plan to reuse large parts of
 // the functionality when we implement virtio PCI as well, for example by having a base generic
