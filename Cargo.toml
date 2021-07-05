@@ -40,9 +40,9 @@ container-pid = "0.1.0"
 virtio-blk = { git = "https://github.com/Mic92/vm-virtio.git", features = ["backend-stdio"], rev = "f3f31f60aebb2698c2464636bfc433df4bab190e"} # does no kvm operations
 virtio-device = { git = "https://github.com/Mic92/vm-virtio.git", rev = "f3f31f60aebb2698c2464636bfc433df4bab190e"}
 virtio-queue = { git = "https://github.com/Mic92/vm-virtio.git", rev = "f3f31f60aebb2698c2464636bfc433df4bab190e"}
-#virtio-blk = { path = "../vm-virtio/crates/devices/virtio-blk", features = ["backend-stdio"]} # does no kvm operations
-#virtio-device = { path = "../vm-virtio/crates/virtio-device" }
-#virtio-queue = { path = "../vm-virtio/crates/virtio-queue" }
+#virtio-blk = { path = "../rust-vmm/vm-virtio/crates/devices/virtio-blk", features = ["backend-stdio"]} # does no kvm operations
+#virtio-device = { path = "../rust-vmm/vm-virtio/crates/virtio-device" }
+#virtio-queue = { path = "../rust-vmm/vm-virtio/crates/virtio-queue" }
 
 #vm-virtio = { path = "src/vm-virtio", features = ["backend-stdio"] }
 vm-device = { git = "https://github.com/rust-vmm/vm-device", rev = "989c315712b80a538331fe05716323f2f64abf2e" } # does no kvm operations
