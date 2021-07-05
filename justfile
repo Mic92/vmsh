@@ -149,8 +149,7 @@ qemu EXTRA_CMDLINE="nokalsr": build-linux nixos-image
     -device virtio-serial \
     -chardev stdio,mux=on,id=char0 \
     -mon chardev=char0,mode=readline \
-    -device virtconsole,chardev=char0,id=vmsh,nr=0 \
-    -device vhost-vsock-pci,id=vhost-vsock-pci0,guest-cid=$$
+    -device virtconsole,chardev=char0,id=vmsh,nr=0
 
 # run qemu with filesystem/kernel from notos (same as in tests)
 qemu-notos:
