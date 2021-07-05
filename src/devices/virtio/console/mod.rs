@@ -1,5 +1,5 @@
 mod device;
-mod inorder_handler;
+mod console_handler;
 mod queue_handler;
 
 use std::io;
@@ -50,7 +50,34 @@ unsafe fn any_as_u8_slice<T: Sized>(p: &T) -> &[u8] {
     ::std::slice::from_raw_parts((p as *const T) as *const u8, ::std::mem::size_of::<T>())
 }
 
+//fn get_winsize(term_fd: RawFd) -> winsize {
+//    use std::mem::zeroed;
+//    unsafe {
+//        let mut ws: winsize = zeroed();
+//        match libc::ioctl(term_fd, libc::TIOCGWINSZ, &mut ws) {
+//            0 => ws,
+//            _ => winsize {
+//                ws_row: 80,
+//                ws_col: 25,
+//                ws_xpixel: 0,
+//                ws_ypixel: 0,
+//            },
+//        }
+//    }
+//}
+//
+//fn resize_pty(pty_master: RawFd) {
+//    unsafe {
+//        libc::ioctl(
+//            pty_master,
+//            libc::TIOCSWINSZ,
+//            &mut get_winsize(libc::STDOUT_FILENO),
+//        );
+//    }
+//}
+
 fn build_config_space() -> Vec<u8> {
+    // FIXME think about terminal size
     let config = virtio_console_config {
         cols: 80,
         rows: 24,

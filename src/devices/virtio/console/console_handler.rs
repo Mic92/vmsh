@@ -36,14 +36,14 @@ impl From<virtio_queue::Error> for Error {
 // object), but the aim is to have a way of working with generic backends and turn this into
 // a more flexible building block. The name comes from processing and returning descriptor
 // chains back to the device in the same order they are received.
-pub struct InOrderQueueHandler<M: GuestAddressSpace, S: SignalUsedQueue> {
+pub struct ConsoleQueueHandler<M: GuestAddressSpace, S: SignalUsedQueue> {
     pub driver_notify: S,
     pub rxq: Queue<M>,
     pub txq: Queue<M>,
     pub console: File,
 }
 
-impl<M, S> InOrderQueueHandler<M, S>
+impl<M, S> ConsoleQueueHandler<M, S>
 where
     M: GuestAddressSpace,
     S: SignalUsedQueue,
