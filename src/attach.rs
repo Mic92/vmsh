@@ -33,7 +33,6 @@ pub fn attach(opts: &AttachOptions) -> Result<()> {
     signal_handler::setup(&sender)?;
 
     let pty_thread = try_with!(pty_thread(&sender), "cannot create pty forwarder");
-    //let monitor_thread = try_with!(monitor_thread(&sender), "cannot create monitor forwarder");
 
     let stage1 = try_with!(
         spawn_stage1(opts.ssh_args.as_str(), &opts.command, &sender),
@@ -46,7 +45,6 @@ pub fn attach(opts: &AttachOptions) -> Result<()> {
     );
 
     threads.push(pty_thread);
-    //threads.push(monitor_thread);
 
     info!("blkdev queue ready.");
     drop(sender);

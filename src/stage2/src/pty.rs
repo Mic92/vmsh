@@ -1,5 +1,5 @@
 use std::collections::BinaryHeap;
-use std::fs::{self, File, OpenOptions};
+use std::fs::{self, File};
 use std::os::unix::prelude::IntoRawFd;
 use std::os::unix::prelude::{AsRawFd, FromRawFd};
 use std::path::PathBuf;
@@ -9,12 +9,13 @@ use crate::result::Result;
 
 use ioutils::shovel::{shovel, FilePair};
 
+use nix::errno::Errno;
 use nix::fcntl::OFlag;
 use nix::pty::{grantpt, posix_openpt, ptsname_r, unlockpt, PtyMaster};
 use nix::sys::socket::{self, AddressFamily, SockAddr, SockFlag, SockType, VsockAddr};
 use nix::sys::stat;
 use nix::{fcntl, unistd};
-use simple_error::{require_with, try_with};
+use simple_error::{bail, try_with};
 
 pub fn open_ptm() -> Result<PtyMaster> {
     let pty_master = try_with!(posix_openpt(OFlag::O_RDWR), "posix_openpt()");
@@ -106,10 +107,17 @@ pub fn find_vmsh_consoles() -> Result<File> {
             }
         }
     }
-    let num = require_with!(heap.pop(), "no virtio console found in /dev");
-    let monitor = format!("/dev/hvc{}", num);
-    let f = try_with!(OpenOptions::new().write(true).open(monitor), "failed to open {}");
-    Ok(f)
+    for num in heap {
+        let name = format!("/dev/hvc{}", num);
+        match fcntl::open(name.as_str(), OFlag::O_RDWR, stat::Mode::empty()) {
+            Ok(fd) => return Ok(unsafe { File::from_raw_fd(fd) }),
+            Err(nix::Error::Sys(Errno::ENODEV)) => {}
+            e => {
+                try_with!(e, "failed to open {}", &name);
+            }
+        };
+    }
+    bail!("cannot find vmsh console device in /dev");
 }
 
 pub fn setup_pty() -> Result<(VsockPty, Pts)> {

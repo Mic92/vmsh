@@ -105,26 +105,6 @@ fn pty_serve(vsock: File, should_stop: Arc<AtomicBool>) -> Result<()> {
     Ok(())
 }
 
-fn monitor_serve(vsock: File, should_stop: Arc<AtomicBool>) -> Result<()> {
-    debug!("listen for monitor vsock connections");
-    let vsock_conn = match wait_connection(vsock, &should_stop)? {
-        None => return Ok(()),
-        Some(c) => c,
-    };
-
-    debug!("got monitor vsock connections");
-
-    let stdout: File = unsafe { File::from_raw_fd(libc::STDOUT_FILENO) };
-
-    while shovel(&mut [FilePair::new(&vsock_conn, &stdout)], Some(300)) {
-        if should_stop.load(Ordering::Relaxed) {
-            break;
-        }
-    }
-
-    Ok(())
-}
-
 fn listen_vsock(port: u32) -> Result<File> {
     let raw_sock = try_with!(
         socket::socket(
@@ -160,21 +140,6 @@ pub fn pty_thread(result_sender: &SyncSender<()>) -> Result<InterrutableThread<(
         result_sender,
         move |should_stop: Arc<AtomicBool>| {
             let err = pty_serve(sock, should_stop);
-            signal_handler::stop_vmsh();
-            err
-        },
-    );
-    Ok(try_with!(res, "failed to spawn thread"))
-}
-
-pub fn monitor_thread(result_sender: &SyncSender<()>) -> Result<InterrutableThread<()>> {
-    let sock = listen_vsock(9998)?;
-
-    let res = InterrutableThread::spawn(
-        "monitor-forwarder",
-        result_sender,
-        move |should_stop: Arc<AtomicBool>| {
-            let err = monitor_serve(sock, should_stop);
             signal_handler::stop_vmsh();
             err
         },
