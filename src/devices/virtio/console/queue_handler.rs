@@ -11,7 +11,8 @@ use crate::devices::virtio::console::inorder_handler::InOrderQueueHandler;
 use crate::devices::virtio::SingleFdSignalQueue;
 use crate::kvm::hypervisor::IoEventFd;
 
-const IOEVENT_DATA: u32 = 0;
+const RX_IOEVENT_DATA: u32 = 0;
+const TX_IOEVENT_DATA: u32 = 1;
 
 // This object simply combines the more generic `InOrderQueueHandler` with a concrete queue
 // signalling implementation based on `EventFd`s, and then also implements `MutEventSubscriber`
@@ -19,39 +20,60 @@ const IOEVENT_DATA: u32 = 0;
 // notifications coming from the driver.
 pub(crate) struct QueueHandler<M: GuestAddressSpace> {
     pub inner: InOrderQueueHandler<M, SingleFdSignalQueue>,
-    pub ioeventfd: IoEventFd,
+    pub rx_fd: IoEventFd,
+    pub tx_fd: IoEventFd,
+}
+
+impl<M: GuestAddressSpace> QueueHandler<M> {
+    fn handle_error<S: AsRef<str>>(&self, s: S, ops: &mut EventOps) {
+        error!("{}", s.as_ref());
+        ops.remove(Events::empty(&self.rx_fd))
+            .expect("Failed to remove rx ioevent");
+        ops.remove(Events::empty(&self.tx_fd))
+            .expect("Failed to remove tx ioevent");
+    }
 }
 
 impl<M: GuestAddressSpace> MutEventSubscriber for QueueHandler<M> {
     fn process(&mut self, events: Events, ops: &mut EventOps) {
         let mut error = true;
 
-        // TODO: Have a look at any potential performance impact caused by these conditionals
-        // just to be sure.
         if events.event_set() != EventSet::IN {
-            error!("unexpected event_set");
-        } else if events.data() != IOEVENT_DATA {
-            error!("unexpected events data {}", events.data());
-        } else if self.ioeventfd.read().is_err() {
-            error!("ioeventfd read error")
-        } else if let Err(e) = self.inner.process_queue() {
-            error!("error processing console queue {:?}", e);
-        } else {
-            error = false;
+            self.handle_error("Unexpected event_set", ops);
+            return;
         }
-
-        if error {
-            ops.remove(events)
-                .expect("Failed to remove fd from event handling loop");
+        match events.data() {
+            RX_IOEVENT_DATA => {
+                if self.rx_fd.read().is_err() {
+                    self.handle_error("Rx ioevent read", ops);
+                } else if let Err(e) = self.inner.process_rxq() {
+                    self.handle_error(format!("Process rx error {:?}", e), ops);
+                }
+            }
+            TX_IOEVENT_DATA => {
+                if self.tx_fd.read().is_err() {
+                    self.handle_error("Tx ioevent read", ops);
+                }
+                if let Err(e) = self.inner.process_txq() {
+                    self.handle_error(format!("Process tx error {:?}", e), ops);
+                }
+            }
+            _ => self.handle_error("Unexpected data", ops),
         }
     }
 
     fn init(&mut self, ops: &mut EventOps) {
         ops.add(Events::with_data(
-            &self.ioeventfd,
-            IOEVENT_DATA,
+            &self.rx_fd,
+            RX_IOEVENT_DATA,
             EventSet::IN,
         ))
-        .expect("Failed to init console queue handler");
+        .expect("Failed to register rx ioeventfd for console queue handler");
+        ops.add(Events::with_data(
+            &self.tx_fd,
+            TX_IOEVENT_DATA,
+            EventSet::IN,
+        ))
+        .expect("Failed to register tx ioeventfd for console queue handler");
     }
 }

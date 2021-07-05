@@ -34,7 +34,7 @@ pub enum Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-#[repr(C,packed)]
+#[repr(C, packed)]
 struct virtio_console_config {
     /* colums of the screens */
     cols: u16,
@@ -47,10 +47,7 @@ struct virtio_console_config {
 }
 
 unsafe fn any_as_u8_slice<T: Sized>(p: &T) -> &[u8] {
-    ::std::slice::from_raw_parts(
-        (p as *const T) as *const u8,
-        ::std::mem::size_of::<T>(),
-    )
+    ::std::slice::from_raw_parts((p as *const T) as *const u8, ::std::mem::size_of::<T>())
 }
 
 fn build_config_space() -> Vec<u8> {
@@ -58,7 +55,7 @@ fn build_config_space() -> Vec<u8> {
         cols: 80,
         rows: 24,
         max_nr_ports: 2,
-        emerg_wr: 0
+        emerg_wr: 0,
     };
     unsafe { any_as_u8_slice(&config) }.to_vec()
 }

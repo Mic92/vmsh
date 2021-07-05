@@ -9,11 +9,14 @@ use crate::devices::virtio::console::{self, ConsoleArgs};
 use crate::devices::virtio::{CommonArgs, MmioConfig};
 use crate::kvm::hypervisor::Hypervisor;
 use crate::result::Result;
+use crate::tracer::inject_syscall;
 use crate::tracer::proc::Mapping;
+use crate::tracer::wrap_syscall::KvmRunWrapper;
 use libc::pid_t;
-use simple_error::{bail, try_with};
+use simple_error::{bail, map_err_with, try_with};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
+use virtio_blk::request::Error;
 use vm_device::bus::{MmioAddress, MmioRange};
 use vm_device::device_manager::MmioManager;
 use vm_memory::guest_memory::GuestAddress;
@@ -32,10 +35,9 @@ const MEM_32BIT_GAP_SIZE: u64 = 768 << 20;
 pub const MMIO_MEM_START: u64 = FIRST_ADDR_PAST_32BITS - MEM_32BIT_GAP_SIZE;
 /// max mem space per device
 pub const DEVICE_MAX_MEM: u64 = 0x1000;
-pub const BLOCK_MEM_START : u64 = MMIO_MEM_START;
-pub const CONSOLE_MEM_START : u64 = BLOCK_MEM_START + DEVICE_MAX_MEM;
+pub const BLOCK_MEM_START: u64 = MMIO_MEM_START;
+pub const CONSOLE_MEM_START: u64 = BLOCK_MEM_START + DEVICE_MAX_MEM;
 pub const MMIO_MEM_STOP: u64 = CONSOLE_MEM_START + DEVICE_MAX_MEM;
-
 
 pub type Block = block::Block<Arc<GuestMemoryMmap>>;
 pub type Console = console::Console<Arc<GuestMemoryMmap>>;
@@ -94,35 +96,41 @@ impl DeviceSpace {
         ));
 
         let block_range = MmioRange::new(MmioAddress(BLOCK_MEM_START), 0x1000).unwrap();
-        let block_mmio_cfg = MmioConfig { range: block_range, gsi: 5 };
+        let block_mmio_cfg = MmioConfig {
+            range: block_range,
+            gsi: 5,
+        };
 
         let console_range = MmioRange::new(MmioAddress(CONSOLE_MEM_START), 0x1000).unwrap();
-        let console_mmio_cfg = MmioConfig { range: console_range, gsi: 5 };
+        let console_mmio_cfg = MmioConfig {
+            range: console_range,
+            gsi: 5,
+        };
 
         // IoManager replacement:
         let device_manager = Arc::new(Mutex::new(IoPirate::default()));
         let blkdev = {
-          let guard = device_manager.lock().unwrap();
-          guard.mmio_device(MmioAddress(BLOCK_MEM_START));
+            let guard = device_manager.lock().unwrap();
+            guard.mmio_device(MmioAddress(BLOCK_MEM_START));
 
-          let common = CommonArgs {
-              mem: Arc::clone(&mem),
-              vmm: vmm.clone(),
-              event_mgr,
-              mmio_mgr: guard,
-              mmio_cfg: block_mmio_cfg,
-          };
-          let args = BlockArgs {
-              common,
-              file_path: backing.to_path_buf(),
-              read_only: false,
-              root_device: true,
-              advertise_flush: true,
-          };
-          match Block::new(args) {
-              Ok(v) => v,
-              Err(e) => bail!("cannot create block device: {:?}", e),
-          }
+            let common = CommonArgs {
+                mem: Arc::clone(&mem),
+                vmm: vmm.clone(),
+                event_mgr,
+                mmio_mgr: guard,
+                mmio_cfg: block_mmio_cfg,
+            };
+            let args = BlockArgs {
+                common,
+                file_path: backing.to_path_buf(),
+                read_only: false,
+                root_device: true,
+                advertise_flush: true,
+            };
+            match Block::new(args) {
+                Ok(v) => v,
+                Err(e) => bail!("cannot create block device: {:?}", e),
+            }
         };
         let console = {
             let guard = device_manager.lock().unwrap();
@@ -135,9 +143,7 @@ impl DeviceSpace {
                 mmio_mgr: guard,
                 mmio_cfg: console_mmio_cfg,
             };
-            let args = ConsoleArgs {
-                common,
-            };
+            let args = ConsoleArgs { common };
 
             match Console::new(args) {
                 Ok(v) => v,

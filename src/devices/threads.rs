@@ -1,6 +1,6 @@
 use event_manager::EventManager;
 use event_manager::MutEventSubscriber;
-use log::{warn, debug, info, log_enabled, trace, Level};
+use log::{debug, info, log_enabled, trace, warn, Level};
 use simple_error::{require_with, try_with};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -9,9 +9,9 @@ use std::sync::Arc;
 use std::sync::{Condvar, Mutex};
 use virtio_device::{VirtioDevice, WithDriverSelect};
 
+use crate::devices::DeviceSpace;
 use crate::devices::MMIO_MEM_START;
 use crate::devices::MMIO_MEM_STOP;
-use crate::devices::DeviceSpace;
 use crate::interrutable_thread::InterrutableThread;
 use crate::kvm::hypervisor::Hypervisor;
 use crate::result::Result;

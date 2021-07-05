@@ -7,9 +7,11 @@ use std::result;
 
 use nix::sys::uio::RemoteIoVec;
 use virtio_queue::{DescriptorChain, Queue};
+use vm_memory::Bytes;
 use vm_memory::{self, GuestAddressSpace};
 
 use crate::devices::virtio::{SignalUsedQueue, QUEUE_MAX_SIZE};
+use crate::kvm::hypervisor::IoEventFd;
 
 #[derive(Debug)]
 pub enum Error {
@@ -36,13 +38,9 @@ impl From<virtio_queue::Error> for Error {
 // chains back to the device in the same order they are received.
 pub struct InOrderQueueHandler<M: GuestAddressSpace, S: SignalUsedQueue> {
     pub driver_notify: S,
-    pub queue: Queue<M>,
+    pub rxq: Queue<M>,
+    pub txq: Queue<M>,
     pub console: File,
-}
-
-/// Block request parsing errors.
-#[derive(Debug)]
-pub enum ParseError {
 }
 
 impl<M, S> InOrderQueueHandler<M, S>
@@ -53,17 +51,24 @@ where
     fn process_chain(&mut self, mut chain: DescriptorChain<M>) -> result::Result<(), Error> {
         log::trace!("process_chain");
 
-        let mut iovs = [RemoteIoVec { base: 0, len: 0 }; QUEUE_MAX_SIZE as usize];
         let mut i = 0;
-
-        for desc in chain {
-            iovs[i] = RemoteIoVec { base: desc.addr().0 as usize, len: desc.len() as usize };
+        while let Some(desc) = chain.next() {
+            chain
+                .memory()
+                .write_to(desc.addr(), &mut self.console, desc.len() as usize);
             i += 1;
         }
+        self.txq.add_used(chain.head_index(), i as u32)?;
 
-        //self.queue.add_used(chain.head_index(), i as u32)?;
+        //let mut iovs = [RemoteIoVec { base: 0, len: 0 }; QUEUE_MAX_SIZE as usize];
+        //let mut i = 0;
+        //for desc in chain.into_iter() {
+        //    //desc.memory().write_to(self.console, desc.len());
+        //    //iovs[i] = dbg!(RemoteIoVec { base: desc.addr().0 as usize, len: desc.len() as usize });
+        //    i += 1;
+        //}
 
-        if self.queue.needs_notification()? {
+        if self.txq.needs_notification()? {
             log::trace!("notification needed: yes");
             self.driver_notify.signal_used_queue(0);
         } else {
@@ -74,21 +79,23 @@ where
         Ok(())
     }
 
-    pub fn process_queue(&mut self) -> result::Result<(), Error> {
+    pub fn process_rxq(&mut self) -> result::Result<(), Error> {
+        Ok(())
+    }
+    pub fn process_txq(&mut self) -> result::Result<(), Error> {
         // To see why this is done in a loop, please look at the `Queue::enable_notification`
         // comments in `vm_virtio`.
         loop {
-            self.queue.disable_notification()?;
+            self.txq.disable_notification()?;
 
-            while let Some(chain) = self.queue.iter()?.next() {
+            while let Some(chain) = self.txq.iter()?.next() {
                 self.process_chain(chain)?;
             }
 
-            if !self.queue.enable_notification()? {
+            if !self.txq.enable_notification()? {
                 break;
             }
         }
-
         Ok(())
     }
 }
