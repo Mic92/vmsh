@@ -51,25 +51,25 @@ def test_get_vcpu_maps(helpers: conftest.Helpers) -> None:
         run_ioctl_test("vcpu_maps", vm)
 
 
-def test_userfaultfd_completes(helpers: conftest.Helpers) -> None:
-    with helpers.spawn_qemu(helpers.notos_image()) as vm:
-        vm.wait_for_ssh()
-        vmsh = spawn_ioctl_test("guest_userfaultfd", vm)
-
-        with vmsh:
-            vmsh.wait_until_line("pause", lambda l: "pause" in l)
-            print("ssh available")
-
-            res = vm.ssh_cmd(
-                [
-                    "devmem2",
-                    "0xd0000000",
-                    "ww",
-                    "0x1337",
-                ]
-            )
-            print("stdout:\n", res.stdout)
-            print("stderr:\n", res.stderr)
+# def test_userfaultfd_completes(helpers: conftest.Helpers) -> None:
+#    with helpers.spawn_qemu(helpers.notos_image()) as vm:
+#        vm.wait_for_ssh()
+#        vmsh = spawn_ioctl_test("guest_userfaultfd", vm)
+#
+#        with vmsh:
+#            vmsh.wait_until_line("pause", lambda l: "pause" in l)
+#            print("ssh available")
+#
+#            res = vm.ssh_cmd(
+#                [
+#                    "devmem2",
+#                    "0xd0000000",
+#                    "ww",
+#                    "0x1337",
+#                ]
+#            )
+#            print("stdout:\n", res.stdout)
+#            print("stderr:\n", res.stderr)
 
 
 def test_wrap_syscall(helpers: conftest.Helpers) -> None:
