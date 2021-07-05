@@ -144,12 +144,6 @@ fn run_stage2(opts: &Options) -> Result<()> {
         try_with!(profile.inherit_profile(), "failed to inherit lsm profile");
     }
 
-    // we need to start threads after creating namespaces
-    //try_with!(
-    //    pty::forward_thread(pty),
-    //    "failed to spawn pty forward thread"
-    //);
-
     let cmd = Cmd::new(
         opts.command.clone(),
         opts.args.clone(),

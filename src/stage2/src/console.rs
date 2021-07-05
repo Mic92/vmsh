@@ -24,8 +24,8 @@ pub fn find_vmsh_consoles() -> Result<File> {
     for entry in entries {
         let entry = try_with!(entry, "failed to read /dev");
         if let Some(name) = entry.file_name().to_str() {
-            if name.starts_with("hvc") {
-                if let Ok(num) = name[3..].parse::<usize>() {
+            if let Some(stripped) = name.strip_prefix("hvc") {
+                if let Ok(num) = stripped.parse::<usize>() {
                     heap.push(num);
                 }
             }
