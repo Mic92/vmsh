@@ -3,6 +3,7 @@ name = "stage2"
 version = "0.1.0"
 authors = ["Jörg Thalheim <joerg@thalheim.io>"]
 edition = "2018"
+license = "MIT"
 
 [dependencies]
 nix = "0.20.*"
