@@ -6,5 +6,5 @@ edition = "2018"
 license = "MIT"
 
 [dependencies]
-libc = "*"
-nix = "*"
+libc = "0.2.*"
+nix = "0.21.*"
