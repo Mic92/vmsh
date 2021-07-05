@@ -4,11 +4,10 @@
 # vim: set ft=make :
 
 linux_dir := invocation_directory() + "/../linux"
-linux_rev := "v5.11"
 
 kernel_fhs := `nix build --json '.#kernel-fhs' | jq -r '.[] | .outputs | .out'` + "/bin/linux-kernel-build"
 
-virtio_blk_img := invocation_directory() + "/../linux/nixos.img"
+virtio_blk_img := invocation_directory() + "/../linux/nixos.ext4"
 
 qemu_pid := `pgrep -u $(id -u) qemu-system | awk '{print $1}'`
 qemu_ssh_port := "2222"
@@ -67,9 +66,14 @@ stress-test DEV="/dev/vda":
 # Git clone linux kernel
 clone-linux:
   [[ -d {{linux_dir}} ]] || \
-    git clone git://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git \\
+    git clone https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git \
     {{linux_dir}}
-  git -C {{linux_dir}} checkout {{linux_rev}}
+  set -x; tag="v$(nix eval --raw --inputs-from . nixpkgs#linuxPackages_latest.kernel.version)"; \
+  if [[ $(git -C {{linux_dir}} describe --tags) != "$tag" ]]; then \
+     git -C {{linux_dir}} fetch https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git HEAD:stable; \
+     git -C {{linux_dir}} checkout "$tag"; \
+     rm -f {{linux_dir}}/.config; \
+  fi
 
 # Configure linux kernel build
 configure-linux: clone-linux
@@ -87,6 +91,9 @@ configure-linux: clone-linux
     {{kernel_fhs}} "scripts/config --set-val BPF_SYSCALL y"
     {{kernel_fhs}} "scripts/config --set-val IKHEADERS y"
     {{kernel_fhs}} "scripts/config --set-val VIRTIO_MMIO y"
+    {{kernel_fhs}} "scripts/config --set-val VSOCKETS y"
+    {{kernel_fhs}} "scripts/config --set-val VIRTIO_VSOCKETS y"
+    {{kernel_fhs}} "scripts/config --set-val DRM n"
     {{kernel_fhs}} "scripts/config --set-val PTDUMP_CORE y"
     {{kernel_fhs}} "scripts/config --set-val PTDUMP_DEBUGFS y"
   fi
@@ -109,13 +116,8 @@ build-linux: configure-linux
 nixos-image:
   [[ {{linux_dir}}/nixos.ext4 -nt nix/nixos-image.nix ]] || \
   [[ {{linux_dir}}/nixos.ext4 -nt flake.lock ]] || \
-  (nix build .#nixos-image --out-link nixos-image && \
+  (nix build --builders '' .#nixos-image --out-link nixos-image && \
   install -m600 "nixos-image/nixos.img" {{linux_dir}}/nixos.ext4)
-
-# convert nixos-image.qcow2 to .img
-nixos-image-img: nixos-image
-  if [[ ! -f {{linux_dir}}/nixos.img ]]; then \
-    qemu-img convert {{linux_dir}}/nixos.qcow2 -O raw {{linux_dir}}/nixos.img; fi
 
 # Build kernel/disk image for not os
 notos-image:
@@ -136,14 +138,18 @@ qemu EXTRA_CMDLINE="nokalsr": build-linux nixos-image
   qemu-system-x86_64 \
     -kernel {{linux_dir}}/arch/x86/boot/bzImage \
     -drive format=raw,file={{linux_dir}}/nixos.ext4 \
-    -append "root=/dev/sda console=ttyS0 {{EXTRA_CMDLINE}}" \
+    -append "root=/dev/sda console=hvc0 {{EXTRA_CMDLINE}}" \
     -net nic,netdev=user.0,model=virtio \
     -m 512M \
     -netdev user,id=user.0,hostfwd=tcp:127.0.0.1:{{qemu_ssh_port}}-:22 \
     -cpu host \
     -virtfs local,path={{invocation_directory()}}/..,security_model=none,mount_tag=home \
     -virtfs local,path={{linux_dir}},security_model=none,mount_tag=linux \
-    -nographic -enable-kvm \
+    -nographic -serial null -enable-kvm \
+    -device virtio-serial \
+    -chardev stdio,mux=on,id=char0 \
+    -mon chardev=char0,mode=readline \
+    -device virtconsole,chardev=char0,id=vmsh,nr=0
 
 # run qemu with filesystem/kernel from notos (same as in tests)
 qemu-notos:
@@ -176,6 +182,13 @@ ssh-qemu $COMMAND="":
 nested-qemu: nested-nixos-image
   just ssh-qemu qemu-nested
 
+# Copy programs from the host store to the guest nix store
+qemu-copy STORE_PATH:
+  mkdir -p target/mnt
+  sudo mount {{virtio_blk_img}} {{invocation_directory()}}/target/mnt
+  sudo nix copy {{STORE_PATH}} --to {{invocation_directory()}}/target/mnt
+  sudo umount {{invocation_directory()}}/target/mnt
+
 # Build debug kernel module for VM using kernel build by `just build-linux`
 build-debug-kernel-mod:
   # don't invoke linux kernel build every time because it is a bit slow...
@@ -186,15 +199,15 @@ build-debug-kernel-mod:
 load-debug-kernel-mod: build-debug-kernel-mod
   just ssh-qemu "rmmod debug-kernel-mod; insmod /mnt/vmsh/tests/debug-kernel-mod/debug-kernel-mod.ko && dmesg"
 
-attach-qemu-img: nixos-image-img
+attach-qemu-img: nixos-image
   cargo run -- \
   -l info,vmsh::device::virtio::block::inorder_handler=warn,vm_memory::mmap=warn,vm_memory::remote_mem=warn,vmsh::device::threads=debug attach \
   "{{qemu_pid}}" -f {{virtio_blk_img}} \
-  -- -i nix/ssh_key -p "{{qemu_ssh_port}}" "root@localhost" 
+  -- --ssh-args " -i {{invocation_directory()}}/nix/ssh_key -p {{qemu_ssh_port}} root@localhost"
 
 # Attach block device to first qemu vm found by pidof and owned by our own user
 attach-qemu: vmsh-image
-  cargo run -- attach -f "{{linux_dir}}/nixos.ext4" "{{qemu_pid}}" -- -i nix/ssh_key -p "{{qemu_ssh_port}}" "root@localhost"
+  cargo run -- attach -f "{{linux_dir}}/nixos.ext4" "{{qemu_pid}}" --ssh-args " -i {{invocation_directory()}}/nix/ssh_key -p {{qemu_ssh_port}} root@localhost" -- /nix/var/nix/profiles/system/sw/bin/ls -la
 
 # Inspect first qemu vm found by pidof and owned by our own user
 inspect-qemu:

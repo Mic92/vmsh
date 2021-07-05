@@ -11,11 +11,11 @@ use std::io::{self, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 
 use event_manager::Error as EvmgrError;
+use virtio_blk::stdio_executor;
 use vm_device::bus;
-use vm_virtio::block::stdio_executor;
 use vmm_sys_util::errno;
 
-use crate::device::virtio::CommonArgs;
+use crate::devices::virtio::CommonArgs;
 use simple_error::SimpleError;
 
 pub use device::Block;

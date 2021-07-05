@@ -386,7 +386,7 @@ pub fn generate_coredump(opts: &CoredumpOptions) -> Result<()> {
     let res = vm
         .vcpus
         .iter()
-        .map(|vcpu| VcpuState::new(&vcpu, &vm))
+        .map(|vcpu| VcpuState::new(vcpu, &vm))
         .collect::<Result<Vec<VcpuState>>>();
     let vcpu_states = try_with!(res, "fail to dump vcpu registers");
     try_with!(

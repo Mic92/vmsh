@@ -1,3 +1,4 @@
+use log::info;
 use simple_error::bail;
 use std::fmt::Debug;
 use std::io;
@@ -43,7 +44,6 @@ where
         let handle = builder.spawn(move || {
             let res = func(should_stop2);
             if res.is_err() {
-                dbg!(&res);
                 err_sender
                     .send(())
                     .expect("Could not send result back. Parent died");
@@ -68,9 +68,19 @@ where
             self.should_stop.load(Ordering::Acquire),
             "shutdown() needs to be called before join()"
         );
+        let name = self.name();
+        info!("join {} thread...", name);
         match self.handle.join() {
-            Err(e) => bail!("could not join thread: {:?}", e),
+            Err(e) => bail!("could not join thread ({}): {:?}", name, e),
             Ok(v) => v,
+        }
+    }
+
+    pub fn name(&self) -> String {
+        if let Some(name) = self.handle.thread().name() {
+            name.to_string()
+        } else {
+            format!("{:?}", &self.handle.thread().id())
         }
     }
 }

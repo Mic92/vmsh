@@ -1,25 +1,27 @@
+use ioutils::tmp;
 use nix::sched::CloneFlags;
+use nix::sys::wait::waitpid;
+use nix::sys::wait::WaitStatus;
+use nix::unistd::fork;
 use nix::{mount, sched, unistd};
 use nix::{mount::MsFlags, unistd::getpid};
 use simple_error::try_with;
+use simple_error::SimpleError;
 use std::fs::{create_dir_all, metadata, remove_dir};
 use std::fs::{set_permissions, Permissions};
 use std::io;
 use std::os::unix::prelude::*;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use crate::block::BlockDevice;
 use crate::namespace::{self, MOUNT};
 use crate::result::Result;
-use crate::tmp;
 
 pub struct MountNamespace {
     new_namespace: namespace::Namespace,
     old_namespace: namespace::Namespace,
     mountpoint: PathBuf,
     temp_mountpoint: PathBuf,
-    in_cleanup: bool,
 }
 
 const MOUNTS: &[&str] = &[
@@ -35,7 +37,7 @@ const MOUNTS: &[&str] = &[
     "proc",
 ];
 
-const CNTR_MOUNT_POINT: &str = "var/lib/vmsh";
+const VMSH_MOUNT_POINT: &str = "var/lib/vmsh";
 
 impl MountNamespace {
     fn new(old_namespace: namespace::Namespace) -> Result<MountNamespace> {
@@ -70,12 +72,10 @@ impl MountNamespace {
             old_namespace,
             mountpoint: mountpoint.into_path(),
             temp_mountpoint: temp_mountpoint.into_path(),
-            in_cleanup: false,
         })
     }
 
-    pub fn cleanup(&mut self) -> Result<()> {
-        self.in_cleanup = true;
+    fn _cleanup(&self) -> Result<()> {
         try_with!(
             self.old_namespace.apply(),
             "failed to switch back to old mount namespace"
@@ -96,15 +96,36 @@ impl MountNamespace {
         );
         Ok(())
     }
+
+    fn cleanup(&self) -> Result<()> {
+        match unsafe { fork() } {
+            Ok(unistd::ForkResult::Parent { child, .. }) => {
+                match try_with!(waitpid(child, None), "could not wait for child") {
+                    WaitStatus::Exited(_, 0) => Ok(()),
+                    _ => Err(SimpleError::new("cannot cleanup mountpoints")),
+                }
+            }
+            Ok(unistd::ForkResult::Child) => {
+                let rc = match self._cleanup() {
+                    Ok(()) => 0,
+                    Err(e) => {
+                        eprintln!("cannot cleanup mount namespace: {}", e);
+                        1
+                    }
+                };
+                std::process::exit(rc)
+            }
+            Err(e) => {
+                panic!("fork failed: {}", e);
+            }
+        }
+    }
 }
 
 impl Drop for MountNamespace {
     fn drop(&mut self) {
-        if self.in_cleanup {
-            return;
-        }
         if let Err(e) = self.cleanup() {
-            eprintln!("cannot cleanup mountpoints: {}", e);
+            eprintln!("{}", e);
         }
     }
 }
@@ -181,8 +202,8 @@ pub fn setup(
     device: &BlockDevice,
     container_namespace: namespace::Namespace,
     mount_label: &Option<String>,
-) -> Result<()> {
-    let mut ns = MountNamespace::new(container_namespace)?;
+) -> Result<MountNamespace> {
+    let ns = MountNamespace::new(container_namespace)?;
 
     try_with!(
         mount::mount(
@@ -192,7 +213,7 @@ pub fn setup(
             MsFlags::MS_REC | MsFlags::MS_PRIVATE,
             NONE,
         ),
-        "unable to bind mount /"
+        "unable to mark mounts as private"
     );
 
     // prepare bind mounts
@@ -206,24 +227,35 @@ pub fn setup(
         ),
         "unable to move mounts to temporary mountpoint"
     );
-    device.mount(ns.mountpoint.as_path(), mount_label)?;
-    let cntr_mount_point = &ns.mountpoint.join(CNTR_MOUNT_POINT);
-    try_with!(
-        mkdir_p(&cntr_mount_point),
-        "cannot create container mountpoint /{}",
-        CNTR_MOUNT_POINT
-    );
 
+    device.mount(ns.mountpoint.as_path(), mount_label)?;
+
+    let vmsh_mount_point = &ns.mountpoint.join(VMSH_MOUNT_POINT);
+    try_with!(
+        mkdir_p(&vmsh_mount_point),
+        "cannot create container mountpoint /{}",
+        VMSH_MOUNT_POINT
+    );
+    let flags = MsFlags::MS_REC | MsFlags::MS_MOVE;
     try_with!(
         mount::mount(
             Some(&ns.temp_mountpoint),
-            cntr_mount_point.as_path(),
+            vmsh_mount_point.as_path(),
             NONE,
-            MsFlags::MS_REC | MsFlags::MS_MOVE,
+            flags,
             NONE,
         ),
-        "unable to move mounts to new mountpoint"
+        "unable to move mounts to new mountpoint: mount(\"{}\",\"{}\",NULL,MS_REC|MS_MOVE|MS_PRIVATE,NULL)", ns.temp_mountpoint.display(), vmsh_mount_point.display()
     );
+
+    // useful for debugging
+    //eprintln!(
+    //    "/proc/self/mountinfo: {}",
+    //    try_with!(
+    //        std::fs::read_to_string("/proc/self/mountinfo"),
+    //        "cannot read /proc/self/mountinfo"
+    //    )
+    //);
 
     try_with!(
         unistd::chdir(&ns.mountpoint),
@@ -235,17 +267,12 @@ pub fn setup(
         "failed to chroot to new mountpoint"
     );
 
+    // ensure we have at least these directories for bind mounts
+    for p in &["/dev", "/sys", "/proc"] {
+        try_with!(mkdir_p(p), "cannot create directory {}", p);
+    }
+
     try_with!(setup_bindmounts(MOUNTS), "failed to setup bind mounts");
 
-    try_with!(
-        Command::new("/bin/sh")
-            .arg("-c")
-            .arg("echo stage2 works")
-            .status(),
-        "failed to run /bin/sh"
-    );
-
-    try_with!(ns.cleanup(), "cannot cleanup mountns");
-
-    Ok(())
+    Ok(ns)
 }

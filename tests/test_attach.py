@@ -4,24 +4,25 @@ import os
 from root import PROJECT_ROOT
 
 
-def test_virtio_device_space(helpers: conftest.Helpers) -> None:
+def test_attach(helpers: conftest.Helpers) -> None:
     with helpers.busybox_image() as img, helpers.spawn_qemu(
         helpers.notos_image()
     ) as vm:
         vm.wait_for_ssh()
-        print("ssh available")
+        ssh_key = PROJECT_ROOT.joinpath("nix", "ssh_key")
+        ssh_args = f" -i {ssh_key} -p {vm.ssh_port} root@127.0.0.1"
         vmsh = helpers.spawn_vmsh_command(
             [
                 "attach",
                 "--backing-file",
                 str(img),
                 str(vm.pid),
+                "--ssh-args",
+                ssh_args,
                 "--",
-                "-i",
-                str(PROJECT_ROOT.joinpath("nix", "ssh_key")),
-                "-p",
-                str(vm.ssh_port),
-                "root@127.0.0.1",
+                "/bin/sh",
+                "-c",
+                "echo works",
             ]
         )
 

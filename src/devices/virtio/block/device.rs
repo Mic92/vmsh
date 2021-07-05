@@ -7,33 +7,29 @@ use std::fs::OpenOptions;
 use std::ops::DerefMut;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use vm_virtio::device::VirtioDeviceType;
+use virtio_device::{VirtioDevice, VirtioDeviceType};
 
 use event_manager::{MutEventSubscriber, RemoteEndpoint, Result as EvmgrResult, SubscriberId};
+use virtio_blk::stdio_executor::StdIoBackend;
+use virtio_device::{VirtioConfig, VirtioDeviceActions, VirtioMmioDevice};
+use virtio_queue::Queue;
 use vm_device::bus::MmioAddress;
 use vm_device::device_manager::MmioManager;
 use vm_device::{DeviceMmio, MutDeviceMmio};
 use vm_memory::GuestAddressSpace;
-use vm_virtio::block::stdio_executor::StdIoBackend;
-use vm_virtio::device::{VirtioConfig, VirtioDeviceActions, VirtioMmioDevice};
-use vm_virtio::Queue;
 use vmm_sys_util::eventfd::EventFd;
 
-use crate::device::virtio::block::{BLOCK_DEVICE_ID, VIRTIO_BLK_F_FLUSH, VIRTIO_BLK_F_RO};
-use crate::device::virtio::features::{
+use crate::devices::virtio::block::{BLOCK_DEVICE_ID, VIRTIO_BLK_F_FLUSH, VIRTIO_BLK_F_RO};
+use crate::devices::virtio::features::{
     VIRTIO_F_IN_ORDER, VIRTIO_F_RING_EVENT_IDX, VIRTIO_F_VERSION_1,
 };
-use crate::device::virtio::{
-    IrqAckHandler, MmioConfig, SingleFdSignalQueue, QUEUE_MAX_SIZE, VIRTIO_MMIO_QUEUE_NOTIFY_OFFSET,
-};
+use crate::devices::virtio::{IrqAckHandler, MmioConfig, SingleFdSignalQueue, QUEUE_MAX_SIZE};
 use crate::kvm::hypervisor::Hypervisor;
 
+use super::super::register_ioeventfd;
 use super::inorder_handler::InOrderQueueHandler;
 use super::queue_handler::QueueHandler;
 use super::{build_config_space, BlockArgs, Error, Result};
-use crate::tracer::inject_syscall;
-use crate::tracer::wrap_syscall::KvmRunWrapper;
-use simple_error::map_err_with;
 
 // This Block device can only use the MMIO transport for now, but we plan to reuse large parts of
 // the functionality when we implement virtio PCI as well, for example by having a base generic
@@ -47,6 +43,11 @@ pub struct Block<M: GuestAddressSpace> {
     irqfd: Arc<EventFd>,
     file_path: PathBuf,
     read_only: bool,
+    sub_id: Option<SubscriberId>,
+
+    // Before resetting we return the handler to the mmio thread for cleanup
+    #[allow(dead_code)]
+    handler: Option<Arc<Mutex<dyn MutEventSubscriber + Send>>>,
     // We'll prob need to remember this for state save/restore unless we pass the info from
     // the outside.
     _root_device: bool,
@@ -107,6 +108,8 @@ where
             irqfd,
             file_path: args.file_path,
             read_only: args.read_only,
+            sub_id: None,
+            handler: None,
             _root_device: args.root_device,
         }));
 
@@ -116,36 +119,85 @@ where
             .register_mmio(mmio_cfg.range, block.clone())
             .map_err(Error::Bus)?;
 
-        // FIXME we have to replace this call by doing something in the guest:
-        // // Extra parameters have to be appended to the cmdline passed to the kernel because
-        // // there's no active enumeration/discovery mechanism for virtio over MMIO. In the future,
-        // // we might rely on a device tree representation instead.
-        // args.common
-        //     .kernel_cmdline
-        //     .add_virtio_mmio_device(
-        //         mmio_cfg.range.size(),
-        //         GuestAddress(mmio_cfg.range.base().0),
-        //         mmio_cfg.gsi,
-        //         None,
-        //     )
-        //     .map_err(Error::Cmdline)?;
-
-        // FIXME This we have to do in the guest as well
-        // if args.root_device {
-        //     args.common
-        //         .kernel_cmdline
-        //         .insert_str("root=/dev/vda")
-        //         .map_err(Error::Cmdline)?;
-
-        //     if args.read_only {
-        //         args.common
-        //             .kernel_cmdline
-        //             .insert_str("ro")
-        //             .map_err(Error::Cmdline)?;
-        //     }
-        // }
-
         Ok(block)
+    }
+
+    fn _activate(&mut self) -> Result<()> {
+        if self.virtio_cfg.device_activated {
+            return Err(Error::AlreadyActivated);
+        }
+
+        // We do not support legacy drivers.
+        if self.virtio_cfg.driver_features & (1 << VIRTIO_F_VERSION_1) == 0 {
+            return Err(Error::BadFeatures(self.virtio_cfg.driver_features));
+        }
+
+        let ioeventfd = register_ioeventfd(&self.vmm, &self.mmio_cfg, 0).map_err(Error::Simple)?;
+
+        let file = OpenOptions::new()
+            .read(true)
+            .write(!self.read_only)
+            .open(&self.file_path)
+            .map_err(Error::OpenFile)?;
+
+        let mut features = self.virtio_cfg.driver_features;
+        if self.read_only {
+            // Not sure if the driver is expected to explicitly acknowledge the `RO` feature,
+            // so adding it explicitly here when present just in case.
+            features |= 1 << VIRTIO_BLK_F_RO;
+        }
+
+        // TODO: Create the backend earlier (as part of `Block::new`)?
+        let disk = StdIoBackend::new(file, features)
+            .map_err(Error::Backend)?
+            .with_device_id(*b"vmsh0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0");
+
+        let driver_notify = SingleFdSignalQueue {
+            irqfd: self.irqfd.clone(),
+            interrupt_status: self.virtio_cfg.interrupt_status.clone(),
+            ack_handler: self.irq_ack_handler.clone(),
+        };
+
+        let inner = InOrderQueueHandler {
+            driver_notify,
+            queue: self.virtio_cfg.queues[0].clone(),
+            disk,
+        };
+
+        let handler = Arc::new(Mutex::new(QueueHandler { inner, ioeventfd }));
+
+        // Register the queue handler with the `EventManager`. We record the `sub_id`
+        // (and/or keep a handler clone) to remove the subscriber when resetting the device
+        let sub_id = self
+            .endpoint
+            .call_blocking(move |mgr| -> EvmgrResult<SubscriberId> {
+                Ok(mgr.add_subscriber(handler))
+            })
+            .map_err(|e| {
+                log::warn!("{}", e);
+                Error::Endpoint(e)
+            })?;
+        self.sub_id = Some(sub_id);
+
+        log::debug!("activating device: ok");
+        self.virtio_cfg.device_activated = true;
+
+        Ok(())
+    }
+    fn _reset(&mut self) -> Result<()> {
+        // we remove the handler here, since we need to free up the ioeventfd resources
+        // in the mmio thread rather the eventmanager thread.
+        if let Some(sub_id) = self.sub_id.take() {
+            let handler = self
+                .endpoint
+                .call_blocking(move |mgr| mgr.remove_subscriber(sub_id))
+                .map_err(|e| {
+                    log::warn!("{}", e);
+                    Error::Endpoint(e)
+                })?;
+            self.handler = Some(handler);
+        }
+        Ok(())
     }
 }
 
@@ -175,131 +227,16 @@ impl<M: GuestAddressSpace + Clone + Send + 'static> VirtioDeviceActions for Bloc
     /// make sure to set self.vmm.wrapper to Some() before activating. Typically this is done by
     /// activating during vmm.kvmrun_wrapped()
     fn activate(&mut self) -> Result<()> {
-        if self.virtio_cfg.device_activated {
-            return Err(Error::AlreadyActivated);
+        let ret = self._activate();
+        if let Err(ref e) = ret {
+            log::warn!("failed to activate block device: {:?}", e);
         }
-
-        log::debug!("activating device");
-
-        // We do not support legacy drivers.
-        if self.virtio_cfg.driver_features & (1 << VIRTIO_F_VERSION_1) == 0 {
-            return Err(Error::BadFeatures(self.virtio_cfg.driver_features));
-        }
-
-        // Set the appropriate queue configuration flag if the `EVENT_IDX` features has been
-        // negotiated.
-        if self.virtio_cfg.driver_features & (1 << VIRTIO_F_RING_EVENT_IDX) != 0 {
-            self.virtio_cfg.queues[0].set_event_idx(true);
-        }
-
-        // Register the queue event fd. Something like this, but in a pirate fashion.
-        // let ioeventfd = EventFd::new(EFD_NONBLOCK).map_err(Error::EventFd)?;
-        // self.vm_fd
-        //     .register_ioevent(
-        //         &ioeventfd,
-        //         &IoEventAddress::Mmio(
-        //             self.mmio_cfg.range.base().0 + VIRTIO_MMIO_QUEUE_NOTIFY_OFFSET,
-        //         ),
-        //         0u32,
-        //     )
-        //     .map_err(Error::RegisterIoevent)?;
-        let ioeventfd;
-        {
-            let mut wrapper_go =
-                map_err_with!(self.vmm.wrapper.lock(), "cannot obtain wrapper mutex")
-                    .map_err(Error::Simple)?;
-
-            // wrapper -> injector
-            {
-                let wrapper = wrapper_go.take().unwrap();
-                let mut tracee = self.vmm.tracee_write_guard().map_err(Error::Simple)?;
-
-                let err =
-                    "cannot re-attach injector after having detached it favour of KvmRunWrapper";
-                let injector = map_err_with!(
-                    inject_syscall::from_tracer(wrapper.into_tracer().map_err(Error::Simple)?),
-                    &err
-                )
-                .map_err(Error::Simple)?;
-                map_err_with!(tracee.attach_to(injector), &err).map_err(Error::Simple)?;
-            }
-
-            // we need to drop tracee for ioeventfd_
-            ioeventfd = self
-                .vmm
-                .ioeventfd_(
-                    self.mmio_cfg.range.base().0 + VIRTIO_MMIO_QUEUE_NOTIFY_OFFSET,
-                    4,
-                    Some(0),
-                )
-                .map_err(Error::Simple)?;
-
-            // injector -> wrapper
-            {
-                let mut tracee = self.vmm.tracee_write_guard().map_err(Error::Simple)?;
-                // we may unwrap because we just attached it.
-                let injector = tracee.detach().unwrap();
-                let wrapper = KvmRunWrapper::from_tracer(
-                    inject_syscall::into_tracer(injector, self.vmm.vcpu_maps[0].clone())
-                        .map_err(Error::Simple)?,
-                )
-                .map_err(Error::Simple)?;
-                let _ = wrapper_go.replace(wrapper);
-            }
-        }
-
-        let file = OpenOptions::new()
-            .read(true)
-            .write(!self.read_only)
-            .open(&self.file_path)
-            .map_err(Error::OpenFile)?;
-
-        let mut features = self.virtio_cfg.driver_features;
-        if self.read_only {
-            // Not sure if the driver is expected to explicitly acknowledge the `RO` feature,
-            // so adding it explicitly here when present just in case.
-            features |= 1 << VIRTIO_BLK_F_RO;
-        }
-
-        // TODO: Create the backend earlier (as part of `Block::new`)?
-        let name = Some(*b"vmsh0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0");
-        let disk = StdIoBackend::new(file, features, name).map_err(Error::Backend)?;
-
-        let driver_notify = SingleFdSignalQueue {
-            irqfd: self.irqfd.clone(),
-            interrupt_status: self.virtio_cfg.interrupt_status.clone(),
-            ack_handler: self.irq_ack_handler.clone(),
-        };
-
-        let inner = InOrderQueueHandler {
-            driver_notify,
-            queue: self.virtio_cfg.queues[0].clone(),
-            disk,
-        };
-
-        let handler = Arc::new(Mutex::new(QueueHandler { inner, ioeventfd }));
-
-        // Register the queue handler with the `EventManager`. We could record the `sub_id`
-        // (and/or keep a handler clone) for further interaction (i.e. to remove the subscriber at
-        // a later time, retrieve state, etc).
-        let _sub_id = self
-            .endpoint
-            .call_blocking(move |mgr| -> EvmgrResult<SubscriberId> {
-                Ok(mgr.add_subscriber(handler))
-            })
-            .map_err(|e| {
-                log::warn!("{}", e);
-                Error::Endpoint(e)
-            })?;
-
-        log::debug!("activating device: ok");
-        self.virtio_cfg.device_activated = true;
-
-        Ok(())
+        ret
     }
 
     fn reset(&mut self) -> Result<()> {
-        // Not implemented for now.
+        self.set_device_status(0);
+        self._reset()?;
         Ok(())
     }
 }

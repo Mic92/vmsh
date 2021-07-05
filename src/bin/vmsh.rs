@@ -2,8 +2,8 @@ use log::*;
 use std::path::PathBuf;
 
 use clap::{
-    crate_authors, crate_version, value_t, value_t_or_exit, values_t_or_exit, App, AppSettings,
-    Arg, ArgMatches, SubCommand,
+    crate_authors, crate_version, value_t, value_t_or_exit, values_t, App, AppSettings, Arg,
+    ArgMatches, SubCommand,
 };
 use nix::unistd::Pid;
 
@@ -19,11 +19,11 @@ fn pid_arg(index: u64) -> Arg<'static, 'static> {
         .index(index)
 }
 
-fn ssh_args(index: u64) -> Arg<'static, 'static> {
-    Arg::with_name("ssh_args")
-        .help("arguments passed to ssh")
-        .required(true)
+fn command_args(index: u64) -> Arg<'static, 'static> {
+    Arg::with_name("command")
+        .help("Command to run in the VM")
         .multiple(true)
+        .required(false)
         .index(index)
 }
 
@@ -33,7 +33,7 @@ fn parse_pid_arg(args: &ArgMatches) -> Pid {
 
 fn inspect(args: &ArgMatches) {
     let opts = InspectOptions {
-        pid: parse_pid_arg(&args),
+        pid: parse_pid_arg(args),
     };
 
     if let Err(err) = inspect::inspect(&opts) {
@@ -44,8 +44,9 @@ fn inspect(args: &ArgMatches) {
 
 fn attach(args: &ArgMatches) {
     let opts = AttachOptions {
-        pid: parse_pid_arg(&args),
-        ssh_args: values_t_or_exit!(args, "ssh_args", String),
+        pid: parse_pid_arg(args),
+        ssh_args: value_t_or_exit!(args, "ssh-args", String),
+        command: values_t!(args, "command", String).unwrap_or_else(|_| vec![]),
         backing: PathBuf::from(value_t!(args, "backing-file", String).unwrap_or_else(|e| e.exit())),
     };
 
@@ -56,7 +57,7 @@ fn attach(args: &ArgMatches) {
 }
 
 fn coredump(args: &ArgMatches) {
-    let pid = parse_pid_arg(&args);
+    let pid = parse_pid_arg(args);
     let path =
         value_t!(args, "PATH", PathBuf).unwrap_or_else(|_| PathBuf::from(format!("core.{}", pid)));
 
@@ -76,7 +77,7 @@ fn setup_logging(matches: &clap::ArgMatches) {
 
     let loglevel = matches.value_of("loglevel");
     if let Some(level) = loglevel {
-        env_logger::Builder::new().parse_filters(&level).init();
+        env_logger::Builder::new().parse_filters(level).init();
         return;
     }
 
@@ -96,7 +97,13 @@ fn main() {
         .version(crate_version!())
         .author(crate_authors!("\n"))
         .arg(pid_arg(1))
-        .arg(ssh_args(2))
+        .arg(
+            Arg::with_name("ssh-args")
+                .long("ssh-args")
+                .help("Arguments passed to ssh")
+                .takes_value(true),
+        )
+        .arg(command_args(2))
         .arg(
             Arg::with_name("backing-file")
                 .short("f")
@@ -137,9 +144,9 @@ fn main() {
     let matches = main_app.get_matches();
     setup_logging(&matches);
     match matches.subcommand() {
-        ("inspect", Some(sub_matches)) => inspect(&sub_matches),
-        ("attach", Some(sub_matches)) => attach(&sub_matches),
-        ("coredump", Some(sub_matches)) => coredump(&sub_matches),
+        ("inspect", Some(sub_matches)) => inspect(sub_matches),
+        ("attach", Some(sub_matches)) => attach(sub_matches),
+        ("coredump", Some(sub_matches)) => coredump(sub_matches),
         ("", None) => unreachable!(), // beause of AppSettings::SubCommandRequiredElseHelp
         _ => unreachable!(),
     }

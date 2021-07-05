@@ -1,0 +1,6 @@
+[package]
+name = "build-utils"
+version = "0.0.1"
+authors = [ "Jörg Thalheim <joerg@thalheim.io>" ]
+edition = "2018"
+license = "MIT"

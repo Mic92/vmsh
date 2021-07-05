@@ -1,17 +1,17 @@
 use event_manager::EventManager;
 use event_manager::MutEventSubscriber;
-use log::{debug, info, log_enabled, trace, warn, Level};
+use log::{debug, info, log_enabled, trace, Level};
 use simple_error::{require_with, try_with};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::SyncSender;
 use std::sync::Arc;
 use std::sync::{Condvar, Mutex};
-use vm_device::bus::MmioAddress;
-use vm_virtio::device::VirtioDevice;
-use vm_virtio::device::WithDriverSelect;
+use virtio_device::{VirtioDevice, WithDriverSelect};
 
-use crate::device::{Block, Device, DEVICE_MAX_MEM};
+use crate::devices::DeviceSpace;
+use crate::devices::MMIO_MEM_START;
+use crate::devices::MMIO_MEM_STOP;
 use crate::interrutable_thread::InterrutableThread;
 use crate::kvm::hypervisor::Hypervisor;
 use crate::result::Result;
@@ -61,10 +61,10 @@ impl DeviceReady {
 
 fn event_thread(
     mut event_mgr: SubscriberEventManager,
-    device: &Device,
+    device_space: &DeviceSpace,
     err_sender: &SyncSender<()>,
 ) -> Result<InterrutableThread<()>> {
-    let blkdev = device.blkdev.clone();
+    let blkdev = device_space.blkdev.clone();
     let ack_handler = {
         let blkdev = try_with!(blkdev.lock(), "cannot unlock thread");
         blkdev.irq_ack_handler.clone()
@@ -76,7 +76,7 @@ fn event_thread(
         move |should_stop: Arc<AtomicBool>| {
             loop {
                 match event_mgr.run_with_timeout(EVENT_LOOP_TIMEOUT_MS) {
-                    Ok(nr) => log::trace!("EventManager: processed {} events", nr),
+                    Ok(nr) => trace!("EventManager: processed {} events", nr),
                     Err(e) => log::warn!("Failed to handle events: {:?}", e),
                 }
                 {
@@ -93,16 +93,9 @@ fn event_thread(
     Ok(try_with!(res, "failed to spawn event-manager thread"))
 }
 
-fn exit_condition(_blkdev: &Arc<Mutex<Block>>) -> Result<bool> {
-    Ok(false)
-    // TODO think of teardown
-    //let blkdev = &try_with!(blkdev.lock(), "cannot get blkdev lock");
-    //Ok(blkdev.selected_queue().map(|q| q.ready).unwrap())
-}
-
 /// Periodically print block device state
 fn blkdev_monitor_thread(
-    device: &Device,
+    device: &DeviceSpace,
     err_sender: &SyncSender<()>,
 ) -> Result<InterrutableThread<()>> {
     let blkdev = device.blkdev.clone();
@@ -112,14 +105,6 @@ fn blkdev_monitor_thread(
         move |should_stop: Arc<AtomicBool>| {
             //std::thread::sleep(std::time::Duration::from_millis(10000));
             loop {
-                match exit_condition(&blkdev) {
-                    Err(e) => warn!("cannot evaluate exit condition: {}", e),
-                    Ok(b) => {
-                        if b {
-                            return Ok(());
-                        }
-                    }
-                }
                 {
                     let blkdev = try_with!(blkdev.lock(), "cannot unlock thread");
                     // debug!("");
@@ -166,19 +151,14 @@ fn blkdev_monitor_thread(
     Ok(try_with!(res, "failed to spawn blkdev-monitor"))
 }
 
-/// Traps KVM_MMIO_EXITs with ptrace and forward them as needed to out block device driver
+/// Traps KVM_MMIO_EXITs with ptrace and forward them as needed to out block and console device driver
 fn handle_mmio_exits(
     wrapper_mo: &Mutex<Option<KvmRunWrapper>>,
     should_stop: &Arc<AtomicBool>,
-    device: &Device,
+    device_space: &DeviceSpace,
     device_ready: &Arc<DeviceReady>,
 ) -> Result<()> {
-    let mut mmio_mgr = try_with!(device.mmio_mgr.lock(), "cannot lock mmio manager");
-    let mmio_space = {
-        let blkdev = device.blkdev.clone();
-        let blkdev = try_with!(blkdev.lock(), "cannot lock block device driver");
-        blkdev.mmio_cfg.range
-    };
+    let mut mmio_mgr = try_with!(device_space.mmio_mgr.lock(), "cannot lock mmio manager");
     device_ready.notify()?;
 
     loop {
@@ -191,21 +171,14 @@ fn handle_mmio_exits(
                 "failed to wait for vmm exit_mmio"
             )
         };
-
         if let Some(mmio_rw) = &mut kvm_exit {
-            let addr = MmioAddress(mmio_rw.addr);
-            let from = mmio_space.base();
-            // virtio mmio space + virtio device specific space
-            let to = from + mmio_space.size() + DEVICE_MAX_MEM;
-            if from <= addr && addr < to {
+            if MMIO_MEM_START <= mmio_rw.addr && mmio_rw.addr < MMIO_MEM_STOP {
                 // intercept op
-                trace!("mmio access 0x{:x}", addr.0);
+                trace!("mmio access 0x{:x}", mmio_rw.addr);
                 try_with!(mmio_mgr.handle_mmio_rw(mmio_rw), "failed to handle MmioRw");
             } else {
-                // do nothing, just continue to ingore and pass to hv
-            }
-            if exit_condition(&device.blkdev)? {
-                break;
+                // do nothing, just continue to ignore and pass to hv
+                //trace!("ignore addr: {}", mmio_rw.addr)
             }
         }
 
@@ -219,7 +192,7 @@ fn handle_mmio_exits(
 /// see handle_mmio_exits
 fn mmio_exit_handler_thread(
     vm: &Arc<Hypervisor>,
-    device: Device,
+    device: DeviceSpace,
     err_sender: &SyncSender<()>,
     device_ready: &Arc<DeviceReady>,
 ) -> Result<InterrutableThread<()>> {
@@ -244,6 +217,9 @@ fn mmio_exit_handler_thread(
                 Ok(())
             });
 
+            // drop remote resources like ioeventfd before disowning traced process.
+            drop(device);
+
             // we need to return ptrace control before returning to the main thread
             vm.prepare_thread_transfer()?;
             res
@@ -253,7 +229,7 @@ fn mmio_exit_handler_thread(
     Ok(try_with!(res, "cannot spawn mmio exit handler thread"))
 }
 
-pub fn create_block_device(
+pub fn create_devices(
     vm: &Arc<Hypervisor>,
     err_sender: &SyncSender<()>,
     backing_file: &Path,
@@ -261,7 +237,7 @@ pub fn create_block_device(
     let mut event_manager = try_with!(SubscriberEventManager::new(), "cannot create event manager");
     // instantiate blkdev
     let device = try_with!(
-        Device::new(&vm, &mut event_manager, backing_file),
+        DeviceSpace::new(vm, &mut event_manager, backing_file),
         "cannot create vm"
     );
 

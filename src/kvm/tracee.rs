@@ -101,7 +101,7 @@ impl Tracee {
     pub fn try_get_proc(&self) -> Result<&Injectee> {
         match &self.proc {
             None => bail!("programming error: tracee is not attached."),
-            Some(proc) => Ok(&proc),
+            Some(proc) => Ok(proc),
         }
     }
 
@@ -323,6 +323,11 @@ impl Tracee {
     pub fn munmap(&self, addr: *mut c_void, length: libc::size_t) -> Result<()> {
         let proc = self.try_get_proc()?;
         proc.munmap(addr, length)
+    }
+
+    pub fn close(&self, fd: RawFd) -> Result<i32> {
+        let proc = self.try_get_proc()?;
+        proc.close(fd)
     }
 
     pub fn check_extension(&self, cap: c_int) -> Result<c_int> {

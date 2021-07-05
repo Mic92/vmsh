@@ -6,17 +6,17 @@ use std::fs::File;
 use std::result;
 
 use log::warn;
+use virtio_blk::request::Request;
+use virtio_blk::stdio_executor::{self, StdIoBackend};
+use virtio_queue::{DescriptorChain, Queue};
 use vm_memory::{self, Bytes, GuestAddressSpace};
-use vm_virtio::block::request::Request;
-use vm_virtio::block::stdio_executor::{self, StdIoBackend};
-use vm_virtio::{DescriptorChain, Queue};
 
-use crate::device::virtio::SignalUsedQueue;
+use crate::devices::virtio::SignalUsedQueue;
 
 #[derive(Debug)]
 pub enum Error {
     GuestMemory(vm_memory::GuestMemoryError),
-    Queue(vm_virtio::Error),
+    Queue(virtio_queue::Error),
 }
 
 impl From<vm_memory::GuestMemoryError> for Error {
@@ -25,8 +25,8 @@ impl From<vm_memory::GuestMemoryError> for Error {
     }
 }
 
-impl From<vm_virtio::Error> for Error {
-    fn from(e: vm_virtio::Error) -> Self {
+impl From<virtio_queue::Error> for Error {
+    fn from(e: virtio_queue::Error) -> Self {
         Error::Queue(e)
     }
 }

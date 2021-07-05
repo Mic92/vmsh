@@ -1,0 +1,10 @@
+[package]
+name = "ioutils"
+version = "0.0.1"
+authors = [ "Jörg Thalheim <joerg@thalheim.io>" ]
+edition = "2018"
+license = "MIT"
+
+[dependencies]
+libc = "0.2.*"
+nix = "0.21.*"

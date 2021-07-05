@@ -17,14 +17,13 @@ use crate::interrutable_thread::InterrutableThread;
 use crate::result::Result;
 
 const STAGE1_EXE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/stage1.ko"));
-const STAGE2_EXE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/stage2"));
 
 #[derive(Debug)]
 pub struct Stage1 {
-    ssh_args: Vec<String>,
+    ssh_args: String,
 }
 
-fn cleanup_stage1(ssh_args: &[String]) -> Result<()> {
+fn cleanup_stage1(ssh_args: &str) -> Result<()> {
     let mut proc = ssh_command(ssh_args, |cmd| cmd.arg(r#"rmmod stage1.ko"#))?;
     let status = try_with!(proc.wait(), "failed to wait for ssh");
     if !status.success() {
@@ -46,15 +45,17 @@ impl Drop for Stage1 {
     }
 }
 
-fn ssh_command<F>(ssh_args: &[String], mut configure: F) -> Result<std::process::Child>
+fn ssh_command<F>(ssh_args: &str, mut configure: F) -> Result<std::process::Child>
 where
     F: FnMut(&mut Command) -> &mut Command,
 {
-    let mut cmd = Command::new("ssh");
+    let mut cmd = Command::new("sh");
+    // shell split first argument into multiple
     let cmd_ref = cmd
-        .arg("-oStrictHostKeyChecking=no")
-        .arg("-oUserKnownHostsFile=/dev/null")
-        .args(ssh_args);
+        .arg("-c")
+        .arg(r#"set -f; set -- $1 "$2"; exec ssh -oStrictHostKeyChecking=no -oUserKnownHostsFile=/dev/null "$@""#)
+        .arg("--")
+        .arg(ssh_args);
     let configured = configure(cmd_ref);
     Ok(try_with!(configured.spawn(), "ssh command failed"))
 }
@@ -72,45 +73,39 @@ fn write_padded(f: &mut dyn Write, bytes: &[u8], padded_size: usize) -> Result<(
     Ok(())
 }
 
-fn stage1_thread(ssh_args: Vec<String>, should_stop: Arc<AtomicBool>) -> Result<Stage1> {
+fn stage1_thread(
+    ssh_args: String,
+    command: &[String],
+    should_stop: Arc<AtomicBool>,
+) -> Result<Stage1> {
     std::thread::sleep(Duration::from_millis(3000));
 
     let debug_stage1 = if log_enabled!(Level::Debug) { "x" } else { "" };
 
-    let stage1_size = dbg!(padded_size(dbg!(STAGE1_EXE.len())));
-    let stage2_size = dbg!(padded_size(dbg!(STAGE2_EXE.len())));
-    let mut child = ssh_command(&ssh_args, |cmd| {
-        cmd.stdin(Stdio::piped()).arg(format!(
+    let stage1_size = padded_size(STAGE1_EXE.len());
+    let mut child = ssh_command(&ssh_args, move |cmd| -> &mut Command {
+        let script = format!(
             r#"
 set -eu{} -o pipefail
-set -x
 tmpdir=$(mktemp -d)
-#trap "rm -rf '$tmpdir'" EXIT
+trap "rm -rf '$tmpdir'" EXIT
 dd if=/proc/self/fd/0 of="$tmpdir/stage1.ko" count={} bs=512
-dd if=/proc/self/fd/0 of="$tmpdir/stage2" count={} bs=512
 # cleanup old driver if still loaded
 rmmod stage1 2>/dev/null || true
-insmod "$tmpdir/stage1.ko"
-chmod +x "$tmpdir/stage2"
-"$tmpdir/stage2"
-while ! dmesg | grep -q "virt-blk driver set up"; do
-  sleep 1
-done
+insmod "$tmpdir/stage1.ko" stage2_argv="{}"
 "#,
             debug_stage1,
             stage1_size / 512,
-            stage2_size / 512
-        ))
+            command.join(",")
+        );
+        cmd.stdin(Stdio::piped()).arg(script)
     })?;
 
+    info!("wait for payload to be written");
     let mut stdin = require_with!(child.stdin.take(), "Failed to open stdin");
     try_with!(
         write_padded(&mut stdin, STAGE1_EXE, stage1_size),
         "failed to write stage1"
-    );
-    try_with!(
-        write_padded(&mut stdin, STAGE2_EXE, stage2_size),
-        "failed to write stage2"
     );
 
     let pid = nix::unistd::Pid::from_raw(child.id() as i32);
@@ -153,17 +148,19 @@ done
 }
 
 pub fn spawn_stage1(
-    ssh_args: &[String],
+    ssh_args: &str,
+    command: &[String],
     result_sender: &SyncSender<()>,
 ) -> Result<InterrutableThread<Stage1>> {
-    let ssh_args = ssh_args.to_vec();
+    let ssh_args = ssh_args.to_string();
+    let command = command.to_vec();
 
     let res = InterrutableThread::spawn(
         "stage1",
         result_sender,
         move |should_stop: Arc<AtomicBool>| {
             // wait until vmsh can process block device requests
-            stage1_thread(ssh_args, should_stop)
+            stage1_thread(ssh_args, &command, should_stop)
         },
     );
     Ok(try_with!(res, "failed to create stage1 thread"))

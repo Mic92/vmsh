@@ -3,11 +3,11 @@ name = "stage2"
 version = "0.1.0"
 authors = ["Jörg Thalheim <joerg@thalheim.io>"]
 edition = "2018"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+license = "MIT"
 
 [dependencies]
-nix = "0.20.*"
+nix = "0.21.*"
 libc = "0.2.*"
 simple-error = "0.2.*"
 container-pid = "0.1.0"
+ioutils = { path = "../ioutils" }

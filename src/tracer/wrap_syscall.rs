@@ -55,7 +55,7 @@ impl MmioRw {
                 // Safe because the exit_reason (which comes from the kernel) told us which
                 // union field to use.
                 let mmio: &MmioRwRaw = unsafe { &kvm_run.__bindgen_anon_1.mmio };
-                Some(MmioRw::new(&mmio, pid, vcpu_map))
+                Some(MmioRw::new(mmio, pid, vcpu_map))
             }
             _ => None,
         }

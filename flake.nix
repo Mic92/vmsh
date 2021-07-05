@@ -13,7 +13,7 @@
   };
 
   outputs = { self, nixpkgs, flake-utils, fenix, not-os }:
-    flake-utils.lib.eachDefaultSystem (system:
+    (flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
         fenixPkgs = fenix.packages.${system};
@@ -39,7 +39,6 @@
         };
 
         kernel-fhs = pkgs.callPackage ./nix/kernel-fhs.nix {};
-
 
         ciDeps = [
           rustToolchain
@@ -91,6 +90,7 @@
           inherit (vmsh) buildInputs;
           RUST_SRC_PATH = "${rustToolchain}/lib/rustlib/src/rust/library";
           nativeBuildInputs = ciDeps ++ [
+            pkgs.socat
             pkgs.jq # needed for justfile
             pkgs.just
             pkgs.cargo-watch
@@ -115,5 +115,7 @@
           #CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER =
           #  "${pkgs.pkgsCross.aarch64-multiplatform.stdenv.cc}/bin/aarch64-unknown-linux-gnu-gcc";
         };
-      });
+      })) // {
+        nixosModules.ioregionfd-kernel = import ./nix/modules/ioregionfd-kernel.nix;
+      };
 }

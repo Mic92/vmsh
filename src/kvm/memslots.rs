@@ -2,6 +2,7 @@ use bcc::perf_event::PerfMapBuilder;
 use bcc::{BPFBuilder, Kprobe, BPF};
 use core::slice::from_raw_parts as make_slice;
 use libc::{c_ulong, size_t};
+use log::warn;
 use nix::unistd::Pid;
 use simple_error::bail;
 use simple_error::require_with;
@@ -64,9 +65,12 @@ struct memslot {
     unsigned long userspace_addr;
 };
 
+// KVM_MEM_SLOTS_NUM became to big to handle it in ebpf
+#define MAX_SLOTS 1024
+
 typedef struct {
   size_t used_slots;
-  struct memslot memslots[KVM_MEM_SLOTS_NUM];
+  struct memslot memslots[MAX_SLOTS];
 } out_t;
 
 BPF_PERCPU_ARRAY(slots, out_t, 1);
@@ -90,7 +94,7 @@ void kvm_vm_ioctl(struct pt_regs *ctx, struct file *filp) {
     // On x86 there is also a second address space for system management mode in memslots[1]
     // however we dont care about about this one
     out->used_slots = kvm->memslots[0]->used_slots;
-    for (size_t i = 0; i < KVM_MEM_SLOTS_NUM; i++) {
+    for (size_t i = 0; i < MAX_SLOTS && i < out->used_slots; i++) {
       struct kvm_memory_slot *in_slot = &kvm->memslots[0]->memslots[i];
       struct memslot *out_slot = &out->memslots[i];
 
@@ -146,6 +150,12 @@ pub fn get_maps(tracee: &Tracee) -> Result<Vec<Mapping>> {
         receiver.recv_timeout(Duration::from_secs(0)),
         "could not receive memslots from kernel"
     );
+    if memslots.len() == 1024 {
+        warn!(
+            "Reached capacity of kvm memslots we can extract from the kernel.
+We might miss physical memory allocations."
+        );
+    }
     let mappings = fetch_mappings(tracee.pid())?;
     memslots
         .iter()

@@ -1,63 +1,20 @@
-use lazy_static::lazy_static;
 use log::{error, info};
-use nix::sys::signal;
 use nix::unistd::Pid;
 use simple_error::try_with;
 use std::path::PathBuf;
-use std::sync::mpsc::{sync_channel, SyncSender};
-use std::sync::{Arc, Mutex};
+use std::sync::mpsc::sync_channel;
+use std::sync::Arc;
 
-use crate::device::create_block_device;
-use crate::kvm;
+use crate::devices::create_devices;
 use crate::result::Result;
 use crate::stage1::spawn_stage1;
+use crate::{kvm, signal_handler};
 
 pub struct AttachOptions {
     pub pid: Pid,
-    pub ssh_args: Vec<String>,
+    pub ssh_args: String,
+    pub command: Vec<String>,
     pub backing: PathBuf,
-}
-
-lazy_static! {
-    static ref SIGNAL_SENDER: Mutex<Option<SyncSender<()>>> = Mutex::new(None);
-}
-
-extern "C" fn signal_handler(_: ::libc::c_int) {
-    let sender = match SIGNAL_SENDER.lock().expect("cannot lock sender").take() {
-        Some(s) => {
-            info!("shutdown vmsh");
-            s
-        }
-        None => {
-            info!("received sigterm. stopping already in progress");
-            return;
-        }
-    };
-    if let Err(e) = sender.send(()) {
-        error!("cannot notify main process: {}", e);
-    }
-}
-
-fn setup_signal_handler(sender: &SyncSender<()>) -> Result<()> {
-    try_with!(SIGNAL_SENDER.lock(), "cannot get lock").replace(sender.clone());
-
-    let sig_action = signal::SigAction::new(
-        signal::SigHandler::Handler(signal_handler),
-        signal::SaFlags::empty(),
-        signal::SigSet::empty(),
-    );
-
-    unsafe {
-        try_with!(
-            signal::sigaction(signal::SIGINT, &sig_action),
-            "unable to register SIGINT handler"
-        );
-        try_with!(
-            signal::sigaction(signal::SIGTERM, &sig_action),
-            "unable to register SIGTERM handler"
-        );
-    }
-    Ok(())
 }
 
 pub fn attach(opts: &AttachOptions) -> Result<()> {
@@ -72,19 +29,23 @@ pub fn attach(opts: &AttachOptions) -> Result<()> {
 
     let (sender, receiver) = sync_channel(1);
 
-    setup_signal_handler(&sender)?;
+    signal_handler::setup(&sender)?;
 
-    let stage1 = try_with!(spawn_stage1(&opts.ssh_args, &sender), "stage1 failed");
+    let stage1 = try_with!(
+        spawn_stage1(opts.ssh_args.as_str(), &opts.command, &sender),
+        "stage1 failed"
+    );
 
     let threads = try_with!(
-        create_block_device(&vm, &sender, &opts.backing),
-        "cannot create block device"
+        create_devices(&vm, &sender, &opts.backing),
+        "cannot create devices"
     );
 
     info!("blkdev queue ready.");
     drop(sender);
 
-    let _ = dbg!(receiver.recv());
+    // termination wait or vmsh_stop()
+    let _ = receiver.recv();
     stage1.shutdown();
     if let Err(e) = stage1.join() {
         error!("stage1 failed: {}", e);

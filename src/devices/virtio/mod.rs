@@ -5,15 +5,20 @@
 // We're only providing virtio over MMIO devices for now, but we aim to add PCI support as well.
 
 pub mod block;
+pub mod console;
 
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use crate::kvm::hypervisor::Hypervisor;
+use crate::kvm::hypervisor::{Hypervisor, IoEventFd};
+use crate::result::Result;
+use crate::tracer::inject_syscall;
+use crate::tracer::wrap_syscall::KvmRunWrapper;
 use event_manager::{EventManager, MutEventSubscriber};
 use log::error;
 
+use simple_error::try_with;
 use vm_device::bus::MmioRange;
 use vmm_sys_util::eventfd::EventFd;
 
@@ -153,63 +158,51 @@ impl IrqAckHandler {
     }
 }
 
-//#[cfg(test)]
-//pub(crate) mod tests {
-//    use vm_device::bus::MmioAddress;
-//    use vm_device::device_manager::IoManager;
-//    use vm_memory::{GuestAddress, GuestMemoryMmap};
-//
-//    use super::*;
-//
-//    pub type MockMem = Arc<GuestMemoryMmap>;
-//
-//    // Can be used in other modules to test functionality that requires a `CommonArgs` struct as
-//    // input. The `args` method below generates an instance of `CommonArgs` based on the members
-//    // below.
-//    pub struct CommonArgsMock {
-//        pub mem: MockMem,
-//        //pub vm_fd: Arc<VmFd>, FIXME remove
-//        pub vmm: Arc<Hypervisor>,
-//        pub event_mgr: EventManager<Arc<Mutex<dyn MutEventSubscriber + Send>>>,
-//        pub mmio_mgr: IoManager,
-//        pub mmio_cfg: MmioConfig,
-//        //pub kernel_cmdline: Cmdline, FIXME remove
-//    }
-//
-//    impl CommonArgsMock {
-//        pub fn new() -> Self {
-//            let mem =
-//                Arc::new(GuestMemoryMmap::from_ranges(&[(GuestAddress(0), 0x1000_0000)]).unwrap());
-//
-//            let kvm = kvm_ioctls::Kvm::new().unwrap();
-//            let vm_fd = Arc::new(kvm.create_vm().unwrap());
-//
-//            let range = MmioRange::new(MmioAddress(0x1_0000_0000), 0x1000).unwrap();
-//            let mmio_cfg = MmioConfig { range, gsi: 5 };
-//
-//            // Required so the vm_fd can be used to register irqfds.
-//            vm_fd.create_irq_chip().unwrap();
-//
-//            CommonArgsMock {
-//                mem,
-//                vm_fd,
-//                event_mgr: EventManager::new().unwrap(),
-//                mmio_mgr: IoManager::new(),
-//                mmio_cfg,
-//                // `4096` seems large enough for testing.
-//                //kernel_cmdline: Cmdline::new(4096), FIXME remove
-//            }
-//        }
-//
-//        pub fn args(&mut self) -> CommonArgs<MockMem, &mut IoManager> {
-//            CommonArgs {
-//                mem: self.mem.clone(),
-//                vm_fd: self.vm_fd.clone(),
-//                event_mgr: &mut self.event_mgr,
-//                mmio_mgr: &mut self.mmio_mgr,
-//                mmio_cfg: self.mmio_cfg,
-//                kernel_cmdline: &mut self.kernel_cmdline,
-//            }
-//        }
-//    }
-//}
+pub fn register_ioeventfd(
+    vmm: &Arc<Hypervisor>,
+    mmio_cfg: &MmioConfig,
+    queue_idx: u64,
+) -> Result<IoEventFd> {
+    // Register the queue event fd. Something like this, but in a pirate fashion.
+    // let ioeventfd = EventFd::new(EFD_NONBLOCK).map_err(Error::EventFd)?;
+    // self.vm_fd
+    //     .register_ioevent(
+    //         &ioeventfd,
+    //         &IoEventAddress::Mmio(
+    //             self.mmio_cfg.range.base().0 + VIRTIO_MMIO_QUEUE_NOTIFY_OFFSET,
+    //         ),
+    //         0u32,
+    //     )
+    //     .map_err(Error::RegisterIoevent)?;
+    let mut wrapper_go = try_with!(vmm.wrapper.lock(), "cannot obtain wrapper mutex");
+
+    // wrapper -> injector
+    {
+        let wrapper = wrapper_go.take().unwrap();
+        let mut tracee = vmm.tracee_write_guard()?;
+
+        let err = "cannot re-attach injector after having detached it favour of KvmRunWrapper";
+        let injector = try_with!(inject_syscall::from_tracer(wrapper.into_tracer()?), err);
+        try_with!(tracee.attach_to(injector), &err);
+    }
+
+    // we need to drop tracee for ioeventfd_
+    let ioeventfd = vmm.ioeventfd_(
+        mmio_cfg.range.base().0 + VIRTIO_MMIO_QUEUE_NOTIFY_OFFSET,
+        4,
+        Some(queue_idx),
+    )?;
+
+    // injector -> wrapper
+    {
+        let mut tracee = vmm.tracee_write_guard()?;
+        // we may unwrap because we just attached it.
+        let injector = tracee.detach().unwrap();
+        let wrapper = KvmRunWrapper::from_tracer(inject_syscall::into_tracer(
+            injector,
+            vmm.vcpu_maps[0].clone(),
+        )?)?;
+        let _ = wrapper_go.replace(wrapper);
+    }
+    Ok(ioeventfd)
+}

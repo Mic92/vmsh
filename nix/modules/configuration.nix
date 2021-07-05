@@ -50,6 +50,7 @@ in
   documentation.nixos.enable = false;
   documentation.info.enable = false;
   programs.bash.enableCompletion = false;
+  programs.command-not-found.enable = false;
 
   environment.systemPackages = [
     pkgs.busybox

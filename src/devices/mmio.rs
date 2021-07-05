@@ -1,13 +1,13 @@
-use crate::device::Block;
 use crate::result::Result;
 use crate::tracer::wrap_syscall::{MmioRw, MMIO_RW_DATA_MAX};
 use simple_error::map_err_with;
-use std::sync::{Arc, Mutex};
-use vm_device::bus::{Bus, BusManager, MmioAddress, MmioRange};
+use std::sync::Arc;
+use virtio_device::WithDriverSelect;
+use virtio_queue::Queue;
+use vm_device::bus::{Bus, BusManager, MmioAddress};
 use vm_device::device_manager::MmioManager;
 use vm_device::DeviceMmio;
-use vm_virtio::device::{VirtioDevice, WithDriverSelect};
-use vm_virtio::Queue;
+use vm_memory::GuestAddressSpace;
 
 // Required by the Virtio MMIO device register layout at offset 0 from base. Turns out this
 // is actually the ASCII sequence for "virt" (in little endian ordering).
@@ -39,17 +39,17 @@ impl Default for IoPirate {
 }
 
 impl IoPirate {
-    pub fn register_mmio_device(
-        &mut self,
-        range: MmioRange,
-        blkdev: Arc<Mutex<Block>>,
-    ) -> Result<()> {
-        map_err_with!(
-            self.mmio_bus.register(range, blkdev),
-            "cannot register mmio device on MmioPirateBus"
-        )?;
-        Ok(())
-    }
+    //pub fn register_mmio_device(
+    //    &mut self,
+    //    range: MmioRange,
+    //    blkdev: Arc<Mutex<Block>>,
+    //) -> Result<()> {
+    //    map_err_with!(
+    //        self.mmio_bus.register(range, blkdev),
+    //        "cannot register mmio device on MmioPirateBus"
+    //    )?;
+    //    Ok(())
+    //}
 
     pub fn handle_mmio_rw(&mut self, mmio_rw: &mut MmioRw) -> Result<()> {
         if mmio_rw.is_write {
@@ -64,10 +64,10 @@ impl IoPirate {
             let slice = &mut data[0..len];
             map_err_with!(
                 self.mmio_read(MmioAddress(mmio_rw.addr), slice),
-                "write to mmio device (0x{:x}) failed",
+                "read from mmio device (0x{:x}) failed",
                 mmio_rw.addr
             )?;
-            mmio_rw.answer_read(&slice)?;
+            mmio_rw.answer_read(slice)?;
         }
         Ok(())
     }
@@ -129,7 +129,9 @@ pub struct MmioDeviceSpace {
 }
 
 impl MmioDeviceSpace {
-    pub fn new(device: &Block) -> MmioDeviceSpace {
+    pub fn new<M: GuestAddressSpace, E>(
+        device: &dyn WithDriverSelect<M, E = E>,
+    ) -> MmioDeviceSpace {
         MmioDeviceSpace {
             magic_value: MMIO_MAGIC_VALUE,
             version: MMIO_VERSION,
@@ -176,7 +178,7 @@ impl MmioDeviceSpace {
 mod test {
     #[test]
     fn assert_mmio_device_space_size() {
-        use crate::device::mmio::MmioDeviceSpace;
+        use crate::devices::mmio::MmioDeviceSpace;
         use std::mem::size_of;
         assert_eq!(0x100, size_of::<MmioDeviceSpace>());
     }
