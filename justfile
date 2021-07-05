@@ -216,11 +216,9 @@ capsh:
     true; \
   fi
   sudo modprobe kheaders || true
-  sudo chown -R $(id -u) /sys/kernel/debug/
-  trap "sudo chown -R 0 /sys/kernel/debug" EXIT && \
   sudo -E IN_CAPSH=1 \
       capsh \
-      --caps="cap_sys_ptrace,cap_sys_admin,cap_sys_resource+epi cap_setpcap,cap_setuid,cap_setgid+ep" \
+      --caps="cap_sys_ptrace,cap_dac_override,cap_sys_admin,cap_sys_resource+epi cap_setpcap,cap_setuid,cap_setgid+ep" \
       --keep=1 \
       --groups=$(id -G | sed -e 's/ /,/g') \
       --gid=$(id -g) \
@@ -228,4 +226,5 @@ capsh:
       --addamb=cap_sys_resource \
       --addamb=cap_sys_admin \
       --addamb=cap_sys_ptrace \
+      --addamb=cap_dac_override \
       -- -c 'export USER=$(id -un); direnv exec "$0" "$1"' . "$SHELL"
