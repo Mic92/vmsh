@@ -7,19 +7,15 @@ use log::error;
 use vm_memory::GuestAddressSpace;
 use vmm_sys_util::epoll::EventSet;
 
-use crate::devices::virtio::console::console_handler::ConsoleQueueHandler;
+use crate::devices::virtio::console::console_handler::LogQueueHandler;
 use crate::devices::virtio::SingleFdSignalQueue;
 use crate::kvm::hypervisor::IoEventFd;
 
 const RX_IOEVENT_DATA: u32 = 0;
 const TX_IOEVENT_DATA: u32 = 1;
 
-// This object simply combines the more generic `InOrderQueueHandler` with a concrete queue
-// signalling implementation based on `EventFd`s, and then also implements `MutEventSubscriber`
-// to interact with the event manager. `ioeventfd` is the `EventFd` connected to queue
-// notifications coming from the driver.
 pub(crate) struct QueueHandler<M: GuestAddressSpace> {
-    pub inner: ConsoleQueueHandler<M, SingleFdSignalQueue>,
+    pub inner: LogQueueHandler<M, SingleFdSignalQueue>,
     pub rx_fd: IoEventFd,
     pub tx_fd: IoEventFd,
 }

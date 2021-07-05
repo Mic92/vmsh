@@ -18,14 +18,14 @@ use vm_memory::GuestAddressSpace;
 use vmm_sys_util::eventfd::EventFd;
 
 use crate::devices::virtio::console::VIRTIO_CONSOLE_F_SIZE;
-use crate::devices::virtio::console::console_handler::ConsoleQueueHandler;
+use crate::devices::virtio::console::log_handler::LogQueueHandler;
 use crate::devices::virtio::features::{
     VIRTIO_F_IN_ORDER, VIRTIO_F_RING_EVENT_IDX, VIRTIO_F_VERSION_1,
 };
 use crate::devices::virtio::{IrqAckHandler, MmioConfig, QUEUE_MAX_SIZE, SingleFdSignalQueue, register_ioeventfd};
 use crate::kvm::hypervisor::Hypervisor;
 
-use super::queue_handler::QueueHandler;
+//use super::queue_handler::QueueHandler;
 use super::{build_config_space, ConsoleArgs, Error, Result, CONSOLE_DEVICE_ID};
 use simple_error::map_err_with;
 
@@ -129,17 +129,16 @@ where
         )
             .map_err(Error::Simple)?;
 
-        let rx_fd = register_ioeventfd(&self.vmm, &self.mmio_cfg, 0).map_err(Error::Simple)?;
+        //let rx_fd = register_ioeventfd(&self.vmm, &self.mmio_cfg, 0).map_err(Error::Simple)?;
         let tx_fd = register_ioeventfd(&self.vmm, &self.mmio_cfg, 1).map_err(Error::Simple)?;
 
-        let inner = ConsoleQueueHandler {
+        let handler = Arc::new(Mutex::new(LogQueueHandler {
             driver_notify,
+            tx_fd,
             rxq: self.virtio_cfg.queues[0].clone(),
             txq: self.virtio_cfg.queues[1].clone(),
             console,
-        };
-
-        let handler = Arc::new(Mutex::new(QueueHandler { inner, rx_fd, tx_fd }));
+        }));
 
         // Register the queue handler with the `EventManager`. We record the `sub_id`
         // (and/or keep a handler clone) to remove the subscriber when resetting the device

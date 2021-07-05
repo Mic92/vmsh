@@ -31,19 +31,15 @@ impl From<virtio_queue::Error> for Error {
     }
 }
 
-// This object is used to process the queue of a console device without making any assumptions
-// about the notification mechanism. We're using a specific backend for now (the `StdIoBackend`
-// object), but the aim is to have a way of working with generic backends and turn this into
-// a more flexible building block. The name comes from processing and returning descriptor
-// chains back to the device in the same order they are received.
-pub struct ConsoleQueueHandler<M: GuestAddressSpace, S: SignalUsedQueue> {
+// This handler only reads output from the guest and forwards it to the file
+pub struct LogQueueHandler<M: GuestAddressSpace, S: SignalUsedQueue> {
     pub driver_notify: S,
     pub rxq: Queue<M>,
     pub txq: Queue<M>,
     pub console: File,
 }
 
-impl<M, S> ConsoleQueueHandler<M, S>
+impl<M, S> LogQueueHandler<M, S>
 where
     M: GuestAddressSpace,
     S: SignalUsedQueue,
@@ -75,11 +71,68 @@ where
             log::trace!("notification needed: no");
         }
 
-        log::trace!("process_chain done");
         Ok(())
     }
 
     pub fn process_rxq(&mut self) -> result::Result<(), Error> {
+        warn!("unexpected rxq event");
+        Ok(())
+    }
+    pub fn process_txq(&mut self) -> result::Result<(), Error> {
+        // To see why this is done in a loop, please look at the `Queue::enable_notification`
+        // comments in `vm_virtio`.
+        loop {
+            self.txq.disable_notification()?;
+
+            while let Some(chain) = self.txq.iter()?.next() {
+                self.process_chain(chain)?;
+            }
+
+            if !self.txq.enable_notification()? {
+                break;
+            }
+        }
+        Ok(())
+    }
+}
+
+impl<M, S> LogQueueHandler<M, S>
+where
+    M: GuestAddressSpace,
+    S: SignalUsedQueue,
+{
+    fn process_chain(&mut self, mut chain: DescriptorChain<M>) -> result::Result<(), Error> {
+        log::trace!("process_chain");
+
+        let mut i = 0;
+        while let Some(desc) = chain.next() {
+            chain
+                .memory()
+                .write_to(desc.addr(), &mut self.console, desc.len() as usize);
+            i += 1;
+        }
+        self.txq.add_used(chain.head_index(), i as u32)?;
+
+        //let mut iovs = [RemoteIoVec { base: 0, len: 0 }; QUEUE_MAX_SIZE as usize];
+        //let mut i = 0;
+        //for desc in chain.into_iter() {
+        //    //desc.memory().write_to(self.console, desc.len());
+        //    //iovs[i] = dbg!(RemoteIoVec { base: desc.addr().0 as usize, len: desc.len() as usize });
+        //    i += 1;
+        //}
+
+        if self.txq.needs_notification()? {
+            log::trace!("notification needed: yes");
+            self.driver_notify.signal_used_queue(0);
+        } else {
+            log::trace!("notification needed: no");
+        }
+
+        Ok(())
+    }
+
+    pub fn process_rxq(&mut self) -> result::Result<(), Error> {
+        warn!("unexpected rxq event");
         Ok(())
     }
     pub fn process_txq(&mut self) -> result::Result<(), Error> {

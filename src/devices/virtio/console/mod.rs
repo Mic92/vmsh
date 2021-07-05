@@ -1,6 +1,7 @@
 mod device;
-mod console_handler;
-mod queue_handler;
+//mod console_handler;
+//mod queue_handler;
+mod log_handler;
 
 use std::io;
 
@@ -13,14 +14,16 @@ use simple_error::SimpleError;
 
 pub use device::Console;
 
-// Console device ID as defined by the standard.
+/// Console device ID as defined by the standard.
 pub const CONSOLE_DEVICE_ID: u32 = 3;
 
-// Does host provide console size?
+/// Does host provide console size?
 pub const VIRTIO_CONSOLE_F_SIZE: u32 = 0;
-// Does host provide multiple ports?
+/// Does host provide multiple ports?
+#[allow(unused)]
 pub const VIRTIO_CONSOLE_F_MULTIPORT: u32 = 1;
-// Does host support emergency write?
+/// Does host support emergency write?
+#[allow(unused)]
 pub const VIRTIO_CONSOLE_F_EMERG_WRITE: u32 = 2;
 
 
