@@ -232,8 +232,6 @@ def qemu_command(image: VmImage, qmp_socket: Path, ssh_port: int = 0) -> List:
         "-drive",
         f"id=drive1,file={image.squashfs},readonly=on,media=cdrom,format=raw,if=none",
         "-device",
-        f"vhost-vsock-pci,id=vhost-vsock-pci0,guest-cid={os.getpid()}",
-        "-device",
         "virtio-blk-pci,drive=drive1,bootindex=1",
         "-kernel",
         f"{image.kernel}/bzImage",
