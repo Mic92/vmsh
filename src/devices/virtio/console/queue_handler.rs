@@ -7,7 +7,7 @@ use log::error;
 use vm_memory::GuestAddressSpace;
 use vmm_sys_util::epoll::EventSet;
 
-use crate::devices::virtio::console::inorder_handler::InOrderQueueHandler;
+use crate::devices::virtio::console::console_handler::ConsoleQueueHandler;
 use crate::devices::virtio::SingleFdSignalQueue;
 use crate::kvm::hypervisor::IoEventFd;
 
@@ -19,7 +19,7 @@ const TX_IOEVENT_DATA: u32 = 1;
 // to interact with the event manager. `ioeventfd` is the `EventFd` connected to queue
 // notifications coming from the driver.
 pub(crate) struct QueueHandler<M: GuestAddressSpace> {
-    pub inner: InOrderQueueHandler<M, SingleFdSignalQueue>,
+    pub inner: ConsoleQueueHandler<M, SingleFdSignalQueue>,
     pub rx_fd: IoEventFd,
     pub tx_fd: IoEventFd,
 }
@@ -36,8 +36,6 @@ impl<M: GuestAddressSpace> QueueHandler<M> {
 
 impl<M: GuestAddressSpace> MutEventSubscriber for QueueHandler<M> {
     fn process(&mut self, events: Events, ops: &mut EventOps) {
-        let mut error = true;
-
         if events.event_set() != EventSet::IN {
             self.handle_error("Unexpected event_set", ops);
             return;

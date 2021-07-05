@@ -1,6 +1,8 @@
-use std::fs::File;
+use std::collections::BinaryHeap;
+use std::fs::{self, File, OpenOptions};
 use std::os::unix::prelude::IntoRawFd;
 use std::os::unix::prelude::{AsRawFd, FromRawFd};
+use std::path::PathBuf;
 use std::thread::Builder;
 
 use crate::result::Result;
@@ -12,7 +14,7 @@ use nix::pty::{grantpt, posix_openpt, ptsname_r, unlockpt, PtyMaster};
 use nix::sys::socket::{self, AddressFamily, SockAddr, SockFlag, SockType, VsockAddr};
 use nix::sys::stat;
 use nix::{fcntl, unistd};
-use simple_error::try_with;
+use simple_error::{require_with, try_with};
 
 pub fn open_ptm() -> Result<PtyMaster> {
     let pty_master = try_with!(posix_openpt(OFlag::O_RDWR), "posix_openpt()");
@@ -84,14 +86,40 @@ fn connect_vsock(port: u32) -> Result<File> {
     Ok(sock)
 }
 
+// Linux assigns consoles linear so later added devices get a higher number.
+// In theory just assuming vmsh is the last console added is racy however
+// in practice it seems unlikely to have consoles added at runtime (famous last words).
+pub fn find_vmsh_consoles() -> Result<File> {
+    let entries = try_with!(
+        fs::read_dir(PathBuf::from("/dev/")),
+        "failed to open directory /dev"
+    );
+    let mut heap = BinaryHeap::new();
+
+    for entry in entries {
+        let entry = try_with!(entry, "failed to read /dev");
+        if let Some(name) = entry.file_name().to_str() {
+            if name.starts_with("hvc") {
+                if let Ok(num) = name[3..].parse::<usize>() {
+                    heap.push(num);
+                }
+            }
+        }
+    }
+    let num = require_with!(heap.pop(), "no virtio console found in /dev");
+    let monitor = format!("/dev/hvc{}", num);
+    let f = try_with!(OpenOptions::new().write(true).open(monitor), "failed to open {}");
+    Ok(f)
+}
+
 pub fn setup_pty() -> Result<(VsockPty, Pts)> {
-    let monitor_conn = try_with!(connect_vsock(9998), "failed to setup monitor connection");
+    let monitor_console = find_vmsh_consoles()?;
     try_with!(
-        unistd::dup2(monitor_conn.as_raw_fd(), libc::STDOUT_FILENO),
+        unistd::dup2(monitor_console.as_raw_fd(), libc::STDOUT_FILENO),
         "cannot replace stdout with monitor connection"
     );
     try_with!(
-        unistd::dup2(monitor_conn.as_raw_fd(), libc::STDERR_FILENO),
+        unistd::dup2(monitor_console.as_raw_fd(), libc::STDERR_FILENO),
         "cannot replace stderr with monitor connection"
     );
 

@@ -17,17 +17,16 @@ use vm_device::{DeviceMmio, MutDeviceMmio};
 use vm_memory::GuestAddressSpace;
 use vmm_sys_util::eventfd::EventFd;
 
-use crate::devices::virtio::console::inorder_handler::InOrderQueueHandler;
+use crate::devices::virtio::console::VIRTIO_CONSOLE_F_SIZE;
+use crate::devices::virtio::console::console_handler::ConsoleQueueHandler;
 use crate::devices::virtio::features::{
     VIRTIO_F_IN_ORDER, VIRTIO_F_RING_EVENT_IDX, VIRTIO_F_VERSION_1,
 };
-use crate::devices::virtio::{IrqAckHandler, MmioConfig, QUEUE_MAX_SIZE, SingleFdSignalQueue, VIRTIO_MMIO_QUEUE_NOTIFY_OFFSET, register_ioeventfd};
+use crate::devices::virtio::{IrqAckHandler, MmioConfig, QUEUE_MAX_SIZE, SingleFdSignalQueue, register_ioeventfd};
 use crate::kvm::hypervisor::Hypervisor;
 
 use super::queue_handler::QueueHandler;
 use super::{build_config_space, ConsoleArgs, Error, Result, CONSOLE_DEVICE_ID};
-use crate::tracer::inject_syscall;
-use crate::tracer::wrap_syscall::KvmRunWrapper;
 use simple_error::map_err_with;
 
 pub struct Console<M: GuestAddressSpace> {
@@ -44,13 +43,6 @@ pub struct Console<M: GuestAddressSpace> {
     handler: Option<Arc<Mutex<dyn MutEventSubscriber + Send>>>,
 }
 
-// Does host provide console size?
-const VIRTIO_CONSOLE_F_SIZE: u32 = 0;
-// Does host provide multiple ports?
-const VIRTIO_CONSOLE_F_MULTIPORT: u32 = 1;
-// Does host support emergency write?
-const VIRTIO_CONSOLE_F_EMERG_WRITE: u32 = 2;
-
 impl<M> Console<M>
 where
     M: GuestAddressSpace + Clone + Send + 'static,
@@ -64,7 +56,7 @@ where
     {
         // The queue handling logic for this device uses the buffers in order, so we enable the
         // corresponding feature as well.
-        let mut device_features = 1 << VIRTIO_F_VERSION_1
+        let device_features = 1 << VIRTIO_F_VERSION_1
             | 1 << VIRTIO_F_IN_ORDER
             | 1 << VIRTIO_F_RING_EVENT_IDX
             | 1 << VIRTIO_CONSOLE_F_SIZE;
@@ -140,7 +132,7 @@ where
         let rx_fd = register_ioeventfd(&self.vmm, &self.mmio_cfg, 0).map_err(Error::Simple)?;
         let tx_fd = register_ioeventfd(&self.vmm, &self.mmio_cfg, 1).map_err(Error::Simple)?;
 
-        let inner = InOrderQueueHandler {
+        let inner = ConsoleQueueHandler {
             driver_notify,
             rxq: self.virtio_cfg.queues[0].clone(),
             txq: self.virtio_cfg.queues[1].clone(),

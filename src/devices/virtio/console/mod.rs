@@ -16,6 +16,14 @@ pub use device::Console;
 // Console device ID as defined by the standard.
 pub const CONSOLE_DEVICE_ID: u32 = 3;
 
+// Does host provide console size?
+pub const VIRTIO_CONSOLE_F_SIZE: u32 = 0;
+// Does host provide multiple ports?
+pub const VIRTIO_CONSOLE_F_MULTIPORT: u32 = 1;
+// Does host support emergency write?
+pub const VIRTIO_CONSOLE_F_EMERG_WRITE: u32 = 2;
+
+
 #[derive(Debug)]
 pub enum Error {
     AlreadyActivated,

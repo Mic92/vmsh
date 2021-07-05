@@ -1,11 +1,10 @@
-use crate::devices::Block;
 use crate::result::Result;
 use crate::tracer::wrap_syscall::{MmioRw, MMIO_RW_DATA_MAX};
 use simple_error::map_err_with;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use virtio_device::WithDriverSelect;
 use virtio_queue::Queue;
-use vm_device::bus::{Bus, BusManager, MmioAddress, MmioRange};
+use vm_device::bus::{Bus, BusManager, MmioAddress};
 use vm_device::device_manager::MmioManager;
 use vm_device::DeviceMmio;
 use vm_memory::GuestAddressSpace;

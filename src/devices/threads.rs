@@ -1,6 +1,6 @@
 use event_manager::EventManager;
 use event_manager::MutEventSubscriber;
-use log::{debug, info, log_enabled, trace, warn, Level};
+use log::{debug, info, log_enabled, trace, Level};
 use simple_error::{require_with, try_with};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
