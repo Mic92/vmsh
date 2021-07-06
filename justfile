@@ -4,6 +4,7 @@
 # vim: set ft=make :
 
 linux_dir := invocation_directory() + "/../linux"
+linux_repo := "https://github.com/Mic92/linux"
 
 kernel_fhs := `nix build --json '.#kernel-fhs' | jq -r '.[] | .outputs | .out'` + "/bin/linux-kernel-build"
 
@@ -66,12 +67,11 @@ stress-test DEV="/dev/vda":
 # Git clone linux kernel
 clone-linux:
   [[ -d {{linux_dir}} ]] || \
-    git clone https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git \
-    {{linux_dir}}
-  set -x; tag="v$(nix eval --raw --inputs-from . nixpkgs#linuxPackages_latest.kernel.version)"; \
-  if [[ $(git -C {{linux_dir}} describe --tags) != "$tag" ]]; then \
-     git -C {{linux_dir}} fetch https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git HEAD:stable; \
-     git -C {{linux_dir}} checkout "$tag"; \
+    git clone {{linux_repo}} {{linux_dir}}
+  set -x; commit="$(nix eval --raw .#linux_ioregionfd.src.rev)"; \
+  if [[ $(git -C {{linux_dir}} rev-parse HEAD) != "$commit" ]]; then \
+     git -C {{linux_dir}} fetch {{linux_repo}} HEAD:Mic92; \
+     git -C {{linux_dir}} checkout "$commit"; \
      rm -f {{linux_dir}}/.config; \
   fi
 
@@ -91,8 +91,6 @@ configure-linux: clone-linux
     {{kernel_fhs}} "scripts/config --set-val BPF_SYSCALL y"
     {{kernel_fhs}} "scripts/config --set-val IKHEADERS y"
     {{kernel_fhs}} "scripts/config --set-val VIRTIO_MMIO y"
-    {{kernel_fhs}} "scripts/config --set-val VSOCKETS y"
-    {{kernel_fhs}} "scripts/config --set-val VIRTIO_VSOCKETS y"
     {{kernel_fhs}} "scripts/config --set-val DRM n"
     {{kernel_fhs}} "scripts/config --set-val PTDUMP_CORE y"
     {{kernel_fhs}} "scripts/config --set-val PTDUMP_DEBUGFS y"
