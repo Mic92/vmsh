@@ -23,8 +23,7 @@
           extraConfig = ''
             KVM_IOREGION y
           '';
-        }];
-        inherit (pkgs.linuxPackages_5_13.kernel) kernelPatches;
+        }] ++ pkgs.linuxPackages_5_13.kernel.kernelPatches;
         extraMeta.branch = "5.12";
         ignoreConfigErrors = true;
       } // (args.argsOverride or { }));
