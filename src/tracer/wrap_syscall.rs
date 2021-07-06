@@ -194,10 +194,16 @@ pub struct KvmRunWrapper {
     threads: Vec<Thread>,
     process_group: Pid,
     owner: Option<ThreadId>,
+    pub stops: usize,
+    pub filtered_stops: usize,
 }
 
 impl Drop for KvmRunWrapper {
     fn drop(&mut self) {
+        error!(
+            "metrics: {} stops, {} filtered stops",
+            self.stops, self.filtered_stops
+        );
         debug!("kvm run wrapper cleanup started");
         if let Err(e) = self.prepare_detach() {
             log::warn!("cannot drop KvmRunWrapper: {}", e);
@@ -235,6 +241,8 @@ impl KvmRunWrapper {
             threads,
             process_group: get_process_group(pid)?,
             owner: Some(current().id()),
+            stops: 0,
+            filtered_stops: 0,
         })
     }
 
@@ -280,6 +288,8 @@ impl KvmRunWrapper {
             process_group: get_process_group(pid)?,
             threads,
             owner: tracer.owner,
+            stops: 0,
+            filtered_stops: 0,
         })
     }
 
@@ -401,6 +411,7 @@ impl KvmRunWrapper {
     }
 
     fn stopped(&mut self, pid: Pid, _signal: &Signal) -> Result<Option<MmioRw>> {
+        self.stops += 1;
         let thread: &mut Thread = match self
             .threads
             .iter_mut()
@@ -441,6 +452,7 @@ impl KvmRunWrapper {
                 return Ok(None);
             }
         }
+        self.filtered_stops += 1;
 
         // fulfilled precondition: ioctl(KVM_RUN) just returned
         let map_ptr = thread.vcpu_map.start as *const kvm_bindings::kvm_run;

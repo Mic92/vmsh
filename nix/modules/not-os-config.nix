@@ -7,6 +7,7 @@
     pkgs.devmem2
     # for debugging
     pkgs.strace
+    pkgs.hdparm
   ];
 
   environment.pathsToLink = [ "/lib/modules" ];
