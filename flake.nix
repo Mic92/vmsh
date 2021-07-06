@@ -65,7 +65,7 @@
       rec {
         # default target for `nix build`
         defaultPackage = vmsh;
-        packages = {
+        packages = rec {
           inherit vmsh;
 
           # used in .drone.yml
@@ -76,7 +76,9 @@
 
           # see justfile/build-linux-shell
           kernel-fhs-shell = (kernel-fhs.override { runScript = "bash"; }).env;
-          kernel-fhs = kernel-fhs;
+          inherit kernel-fhs;
+          linux_ioregionfd = pkgs.callPackage ./nix/linux-ioregionfd.nix { };
+          linuxPackages_ioregionfd = pkgs.recurseIntoAttrs (pkgs.linuxPackagesFor linux_ioregionfd);
 
           # see justfile/not-os
           inherit not-os-image;
@@ -116,6 +118,8 @@
           #  "${pkgs.pkgsCross.aarch64-multiplatform.stdenv.cc}/bin/aarch64-unknown-linux-gnu-gcc";
         };
       })) // {
-        nixosModules.ioregionfd-kernel = import ./nix/modules/ioregionfd-kernel.nix;
+        nixosModules.linux-ioregionfd = { pkgs, ... }: {
+          boot.kernelPackages = self.packages.${pkgs.system}.linuxPackages_ioregionfd;
+        };
       };
 }
