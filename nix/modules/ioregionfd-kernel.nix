@@ -5,7 +5,7 @@
     linux_patched_pkg =
       { buildLinux, fetchurl, modDirVersionArg ? null, ... }@args:
       buildLinux (args // rec {
-        version = "5.12.0";
+        version = "5.12.14";
         modDirVersion = if (modDirVersionArg == null) then
           builtins.replaceStrings [ "-" ] [ ".0-" ] version
         else
