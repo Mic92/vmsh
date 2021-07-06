@@ -16,6 +16,14 @@
           rev = "56b6b3611b3a57940a314673e1c7aecbc07976e1";
           sha256 = "sha256-VKtKBIbUoRGp2xJA7VQvjRGPaTaNP04vrjMXDpmOje8=";
         };
+
+        kernelPatches = [{
+          name = "enable-kvm-ioregion";
+          patch = null;
+          extraConfig = ''
+            KVM_IOREGION y
+          '';
+        }];
         inherit (pkgs.linuxPackages_5_13.kernel) kernelPatches;
         extraMeta.branch = "5.12";
         ignoreConfigErrors = true;
