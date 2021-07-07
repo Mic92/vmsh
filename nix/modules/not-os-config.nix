@@ -39,7 +39,7 @@
 
   system.activationScripts.vmsh = ''
     mkdir /vmsh
-    mount -t 9p vmsh /vmsh -o trans=virtio
+    mount -t 9p vmsh /vmsh -o trans=virtio,msize=104857600
   '';
 
   environment.etc = {
@@ -61,11 +61,11 @@
 
       source /etc/profile
 
-      exec < /dev/ttyS0 > /dev/ttyS0 2>&1
+      exec < /dev/hvc0 > /dev/hvc0 2>&1
       echo "If you are connect via serial console:"
       echo "Type Ctrl-a c to switch to the qemu console"
       echo "and 'quit' to stop the VM."
-      exec ${pkgs.utillinux}/bin/setsid ${pkgs.bash}/bin/bash -l
+      exec ${pkgs.utillinux}/bin/setsid -c ${pkgs.bash}/bin/bash -l
     '';
   };
   environment.etc.profile.text = ''
