@@ -125,8 +125,11 @@ notos-image:
 
 # built image for qemu_nested.sh
 nested-nixos-image: nixos-image
-  [[ {{linux_dir}}/nixos.ext4 -nt {{linux_dir}}/nixos-nested.ext4 ]] || \
-  cp --reflink=auto "{{linux_dir}}/nixos.ext4" {{linux_dir}}/nixos-nested.ext4
+  #!/usr/bin/env bash
+  set -eux -o pipefail
+  if [[ ! -e {{linux_dir}}/nixos-nested.ext4 ]] || [[ {{linux_dir}}/nixos.ext4 -nt {{linux_dir}}/nixos-nested.ext4 ]]; then
+    cp -a --reflink=auto "{{linux_dir}}/nixos.ext4" {{linux_dir}}/nixos-nested.ext4
+  fi
 
 vmsh-image: nixos-image
   [[ {{linux_dir}}/nixos.ext4 -nt {{linux_dir}}/vmsh-image.ext4 ]] || \
