@@ -681,7 +681,7 @@ pub fn get_hypervisor(pid: Pid) -> Result<Hypervisor> {
 
     let (vm_fds, vcpus) = try_with!(find_vm_fd(&handle), "failed to access kvm fds");
     if vm_fds.is_empty() {
-        bail!("no VMs found");
+        bail!("no KVM-VMs found. If this is qemu, does it enable KVM?");
     }
     if vm_fds.len() > 1 {
         bail!("multiple VMs found, this is not supported yet.");
