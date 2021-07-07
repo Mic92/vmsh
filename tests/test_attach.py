@@ -27,13 +27,14 @@ def test_attach(helpers: conftest.Helpers) -> None:
         )
 
         with vmsh:
-            vmsh.wait_until_line(
-                "block device driver started",
-                lambda l: "block device driver started" in l,
-            )
-
-            res = vm.ssh_cmd(["dmesg"], check=False)
-            print("stdout:\n", res.stdout)
+            try:
+                vmsh.wait_until_line(
+                    "block device driver started",
+                    lambda l: "block device driver started" in l,
+                )
+            finally:
+                res = vm.ssh_cmd(["dmesg"], check=False)
+                print("stdout:\n", res.stdout)
             assert res.returncode == 0
 
             # with DeviceMmioSpace instead of KvmRunWrapper:
