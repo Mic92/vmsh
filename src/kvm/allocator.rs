@@ -57,11 +57,11 @@ impl PhysMemAllocator {
         let last_alloc = self.last_mapping.phys_addr + self.last_mapping.size();
         if start < last_alloc {
             bail!(
-                "cannot allocate memory, our allocator conflicts with {:?}.\
+                "cannot allocate memory at {:x}, our allocator conflicts with mapping at {:x} ({:x}B)\
                    This might happen if the last vmsh run did not clean up memory\
                    correctly or the hypervisor has allocated memory at the very end of\
                    the physical address space",
-                self.last_mapping
+                start, self.last_mapping.start, self.last_mapping.size()
             );
         }
         self.next_allocation = start;
