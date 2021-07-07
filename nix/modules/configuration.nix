@@ -24,14 +24,14 @@ in
     device = "home";
     fsType = "9p";
     # skip mount in nested qemu
-    options = [ "trans=virtio" "nofail" ];
+    options = [ "trans=virtio" "nofail" "msize=104857600" ];
   };
 
   fileSystems."/linux" = {
     device = "linux";
     fsType = "9p";
     # skip mount in nested qemu
-    options = [ "trans=virtio" "nofail" ];
+    options = [ "trans=virtio" "nofail" "msize=104857600" ];
   };
 
   users.users.root.openssh.authorizedKeys.keys = [
