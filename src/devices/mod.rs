@@ -108,8 +108,8 @@ impl DeviceContext {
             gsi: 5,
         };
 
-        let first_mmio_addr = block_mmio_cfg.range.base().0;
-        let last_mmio_addr = console_mmio_cfg.range.last().0;
+        let first_mmio_addr = console_mmio_cfg.range.base().0;
+        let last_mmio_addr = block_mmio_cfg.range.last().0;
 
         // IoManager replacement:
         let device_manager = Arc::new(Mutex::new(IoPirate::default()));
