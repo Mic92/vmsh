@@ -1,12 +1,13 @@
 use clap::{value_t, App, Arg, SubCommand};
 use kvm_bindings as kvmb;
 use nix::unistd::Pid;
-use simple_error::{bail, try_with};
+use simple_error::{bail, require_with, try_with};
+use std::mem::size_of;
 use std::os::unix::io::AsRawFd;
 use std::sync::Mutex;
 use std::time::Duration;
 use vmm_sys_util::eventfd::{EventFd, EFD_NONBLOCK};
-use vmsh::kvm::hypervisor::get_hypervisor;
+use vmsh::kvm::hypervisor::{get_hypervisor, VmMem};
 use vmsh::result::Result;
 use vmsh::tracer::wrap_syscall::KvmRunWrapper;
 
@@ -71,7 +72,7 @@ fn guest_add_mem(pid: Pid, re_get_slots: bool) -> Result<()> {
         });
 
         // add memslot
-        let vm_mem = vm.vm_add_mem::<u64>(0xd0000000, false)?;
+        let vm_mem: VmMem<u64> = vm.vm_add_mem::<u64>(0xd0000000, size_of::<u64>(), false)?;
         println!("--");
 
         if re_get_slots {
@@ -131,12 +132,26 @@ fn fd_transfer(pid: Pid, nr_fds: u32) -> Result<()> {
     Ok(())
 }
 
+fn cpuid2(pid: Pid) -> Result<()> {
+    let vm = try_with!(get_hypervisor(pid), "cannot get vms for process {}", pid);
+    vm.stop()?;
+
+    let cpuid2 = try_with!(vm.get_cpuid2(&vm.vcpus[0]), "cannot get cpuid2");
+    // Get Virtual and Physical address Sizes
+    require_with!(
+        cpuid2.entries.iter().find(|c| c.function == 0x80000008),
+        "could not find cpuid function 0x80000008"
+    );
+
+    Ok(())
+}
+
 /// Some parts of this implementation are still missing.
 fn guest_userfaultfd(pid: Pid) -> Result<()> {
     let vm = try_with!(get_hypervisor(pid), "cannot get vms for process {}", pid);
     vm.stop()?;
 
-    let vm_mem = vm.vm_add_mem::<u64>(0xd0000000, true)?;
+    let vm_mem = vm.vm_add_mem::<u64>(0xd0000000, size_of::<u64>(), true)?;
     vm_mem.mem.write(&0xdeadbeef)?;
     assert_eq!(vm_mem.mem.read()?, 0xdeadbeef);
 
@@ -168,7 +183,7 @@ fn guest_ioeventfd(pid: Pid) -> Result<()> {
     }
     println!("caps good");
 
-    let vm_mem = vm.vm_add_mem::<u32>(0xd0000000, true)?;
+    let vm_mem = vm.vm_add_mem::<u32>(0xd0000000, size_of::<u32>(), true)?;
     vm_mem.mem.write(&0xbeef)?;
     let ioeventfd = vm.ioeventfd(0xd0000000)?;
     vm.resume()?;
@@ -225,7 +240,6 @@ fn vcpu_maps(pid: Pid) -> Result<()> {
     let vm = try_with!(get_hypervisor(pid), "cannot get vms for process {}", pid);
     vm.stop()?;
 
-    use std::mem::size_of;
     let kvm_run_len = size_of::<kvm_bindings::kvm_run>();
     println!("kvm_run len {}", kvm_run_len);
 
@@ -261,6 +275,7 @@ fn main() {
         .subcommand(subtest("guest_add_mem_get_maps"))
         .subcommand(subtest("fd_transfer1"))
         .subcommand(subtest("fd_transfer2"))
+        .subcommand(subtest("cpuid2"))
         .subcommand(subtest("guest_userfaultfd"))
         .subcommand(subtest("guest_kvm_exits"))
         .subcommand(subtest("vcpu_maps"))
@@ -275,6 +290,7 @@ fn main() {
     let result = match subcommand_name {
         "alloc_mem" => alloc_mem(pid),
         "inject" => inject(pid),
+        "cpuid2" => cpuid2(pid),
         "guest_add_mem" => guest_add_mem(pid, false),
         "guest_add_mem_get_maps" => guest_add_mem(pid, true),
         "fd_transfer1" => fd_transfer(pid, 1),

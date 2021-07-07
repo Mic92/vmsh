@@ -372,10 +372,15 @@ impl Hypervisor {
     ///
     /// Safety: This function is safe even for the guest because VmMem enforces, that only the
     /// allocated T is written to.
-    pub fn vm_add_mem(&self, guest_addr: u64, size: usize, readonly: bool) -> Result<VmMem<u8>> {
+    pub fn vm_add_mem<T: Sized + Copy>(
+        &self,
+        guest_addr: u64,
+        size: usize,
+        readonly: bool,
+    ) -> Result<VmMem<T>> {
         // must be a multiple of PAGESIZE
         let slot_len = (size / page_math::page_size() + 1) * page_math::page_size();
-        let hv_memslot = self.alloc_mem_padded::<u8>(slot_len)?;
+        let hv_memslot = self.alloc_mem_padded::<T>(slot_len)?;
         let mut flags = 0;
         flags |= if readonly { kvmb::KVM_MEM_READONLY } else { 0 };
         let arg = kvmb::kvm_userspace_memory_region {
