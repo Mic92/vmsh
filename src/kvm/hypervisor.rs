@@ -680,15 +680,16 @@ pub fn get_hypervisor(pid: Pid) -> Result<Hypervisor> {
     let handle = try_with!(openpid(pid), "cannot open handle in proc");
 
     let (vm_fds, vcpus) = try_with!(find_vm_fd(&handle), "failed to access kvm fds");
-    let tracee = Hypervisor::attach(pid, vm_fds[0]);
-    let vcpu_maps = try_with!(tracee.get_vcpu_maps(), "cannot get vcpufd memory maps");
-
     if vm_fds.is_empty() {
         bail!("no VMs found");
     }
     if vm_fds.len() > 1 {
         bail!("multiple VMs found, this is not supported yet.");
     }
+
+    let tracee = Hypervisor::attach(pid, vm_fds[0]);
+    let vcpu_maps = try_with!(tracee.get_vcpu_maps(), "cannot get vcpufd memory maps");
+
     if vcpus.is_empty() {
         bail!("found KVM instance but no VCPUs");
     }
