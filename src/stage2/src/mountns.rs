@@ -245,7 +245,9 @@ pub fn setup(
             flags,
             NONE,
         ),
-        "unable to move mounts to new mountpoint: mount(\"{}\",\"{}\",NULL,MS_REC|MS_MOVE|MS_PRIVATE,NULL)", ns.temp_mountpoint.display(), vmsh_mount_point.display()
+        "unable to move mounts to new mountpoint: mount(\"{}\",\"{}\",NULL,MS_REC|MS_MOVE,NULL)",
+        ns.temp_mountpoint.display(),
+        vmsh_mount_point.display()
     );
 
     // useful for debugging
