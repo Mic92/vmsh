@@ -54,5 +54,6 @@ in
 
   environment.systemPackages = [
     pkgs.busybox
+    pkgs.devmem2
   ];
 }
