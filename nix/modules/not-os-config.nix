@@ -30,9 +30,6 @@
     # ext4
     "crc16" "mbcache" "jbd2" "crc32c_generic" "ext4"
 
-    # vsocket
-    "vsock" "vmw_vsock_virtio_transport_common" "vmw_vsock_virtio_transport"
-
     # 9p over virtio
     "9pnet" "9p" "9pnet_virtio" "fscache"
   ];
