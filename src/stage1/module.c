@@ -6,16 +6,21 @@
 static int stage2_argc;
 static char *stage2_argv[MAX_STAGE2_ARGS];
 
+#define MAX_DEVICES 254
+static int devices_num;
+static char *devices[3];
+
 // FIXME: Right now this is a kernel module in future, this should be replaced
 // something to be injectable into VMs.
 int init_module(void) {
-  return init_vmsh_stage1(stage2_argc, stage2_argv);
+  return init_vmsh_stage1(devices_num, devices, stage2_argc, stage2_argv);
 }
 
 void cleanup_module(void) {
   cleanup_vmsh_stage1();
 }
 
+module_param_array(devices, charp, &devices_num, 0);
 module_param_array(stage2_argv, charp, &stage2_argc, 0);
 
 MODULE_AUTHOR("joerg@thalheim.io");

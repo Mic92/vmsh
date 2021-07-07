@@ -7,9 +7,10 @@ use core::include_bytes;
 use core::mem::size_of;
 use core::panic::PanicInfo;
 use core::ptr;
+use core::slice;
+use core::str::FromStr;
 
 // used by our driver
-const MMIO_BASE: usize = 0xd0000000;
 const MMIO_SIZE: usize = 0x1000;
 const MMIO_IRQ: usize = 5;
 // chosen randomly, hopefully unused
@@ -188,8 +189,7 @@ unsafe fn register_virtio_mmio(
 }
 
 /// Holds the device we create by this code, so we can unregister it later
-static mut BLK_DEV: Option<PlatformDevice> = None;
-static mut CONSOLE_DEV: Option<PlatformDevice> = None;
+static mut DEVICES: [Option<PlatformDevice>; 3] = [None, None, None];
 static mut STAGE2_SPAWNER: Option<*mut task_struct> = None;
 
 /// re-implementation of IS_ERR_VALUE
@@ -326,31 +326,59 @@ static mut STAGE2_OPTS: Stage2Opts = Stage2Opts {
     argv: ptr::null_mut(),
 };
 
+#[inline]
+unsafe fn strlen(p: *const libc::c_char) -> usize {
+    let mut n = 0;
+    while *p.add(n) != 0 {
+        n += 1;
+    }
+    n
+}
+
+/// Safety: string is assumed to be utf-8 & pointer needs to be null terminated
+unsafe fn str_from_cstr(ptr: &*const libc::c_char) -> &str {
+    let s = slice::from_raw_parts(*ptr as *const u8, strlen(*ptr));
+    core::str::from_utf8_unchecked(s)
+}
 
 /// # Safety
 ///
 /// this code is not thread-safe as it uses static globals
 #[no_mangle]
-pub unsafe fn init_vmsh_stage1(argc: libc::c_int, argv: *mut *mut libc::c_char) -> libc::c_int {
+pub unsafe fn init_vmsh_stage1(
+    devices_num: libc::c_int,
+    devices: *const *const libc::c_char,
+    argc: libc::c_int,
+    argv: *mut *mut libc::c_char,
+) -> libc::c_int {
     printkln!("stage1: init with {} arguments", argc);
-
-    let blk_dev = match register_virtio_mmio(MMIO_DEVICE_ID, MMIO_BASE, MMIO_SIZE, MMIO_IRQ) {
-        Ok(v) => Some(v),
-        Err(res) => {
-            printkln!("stage1: failed to register block mmio device: {}", res);
-            return res;
-        }
-    };
-    printkln!("stage1: virt-blk driver set up");
-
-    let console_dev = match register_virtio_mmio(MMIO_DEVICE_ID + 1, MMIO_BASE + MMIO_SIZE, MMIO_SIZE, MMIO_IRQ) {
-        Ok(v) => Some(v),
-        Err(res) => {
-            printkln!("stage1: failed to register console mmio device: {}", res);
-            return res;
-        }
-    };
-    printkln!("stage1: virt-console driver set up");
+    if devices_num != 3 && devices_num != 2 {
+        printkln!("stage1: expected 2 or 3 devices, got: {}", devices_num);
+        return -libc::EINVAL;
+    }
+    let mut devs = [None, None, None];
+    let devices = slice::from_raw_parts(devices, devices_num as usize);
+    for (i, dev) in devices.iter().enumerate() {
+        let dev_str = str_from_cstr(dev);
+        let addr = match usize::from_str(dev_str) {
+            Ok(v) => v,
+            Err(_) => {
+                printkln!("stage1: failed to parse mmio address {} as number", dev_str);
+                return 1;
+            }
+        };
+        printkln!("stage1: insert mmio: {}", addr);
+        match register_virtio_mmio(MMIO_DEVICE_ID + (i as i32), addr, MMIO_SIZE, MMIO_IRQ) {
+            Ok(v) => {
+                devs[i] = Some(v);
+            }
+            Err(res) => {
+                printkln!("stage1: failed to register block mmio device: {}", res);
+                return res;
+            }
+        };
+    }
+    printkln!("stage1: devices set up");
 
     STAGE2_OPTS = Stage2Opts { argc, argv };
 
@@ -370,10 +398,9 @@ pub unsafe fn init_vmsh_stage1(argc: libc::c_int, argv: *mut *mut libc::c_char) 
         return err_value(thread) as libc::c_int;
     }
     wake_up_process(thread);
-
-    BLK_DEV = blk_dev;
-    CONSOLE_DEV = console_dev;
     STAGE2_SPAWNER = Some(thread);
+
+    DEVICES = devs;
     0
 }
 
@@ -386,6 +413,7 @@ pub unsafe fn cleanup_vmsh_stage1() {
     //if let Some(task) = STAGE2_SPAWNER.take() {
     //    kthread_stop(task);
     //}
-    BLK_DEV.take();
-    CONSOLE_DEV.take();
+    DEVICES.iter_mut().for_each(|d| {
+        d.take();
+    });
 }

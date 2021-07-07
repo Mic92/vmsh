@@ -6,6 +6,7 @@ use std::mem::MaybeUninit;
 use std::os::unix::prelude::RawFd;
 use std::ptr;
 
+use super::ioctls;
 use crate::cpu;
 use crate::kvm::hypervisor::{HvMem, VCPU};
 use crate::kvm::ioctls::KVM_CHECK_EXTENSION;
@@ -215,6 +216,22 @@ impl Tracee {
     #[allow(non_snake_case)]
     pub unsafe fn CMSG_DATA(cmsg: *const libc::cmsghdr) -> *mut libc::c_uchar {
         libc::CMSG_DATA(cmsg)
+    }
+
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    pub fn get_cpuid2(
+        &self,
+        vcpu: &VCPU,
+        cpuid: &HvMem<ioctls::kvm_cpuid2>,
+    ) -> Result<ioctls::kvm_cpuid2> {
+        use crate::kvm::ioctls::KVM_GET_CPUID2;
+
+        try_with!(
+            self.vcpu_ioctl(vcpu, KVM_GET_CPUID2(), cpuid.ptr as c_ulong),
+            "vcpu_ioctl failed"
+        );
+        let cpuid = try_with!(cpuid.read(), "cannot read cpuid");
+        Ok(cpuid)
     }
 
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
