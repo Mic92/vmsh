@@ -132,8 +132,11 @@ nested-nixos-image: nixos-image
   fi
 
 vmsh-image: nixos-image
-  [[ {{linux_dir}}/nixos.ext4 -nt {{linux_dir}}/vmsh-image.ext4 ]] || \
-  cp --reflink=auto "{{linux_dir}}/nixos.ext4" {{linux_dir}}/vmsh-image.ext4
+  #!/usr/bin/env bash
+  set -eux -o pipefail
+  if [[ ! -e {{linux_dir}}/vmsh-image.ext4 ]] || [[ {{linux_dir}}/nixos.ext4 -nt {{linux_dir}}/vmsh-image.ext4 ]]; then
+      cp -a --reflink=auto "{{linux_dir}}/nixos.ext4" {{linux_dir}}/vmsh-image.ext4
+  fi
 
 # run qemu with kernel build by `build-linux` and filesystem image build by `nixos-image`
 qemu EXTRA_CMDLINE="nokalsr": build-linux nixos-image
@@ -209,7 +212,7 @@ attach-qemu-img: nixos-image
 
 # Attach block device to first qemu vm found by pidof and owned by our own user
 attach-qemu: vmsh-image
-  cargo run -- attach -f "{{linux_dir}}/nixos.ext4" "{{qemu_pid}}" --ssh-args " -i {{invocation_directory()}}/nix/ssh_key -p {{qemu_ssh_port}} root@localhost" -- /nix/var/nix/profiles/system/sw/bin/ls -la
+  cargo run -- attach -f "{{linux_dir}}/vmsh-image.ext4" "{{qemu_pid}}" --ssh-args " -i {{invocation_directory()}}/nix/ssh_key -p {{qemu_ssh_port}} root@localhost" -- /nix/var/nix/profiles/system/sw/bin/ls -la
 
 # Inspect first qemu vm found by pidof and owned by our own user
 inspect-qemu:
