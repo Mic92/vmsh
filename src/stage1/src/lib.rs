@@ -367,7 +367,7 @@ pub unsafe fn init_vmsh_stage1(
                 return 1;
             }
         };
-        printkln!("stage1: insert mmio: {}", addr);
+        printkln!("stage1: insert mmio device at {:x}", addr);
         match register_virtio_mmio(MMIO_DEVICE_ID + (i as i32), addr, MMIO_SIZE, MMIO_IRQ) {
             Ok(v) => {
                 devs[i] = Some(v);
