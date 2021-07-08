@@ -213,7 +213,11 @@ ioctl_iow_nr!(
     kvmb::kvm_userspace_memory_region
 );
 
+// Available with KVM_CAP_IOREGIONFD
+ioctl_iow_nr!(KVM_SET_IOREGION, KVMIO, 0x49, kvm_ioregion);
+
 ioctl_io_nr!(KVM_RUN, KVMIO, 0x80);
+
 
 // Ioctls for VM fds.
 /* Available with KVM_CAP_USER_MEMORY */
@@ -255,3 +259,91 @@ pub struct kvm_cpuid2 {
     pub entries: [kvmb::kvm_cpuid_entry2; KVM_MAX_CPUID_ENTRIES],
 }
 ioctl_iowr_nr!(KVM_GET_CPUID2, KVMIO, 0x91, kvmb::kvm_cpuid2);
+
+#[repr(C)]
+#[allow(non_camel_case_types)]
+#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
+pub struct kvm_ioregion {
+    pub guest_paddr: u64, // guest physical address
+    pub memory_size: u64, // bytes
+    pub user_data: u64,
+    pub rfd: i32,
+    pub wfd: i32,
+    pub flags: u32,
+    pub pad: [u8;28],
+}
+
+#[allow(non_camel_case_types)]
+enum kvm_ioregion_flag_nr {
+       pio,
+       posted_writes,
+       max,
+}
+
+//#define KVM_IOREGION_PIO (1 << kvm_ioregion_flag_nr_pio)
+const KVM_IOREGION_PIO: u32 = (1 << kvm_ioregion_flag_nr::pio as u32);
+//#define KVM_IOREGION_POSTED_WRITES (1 << kvm_ioregion_flag_nr_posted_writes)
+const KVM_IOREGION_POSTED_WRITES: u32 = (1 << kvm_ioregion_flag_nr::posted_writes as u32);
+//#define KVM_IOREGION_VALID_FLAG_MASK ((1 << kvm_ioregion_flag_nr_max) - 1)
+const KVM_IOREGION_VALID_FLAG_MASK: u32 = ((1 << kvm_ioregion_flag_nr::max as u32) - 1);
+
+pub const KVM_CAP_IOREGIONFD: u32 = 195;
+
+/// wire protocol
+#[repr(C)]
+#[allow(non_camel_case_types)]
+#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
+struct ioregionfd_cmd {
+    pub info: Info,
+    pub padding: u32,
+    pub user_data: u64,
+    pub offset: u64,
+    pub data: u64,
+}
+
+/// wire protocol
+struct ioregionfd_resp {
+    pub data: u64,
+    pub pad: [u8;24],
+}
+
+//libc_bitflags! {
+    //pub struct Info
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
+struct Info ( u32 );
+
+pub const IOREGIONFD_SIZE_OFFSET: usize = 4;
+pub const IOREGIONFD_RESP_OFFSET: usize = 6;
+//+#define IOREGIONFD_SIZE(x) ((x) << IOREGIONFD_SIZE_OFFSET)
+//+#define IOREGIONFD_RESP(x) ((x) << IOREGIONFD_RESP_OFFSET)
+impl Info {
+    pub fn new(cmd: Cmd, size: Size, response: bool) -> Self {
+        let mut ret = 0;
+        ret |= cmd as u32;
+        ret |= (size as u32) << IOREGIONFD_SIZE_OFFSET;
+        ret |= (response as u32) << IOREGIONFD_RESP_OFFSET;
+        Info(ret)
+    }
+}
+
+pub const IOREGIONFD_CMD_READ: usize = 0;
+pub const IOREGIONFD_CMD_WRITE: usize = 1;
+enum Cmd {
+    Read,
+    Write,
+}
+
+//pub const IOREGIONFD_SIZE_8BIT: usize = 0;
+//pub const IOREGIONFD_SIZE_16BIT: usize = 1;
+//pub const IOREGIONFD_SIZE_32BIT: usize = 2;
+//pub const IOREGIONFD_SIZE_64BIT: usize = 3;
+#[allow(non_camel_case_types)]
+enum Size {
+    b8,
+    b16,
+    b32,
+    b64,
+}
+

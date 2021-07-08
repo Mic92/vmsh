@@ -154,7 +154,7 @@ fn blkdev_monitor_thread(
     Ok(try_with!(res, "failed to spawn blkdev-monitor"))
 }
 
-/// Traps KVM_MMIO_EXITs with ptrace and forward them as needed to out block and console device driver
+/// Traps KVM_MMIO_EXITs with ptrace and forward them as needed to our block and console device driver
 fn handle_mmio_exits(
     wrapper_mo: &Mutex<Option<KvmRunWrapper>>,
     should_stop: &Arc<AtomicBool>,
