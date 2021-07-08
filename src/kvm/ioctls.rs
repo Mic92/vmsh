@@ -218,7 +218,6 @@ ioctl_iow_nr!(KVM_SET_IOREGION, KVMIO, 0x49, kvm_ioregion);
 
 ioctl_io_nr!(KVM_RUN, KVMIO, 0x80);
 
-
 // Ioctls for VM fds.
 /* Available with KVM_CAP_USER_MEMORY */
 //ioctl_iow_nr!(
@@ -270,14 +269,14 @@ pub struct kvm_ioregion {
     pub rfd: i32,
     pub wfd: i32,
     pub flags: u32,
-    pub pad: [u8;28],
+    pub pad: [u8; 28],
 }
 
 #[allow(non_camel_case_types)]
 enum kvm_ioregion_flag_nr {
-       pio,
-       posted_writes,
-       max,
+    pio,
+    posted_writes,
+    max,
 }
 
 //#define KVM_IOREGION_PIO (1 << kvm_ioregion_flag_nr_pio)
@@ -304,15 +303,15 @@ struct ioregionfd_cmd {
 /// wire protocol
 struct ioregionfd_resp {
     pub data: u64,
-    pub pad: [u8;24],
+    pub pad: [u8; 24],
 }
 
 //libc_bitflags! {
-    //pub struct Info
+//pub struct Info
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
-struct Info ( u32 );
+struct Info(u32);
 
 pub const IOREGIONFD_SIZE_OFFSET: usize = 4;
 pub const IOREGIONFD_RESP_OFFSET: usize = 6;
@@ -346,4 +345,3 @@ enum Size {
     b32,
     b64,
 }
-
