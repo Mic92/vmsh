@@ -292,7 +292,7 @@ pub const KVM_CAP_IOREGIONFD: u32 = 195;
 #[repr(C)]
 #[allow(non_camel_case_types)]
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
-struct ioregionfd_cmd {
+pub struct ioregionfd_cmd {
     pub info: Info,
     pub padding: u32,
     pub user_data: u64,
@@ -301,9 +301,17 @@ struct ioregionfd_cmd {
 }
 
 /// wire protocol
-struct ioregionfd_resp {
+pub struct ioregionfd_resp {
     pub data: u64,
     pub pad: [u8; 24],
+}
+impl ioregionfd_resp {
+    pub fn new(data: u64) -> Self {
+        ioregionfd_resp {
+            data,
+            pad: [0; 24],
+        }
+    }
 }
 
 //libc_bitflags! {
@@ -311,25 +319,52 @@ struct ioregionfd_resp {
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
-struct Info(u32);
+pub struct Info(u32);
 
+pub const IOREGIONFD_CMD_OFFSET: usize = 0;
+pub const IOREGIONFD_CMD_LEN: usize = 1;
 pub const IOREGIONFD_SIZE_OFFSET: usize = 4;
+pub const IOREGIONFD_SIZE_LEN: usize = 2;
 pub const IOREGIONFD_RESP_OFFSET: usize = 6;
+pub const IOREGIONFD_RESP_LEN: usize = 1;
 //+#define IOREGIONFD_SIZE(x) ((x) << IOREGIONFD_SIZE_OFFSET)
 //+#define IOREGIONFD_RESP(x) ((x) << IOREGIONFD_RESP_OFFSET)
 impl Info {
-    pub fn new(cmd: Cmd, size: Size, response: bool) -> Self {
+    fn new(cmd: Cmd, size: Size, response: bool) -> Self {
         let mut ret = 0;
-        ret |= cmd as u32;
+        ret |= (cmd as u32) << IOREGIONFD_CMD_OFFSET;
         ret |= (size as u32) << IOREGIONFD_SIZE_OFFSET;
         ret |= (response as u32) << IOREGIONFD_RESP_OFFSET;
         Info(ret)
     }
+
+    pub fn cmd(&self) -> Cmd {
+        let mut i: u32 = self.0 >> IOREGIONFD_CMD_OFFSET;
+        let foo = !(!0 << IOREGIONFD_CMD_LEN);
+        i &= foo;
+        num::FromPrimitive::from_u32(i).unwrap_or(Cmd::Write)
+    }
+
+    pub fn size(&self) -> Size {
+        let mut i: u32 = self.0 >> IOREGIONFD_SIZE_OFFSET;
+        let foo = !(!0 << IOREGIONFD_SIZE_LEN);
+        i &= foo;
+        num::FromPrimitive::from_u32(i).unwrap_or(Size::b8)
+    }
+
+    pub fn is_response(&self) -> bool {
+        let mut i: u32 = self.0 >> IOREGIONFD_RESP_OFFSET;
+        let foo = !(!0 << IOREGIONFD_RESP_LEN);
+        i &= foo;
+        i == 0
+    }
 }
+use num_traits as num;
 
 pub const IOREGIONFD_CMD_READ: usize = 0;
 pub const IOREGIONFD_CMD_WRITE: usize = 1;
-enum Cmd {
+#[derive(Debug,FromPrimitive)]
+pub enum Cmd {
     Read,
     Write,
 }
@@ -339,7 +374,8 @@ enum Cmd {
 //pub const IOREGIONFD_SIZE_32BIT: usize = 2;
 //pub const IOREGIONFD_SIZE_64BIT: usize = 3;
 #[allow(non_camel_case_types)]
-enum Size {
+#[derive(Debug,FromPrimitive)]
+pub enum Size {
     b8,
     b16,
     b32,
