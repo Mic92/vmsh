@@ -21,6 +21,9 @@
     ip addr add ::1/128 dev lo
     ip link set dev lo up
     ip addr add 10.0.2.15/24 dev eth0
+
+    # for stage1 debugging
+    #${pkgs.utillinux}/bin/setsid -c ${pkgs.bash}/bin/bash -l
   '';
 
   boot.initrd.kernelModules = [
