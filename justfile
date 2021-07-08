@@ -100,11 +100,20 @@ configure-linux: #clone-linux
        --enable DEBUG_DRIVER \
        --enable KVM \
        --enable BPF_SYSCALL \
+       --enable FTRACE_SYSCALLS \
        --enable IKHEADERS \
        --enable IKCONFIG_PROC \
        --enable VIRTIO_MMIO \
        --enable PTDUMP_CORE \
-       --enable PTDUMP_DEBUGFS
+       --enable PTDUMP_DEBUGFS \
+       --enable OVERLAY_FS \
+       --enable SQUASHFS \
+       --enable SQUASHFS_XZ \
+       --enable SQUASHFS_FILE_DIRECT \
+       --disable SQUASHFS_FILE_CACHE \
+       --enable SQUASHFS_DECOMP_MULTI \
+       --disable SQUASHFS_DECOMP_SINGLE \
+       --disable SQUASHFS_DECOMP_MULTI_PERCPU \
     "
   fi
 
