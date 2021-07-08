@@ -47,3 +47,14 @@ def notos_image() -> VmImage:
             initial_ramdisk=Path(data["initialRamdisk"]),
             kernel_params=data["kernelParams"],
         )
+
+
+def notos_image_custom_kernel() -> VmImage:
+    """
+    This is useful for debugging.
+    Make sure to use the same kernel version in your kernel as used in notos
+    """
+    image = notos_image()
+    image.kerneldir = PROJECT_ROOT.joinpath("..", "linux")
+    image.kernel = image.kerneldir.joinpath("arch", "x86", "boot")
+    return image
