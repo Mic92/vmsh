@@ -256,8 +256,10 @@ impl AsRawFd for IoEventFd {
 }
 
 pub struct IoRegionFd {
-    rfile: RawFd,
-    wfile: RawFd,
+    rfile: RawFd, // our end: we write responses here
+    wfile: RawFd, // we read commands from here
+    rf_hv: RawFd, // their end: transferred to hyperisor
+    wf_hv: RawFd,
 }
 
 fn kvm_ioregionfd(guest_paddr: u64, len: usize, rfd: RawFd, wfd: RawFd) -> kvm_ioregion {
@@ -290,7 +292,7 @@ impl IoRegionFd {
         //TODO this open hangs
         //let rfile = try_with!(File::open(&rpath), "foo");
         //let wfile = try_with!(File::open(&wpath), "foo");
-        let (rfile, wfile) = try_with!(
+        let (rf_dev, rf_hv) = try_with!(
             socketpair(
                 AddressFamily::Unix,
                 SockType::SeqPacket,
@@ -299,15 +301,18 @@ impl IoRegionFd {
             ),
             "{}"
         );
-        info!(
-            "rfile {:?}, wfile {:?}, guest phys addr {:?}",
-            rfile.as_raw_fd(),
-            wfile.as_raw_fd(),
-            guest_paddr
+        let (wf_dev, wf_hv) = try_with!(
+            socketpair(
+                AddressFamily::Unix,
+                SockType::SeqPacket,
+                None,
+                SockFlag::SOCK_CLOEXEC
+            ),
+            "{}"
         );
-        let hv_rfile = hv.transfer(vec![rfile.as_raw_fd()].as_slice())?[0];
-        let hv_wfile = hv.transfer(vec![wfile.as_raw_fd()].as_slice())?[0]; // TODO dedup
-        let ioregion = kvm_ioregionfd(guest_paddr, len, hv_rfile, hv_wfile);
+        let hv_rf_hv = hv.transfer(vec![rf_hv.as_raw_fd()].as_slice())?[0];
+        let hv_wf_hv = hv.transfer(vec![wf_hv.as_raw_fd()].as_slice())?[0]; // TODO dedup
+        let ioregion = kvm_ioregionfd(guest_paddr, len, hv_rf_hv, hv_wf_hv);
         let mem = hv.alloc_mem()?;
         mem.write(&ioregion)?;
 
@@ -322,9 +327,43 @@ impl IoRegionFd {
             )
         };
         log::warn!("ioregionfd ret {}", ret);
-        Ok(IoRegionFd { rfile, wfile })
+        Ok(IoRegionFd { 
+            rfile: rf_dev, 
+            wfile: wf_dev,
+            rf_hv,
+            wf_hv,
+        })
+    }
+
+    pub fn read(&self) -> Result<ioregionfd_cmd> {
+        let len = size_of::<ioregionfd_cmd>();
+        let mut t_mem = MaybeUninit::<ioregionfd_cmd>::uninit();
+        let t_slice = unsafe { std::slice::from_raw_parts_mut(t_mem.as_mut_ptr() as *mut u8, len) };
+        //let read = vm_memory::process_read_bytes(pid, t_slice, addr)?;
+        let read = try_with!(read(self.wfile, t_slice), "foo");
+        if read != len {
+            bail!("fas");
+        }
+        let t: ioregionfd_cmd = unsafe { t_mem.assume_init() };
+        Ok(t)
+    }
+
+    pub fn write(&self, data: u64) -> Result<()> {
+        let len = size_of::<ioregionfd_resp>();
+        let response = ioregionfd_resp::new(data);
+        // safe, because we won't need t_bytes for long
+        let t_bytes = unsafe { std::slice::from_raw_parts((&response as *const ioregionfd_resp) as *const u8, len) };
+        //let written = process_write_bytes(pid, addr, t_bytes)?;
+        let written = try_with!(write(self.rfile, t_bytes), "foo");
+        if written != len {
+            bail!("foo");
+        }
+        Ok(())
     }
 }
+use crate::kvm::ioctls::{ioregionfd_cmd,ioregionfd_resp};
+use std::mem::MaybeUninit;
+use nix::unistd::{read,write};
 
 // TODO impl Drop for IoRegionFd
 
