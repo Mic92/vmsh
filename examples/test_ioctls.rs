@@ -10,6 +10,7 @@ use vmm_sys_util::eventfd::{EventFd, EFD_NONBLOCK};
 use vmsh::kvm::hypervisor::{get_hypervisor, PhysMem};
 use vmsh::result::Result;
 use vmsh::tracer::wrap_syscall::KvmRunWrapper;
+use vmsh::kvm::ioctls;
 
 fn inject(pid: Pid) -> Result<()> {
     let vm = try_with!(get_hypervisor(pid), "cannot get vms for process {}", pid);
@@ -213,6 +214,54 @@ fn guest_ioeventfd(pid: Pid) -> Result<()> {
     Ok(())
 }
 
+fn ioregionfd(pid: Pid) -> Result<()> {
+    let vm = try_with!(get_hypervisor(pid), "cannot get vms for process {}", pid);
+    vm.stop()?;
+
+    let has_cap = try_with!(
+        vm.check_extension(ioctls::KVM_CAP_IOREGIONFD as i32),
+        "cannot check kvm extension capabilities"
+    );
+    if has_cap == 0 {
+        bail!(
+            "This operation requires KVM_CAP_IOREGIONFD which your KVM does not have: {}",
+            has_cap
+        );
+    }
+    println!("caps good");
+
+    let vm_mem = vm.vm_add_mem::<u32>(0xd0000000, true)?;
+    vm_mem.mem.write(&0xbeef)?;
+    println!("foobar");
+    let ioeventfd = vm.ioregionfd()?;
+    vm.resume()?;
+
+    //use std::io::prelude::*;
+    //loop {
+        //match ioeventfd.read() {
+            //Err(e) => {
+                //if e.kind() == std::io::ErrorKind::WouldBlock {
+                    //print!(".");
+                    //std::io::stdout()
+                        //.lock()
+                        //.flush()
+                        //.expect("cannot flush stdout");
+                    //std::thread::sleep(Duration::from_millis(100));
+                //} else {
+                    //bail!("read error {}", e);
+                //}
+            //}
+            //Ok(v) => {
+                //println!("event: {}", v);
+                //break;
+            //}
+        //}
+    //}
+
+    vm.stop()?;
+    Ok(())
+}
+
 fn guest_kvm_exits(pid: Pid) -> Result<()> {
     let vm = try_with!(get_hypervisor(pid), "cannot get vms for process {}", pid);
     vm.kvmrun_wrapped(|wrapper_r: &Mutex<Option<KvmRunWrapper>>| {
@@ -265,7 +314,7 @@ fn subtest(name: &str) -> App {
 }
 
 fn main() {
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("debug")).init();
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
     let app = App::new("test_ioctls")
         .about("Something between integration and unit test to be used by pytest.")
@@ -279,6 +328,7 @@ fn main() {
         .subcommand(subtest("guest_userfaultfd"))
         .subcommand(subtest("guest_kvm_exits"))
         .subcommand(subtest("vcpu_maps"))
+        .subcommand(subtest("ioregionfd"))
         .subcommand(subtest("guest_ioeventfd"));
 
     let matches = app.get_matches();
@@ -298,6 +348,7 @@ fn main() {
         "guest_userfaultfd" => guest_userfaultfd(pid),
         "guest_kvm_exits" => guest_kvm_exits(pid),
         "vcpu_maps" => vcpu_maps(pid),
+        "ioregionfd" => ioregionfd(pid),
         "guest_ioeventfd" => guest_ioeventfd(pid),
         _ => std::process::exit(2),
     };

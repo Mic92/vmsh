@@ -98,6 +98,8 @@ configure-linux: #clone-linux
        --enable GDB_SCRIPTS \
        --enable DEBUG_DRIVER \
        --enable KVM \
+       --enable KVM_INTEL \
+       --enable KVM_AMD \
        --enable BPF_SYSCALL \
        --enable IKHEADERS \
        --enable IKCONFIG_PROC \

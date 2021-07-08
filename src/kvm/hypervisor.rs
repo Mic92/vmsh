@@ -17,6 +17,7 @@ use vmm_sys_util::eventfd::{EventFd, EFD_NONBLOCK};
 use crate::cpu;
 use crate::kvm::fd_transfer;
 use crate::kvm::ioctls;
+use crate::kvm::ioctls::kvm_ioregion;
 use crate::kvm::tracee::{kvm_msrs, Tracee};
 use crate::page_math::{self, compute_host_offset};
 use crate::result::Result;
@@ -128,7 +129,7 @@ pub struct Hypervisor {
     /// hypervisor memory where fd_num is mapped to.
     /// sorted by vcpu nr. TODO what if there exist cpu [0, 1, 4]?
     pub vcpu_maps: Vec<Mapping>,
-    tracee: Arc<RwLock<Tracee>>,
+    pub tracee: Arc<RwLock<Tracee>>,
     pub wrapper: Mutex<Option<KvmRunWrapper>>,
 }
 
@@ -253,6 +254,74 @@ impl AsRawFd for IoEventFd {
         self.fd.as_raw_fd()
     }
 }
+
+pub struct IoRegionFd {
+    rfile: RawFd,
+    wfile: RawFd,
+}
+
+fn kvm_ioregionfd(guest_paddr: u64, len: usize, rfd: RawFd, wfd: RawFd) -> kvm_ioregion {
+    kvm_ioregion {
+        guest_paddr,
+        memory_size: len as u64,
+        user_data: 0,
+        rfd,
+        wfd,
+        flags: 0,
+        pad: [0;28],
+    }
+}
+use nix::unistd::mkfifo;
+use nix::sys::stat::Mode;
+use std::path::PathBuf;
+use std::fs::File;
+use nix::sys::socket::{socketpair,AddressFamily,SockType,SockFlag};
+use simple_error::map_err_with;
+impl IoRegionFd {
+    fn new(hv: &Hypervisor, guest_paddr: u64, len: usize) -> Result<Self> {
+        //info!("1");
+        //let rpath = PathBuf::from("/tmp/rfile");
+        //let wpath = PathBuf::from("/tmp/wfile");
+         //TODO give qemu read perms?
+        //info!("2");
+        //try_with!(mkfifo(&rpath, Mode::S_IRWXU), "cannot create read fifo");
+        //try_with!(mkfifo(&wpath, Mode::S_IRWXU), "cannot create write fifo");
+        //info!("3");
+         //TODO this open hangs
+        //let rfile = try_with!(File::open(&rpath), "foo");
+        //let wfile = try_with!(File::open(&wpath), "foo");
+        let (rfile, wfile) = try_with!(socketpair(AddressFamily::Unix, SockType::SeqPacket, None, SockFlag::SOCK_CLOEXEC), "{}");
+        info!(
+            "rfile {:?}, wfile {:?}, guest phys addr {:?}",
+            rfile.as_raw_fd(),
+            wfile.as_raw_fd(),
+            guest_paddr
+        );
+        let hv_rfile = hv.transfer(vec![rfile.as_raw_fd()].as_slice())?[0];
+        let hv_wfile = hv.transfer(vec![wfile.as_raw_fd()].as_slice())?[0]; // TODO dedup
+        let ioregion = kvm_ioregionfd(guest_paddr, len, hv_rfile, hv_wfile);
+        let mem = hv.alloc_mem()?;
+        mem.write(&ioregion)?;
+
+        let ret = {
+            let tracee = try_with!(
+                hv.tracee.read(),
+                "cannot obtain tracee read lock: poinsoned"
+            );
+            try_with!(
+                tracee.vm_ioctl_with_ref(ioctls::KVM_SET_IOREGION(), &mem),
+                "kvm ioeventfd ioctl injection failed"
+            )
+        };
+        log::warn!("ioregionfd ret {}", ret);
+        Ok(IoRegionFd {
+            rfile,
+            wfile,
+        })
+    }
+}
+
+// TODO impl Drop for IoRegionFd
 
 impl Hypervisor {
     fn attach(pid: Pid, vm_fd: RawFd) -> Tracee {
@@ -503,6 +572,10 @@ impl Hypervisor {
         datamatch: Option<u64>,
     ) -> Result<IoEventFd> {
         IoEventFd::new(self, guest_addr, len, datamatch)
+    }
+
+    pub fn ioregionfd(&self) -> Result<IoRegionFd> {
+        IoRegionFd::new(self, 0xd0000000, 8)
     }
 
     /// param `gsi`: pin on the irqchip to be toggled by fd events
