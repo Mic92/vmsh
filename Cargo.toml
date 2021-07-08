@@ -45,6 +45,8 @@ virtio = { path = "src/virtio" }
 env_logger = { version = "0.9.*", default-features = false }
 lazy_static = "*"
 container-pid = "0.1.0"
+num-traits = "0.2"
+num-derive = "0.3"
 
 # src/device/ deps:
 # Switch back to upstream, once https://github.com/rust-vmm/vm-virtio/pull/56 is merged

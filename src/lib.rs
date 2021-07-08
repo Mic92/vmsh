@@ -1,3 +1,6 @@
+#[macro_use]
+extern crate num_derive;
+
 pub mod attach;
 pub mod coredump;
 pub mod cpu;
