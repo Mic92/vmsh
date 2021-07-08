@@ -244,7 +244,7 @@ def qemu_command(image: VmImage, qmp_socket: Path, ssh_port: int = 0) -> List:
         "-device",
         "virtio-serial",
         "-chardev",
-        "stdio,mux=on,id=char0",
+        "stdio,mux=on,id=char0,signal=off",
         "-mon",
         "chardev=char0,mode=readline",
         "-device",

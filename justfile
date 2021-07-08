@@ -163,7 +163,7 @@ qemu EXTRA_CMDLINE="nokalsr": build-linux nixos-image
     -virtfs local,path={{linux_dir}},security_model=none,mount_tag=linux \
     -nographic -serial null -enable-kvm \
     -device virtio-serial \
-    -chardev stdio,mux=on,id=char0 \
+    -chardev stdio,mux=on,id=char0,signal=off \
     -mon chardev=char0,mode=readline \
     -device virtconsole,chardev=char0,id=vmsh,nr=0
 
