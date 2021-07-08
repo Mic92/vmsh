@@ -8,9 +8,9 @@ use std::sync::Mutex;
 use std::time::Duration;
 use vmm_sys_util::eventfd::{EventFd, EFD_NONBLOCK};
 use vmsh::kvm::hypervisor::{get_hypervisor, PhysMem};
+use vmsh::kvm::ioctls;
 use vmsh::result::Result;
 use vmsh::tracer::wrap_syscall::KvmRunWrapper;
-use vmsh::kvm::ioctls;
 
 fn inject(pid: Pid) -> Result<()> {
     let vm = try_with!(get_hypervisor(pid), "cannot get vms for process {}", pid);
@@ -230,7 +230,7 @@ fn ioregionfd(pid: Pid) -> Result<()> {
     }
     println!("caps good");
 
-    let vm_mem = vm.vm_add_mem::<u32>(0xd0000000, true)?;
+    let vm_mem = vm.vm_add_mem::<u32>(0xd0000000, size_of::<u32>(), true)?;
     vm_mem.mem.write(&0xbeef)?;
     println!("foobar");
     let ioeventfd = vm.ioregionfd()?;
@@ -238,24 +238,24 @@ fn ioregionfd(pid: Pid) -> Result<()> {
 
     //use std::io::prelude::*;
     //loop {
-        //match ioeventfd.read() {
-            //Err(e) => {
-                //if e.kind() == std::io::ErrorKind::WouldBlock {
-                    //print!(".");
-                    //std::io::stdout()
-                        //.lock()
-                        //.flush()
-                        //.expect("cannot flush stdout");
-                    //std::thread::sleep(Duration::from_millis(100));
-                //} else {
-                    //bail!("read error {}", e);
-                //}
-            //}
-            //Ok(v) => {
-                //println!("event: {}", v);
-                //break;
-            //}
-        //}
+    //match ioeventfd.read() {
+    //Err(e) => {
+    //if e.kind() == std::io::ErrorKind::WouldBlock {
+    //print!(".");
+    //std::io::stdout()
+    //.lock()
+    //.flush()
+    //.expect("cannot flush stdout");
+    //std::thread::sleep(Duration::from_millis(100));
+    //} else {
+    //bail!("read error {}", e);
+    //}
+    //}
+    //Ok(v) => {
+    //println!("event: {}", v);
+    //break;
+    //}
+    //}
     //}
 
     vm.stop()?;

@@ -268,29 +268,37 @@ fn kvm_ioregionfd(guest_paddr: u64, len: usize, rfd: RawFd, wfd: RawFd) -> kvm_i
         rfd,
         wfd,
         flags: 0,
-        pad: [0;28],
+        pad: [0; 28],
     }
 }
-use nix::unistd::mkfifo;
+use nix::sys::socket::{socketpair, AddressFamily, SockFlag, SockType};
 use nix::sys::stat::Mode;
-use std::path::PathBuf;
-use std::fs::File;
-use nix::sys::socket::{socketpair,AddressFamily,SockType,SockFlag};
+use nix::unistd::mkfifo;
 use simple_error::map_err_with;
+use std::fs::File;
+use std::path::PathBuf;
 impl IoRegionFd {
     fn new(hv: &Hypervisor, guest_paddr: u64, len: usize) -> Result<Self> {
         //info!("1");
         //let rpath = PathBuf::from("/tmp/rfile");
         //let wpath = PathBuf::from("/tmp/wfile");
-         //TODO give qemu read perms?
+        //TODO give qemu read perms?
         //info!("2");
         //try_with!(mkfifo(&rpath, Mode::S_IRWXU), "cannot create read fifo");
         //try_with!(mkfifo(&wpath, Mode::S_IRWXU), "cannot create write fifo");
         //info!("3");
-         //TODO this open hangs
+        //TODO this open hangs
         //let rfile = try_with!(File::open(&rpath), "foo");
         //let wfile = try_with!(File::open(&wpath), "foo");
-        let (rfile, wfile) = try_with!(socketpair(AddressFamily::Unix, SockType::SeqPacket, None, SockFlag::SOCK_CLOEXEC), "{}");
+        let (rfile, wfile) = try_with!(
+            socketpair(
+                AddressFamily::Unix,
+                SockType::SeqPacket,
+                None,
+                SockFlag::SOCK_CLOEXEC
+            ),
+            "{}"
+        );
         info!(
             "rfile {:?}, wfile {:?}, guest phys addr {:?}",
             rfile.as_raw_fd(),
@@ -314,10 +322,7 @@ impl IoRegionFd {
             )
         };
         log::warn!("ioregionfd ret {}", ret);
-        Ok(IoRegionFd {
-            rfile,
-            wfile,
-        })
+        Ok(IoRegionFd { rfile, wfile })
     }
 }
 
