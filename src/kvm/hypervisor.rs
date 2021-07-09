@@ -630,8 +630,8 @@ impl Hypervisor {
         IoEventFd::new(self, guest_addr, len, datamatch)
     }
 
-    pub fn ioregionfd(&self) -> Result<IoRegionFd> {
-        IoRegionFd::new(self, 0xd0000000, 8)
+    pub fn ioregionfd(&self, start: u64, len: usize) -> Result<IoRegionFd> {
+        IoRegionFd::new(self, start, len)
     }
 
     /// param `gsi`: pin on the irqchip to be toggled by fd events
