@@ -335,8 +335,8 @@ impl DeviceSet {
         if log_enabled!(Level::Debug) {
             threads.push(blkdev_monitor_thread(&self.context, err_sender)?);
         }
-        let use_ioregion = true;
-        if !use_ioregion {
+
+        if !devices::USE_IOREGIONFD {
             threads.push(mmio_exit_handler_thread(
                 vm,
                 self.context,
