@@ -75,7 +75,11 @@ fn event_thread(
         move |should_stop: Arc<AtomicBool>| {
             loop {
                 match event_mgr.run_with_timeout(EVENT_LOOP_TIMEOUT_MS) {
-                    Ok(nr) => trace!("EventManager: processed {} events", nr),
+                    Ok(nr) => {
+                        if nr != 0 {
+                            trace!("EventManager: processed {} events", nr)
+                        }
+                    }
                     Err(e) => log::warn!("Failed to handle events: {:?}", e),
                 }
                 {
