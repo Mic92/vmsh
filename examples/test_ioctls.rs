@@ -234,7 +234,7 @@ fn ioregionfd(pid: Pid) -> Result<()> {
     //let vm_mem = vm.vm_add_mem::<u32>(0xd0000000, size_of::<u32>(), true)?;
     //vm_mem.mem.write(&0xbeef)?;
     println!("foobar");
-    let ioregionfd = vm.ioregionfd()?;
+    let ioregionfd = vm.ioregionfd(0xd0000000, 32)?;
     vm.resume()?;
 
     for _ in 0..100 {
