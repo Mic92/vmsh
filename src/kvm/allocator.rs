@@ -18,6 +18,38 @@ pub struct PhysMemAllocator {
     next_allocation: usize,
 }
 
+const ADDRESS_SIZE_FUNCTION: u32 = 0x80000008;
+fn get_first_allocation(hv: &Arc<Hypervisor>) -> Result<usize> {
+    let host_cpuid = unsafe { core::arch::x86_64::__cpuid(ADDRESS_SIZE_FUNCTION) };
+    let vm_cpuid = try_with!(hv.get_cpuid2(&hv.vcpus[0]), "cannot get cpuid2");
+    // Get Virtual and Physical address Sizes
+    let entry = vm_cpuid
+        .entries
+        .iter()
+        .find(|c| c.function == ADDRESS_SIZE_FUNCTION);
+    let entry = require_with!(
+        entry,
+        "could not get the vm's cpuid entry for virtual and physical address size"
+    );
+    // Supported guest physical address size in bits
+    let vm_phys_bits = entry.eax as u8;
+    // Supported guest virtual address size in bits
+    let vm_virt_bits = (entry.eax >> 8) as u8;
+    debug!(
+        "vm/cpu: phys_bits: {}, virt_bits: {}",
+        vm_phys_bits, vm_virt_bits
+    );
+    // Supported host physical address size in bits
+    let host_phys_bits = host_cpuid.eax as u8;
+    // Supported host virtual address size in bits
+    let host_virt_bits = (host_cpuid.eax >> 8) as u8;
+    debug!(
+        "host/cpu: phys_bits: {}, virt_bits: {}",
+        host_phys_bits, host_virt_bits
+    );
+    Ok(std::cmp::min(1 << vm_phys_bits, 1 << host_phys_bits))
+}
+
 impl PhysMemAllocator {
     pub fn new(hv: Arc<Hypervisor>) -> Result<Self> {
         // We only get maps ones. This information could get all if the
@@ -27,28 +59,18 @@ impl PhysMemAllocator {
         // byte limit in the hope that VMs are not getting close to this limit
         // any time soon.
         let maps = try_with!(hv.get_maps(), "cannot vm memory allocations");
-        let cpuid2 = try_with!(hv.get_cpuid2(&hv.vcpus[0]), "cannot get cpuid2");
-        // Get Virtual and Physical address Sizes
-        let entry = cpuid2.entries.iter().find(|c| c.function == 0x80000008);
-        let entry = require_with!(
-            entry,
-            "could not get the vm's cpuid entry for virtual and physical address size"
-        );
-        // Supported physical address size in bits
-        let phys_bits = entry.eax as u8;
-        // Supported virtual address size in bits
-        let virt_bits = (entry.eax >> 8) as u8;
-        debug!("vm/cpu: phys_bits: {}, virt_bits: {}", phys_bits, virt_bits);
 
         let last_mapping = require_with!(
             maps.iter().max_by_key(|m| m.phys_addr + m.size()),
             "vm has no memory assigned"
         )
         .clone();
+        let next_allocation = get_first_allocation(&hv)?;
         Ok(Self {
             hv,
             last_mapping,
-            next_allocation: 1 << phys_bits,
+            next_allocation,
+            //next_allocation: 0xd0000000 + 0x1000 * 2,
         })
     }
 
