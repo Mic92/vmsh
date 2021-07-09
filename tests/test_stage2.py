@@ -22,9 +22,9 @@ def test_stage2(helpers: conftest.Helpers) -> None:
             "-device",
             "virtio-serial",
             "-chardev",
-            f"socket,path={sock_path},server,nowait,id=char0",
+            f"socket,path={sock_path},server,nowait,id=monitor",
             "-device",
-            "virtconsole,chardev=char0,id=vmsh",
+            "virtconsole,chardev=monitor,id=vmsh",
         ]
 
         with helpers.spawn_qemu(helpers.notos_image(), extra_args) as vm:
