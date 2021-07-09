@@ -27,7 +27,7 @@ fn main() {
     }
 
     // Tell Cargo that if the given file changes, to rerun this build script.
-    let srcs = ["build.rs", "module.c", "Makefile"];
+    let srcs = ["stage1.ko", "build.rs", "module.c", "Makefile"];
 
     for src in &srcs {
         println!("cargo:rerun-if-changed=src/stage1/{}", src);

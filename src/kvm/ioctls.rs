@@ -241,3 +241,17 @@ ioctl_ior_nr!(KVM_GET_FPU, KVMIO, 0x8c, kvmb::kvm_fpu);
 ioctl_iow_nr!(KVM_SET_FPU, KVMIO, 0x8d, kvmb::kvm_fpu);
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 ioctl_iowr_nr!(KVM_GET_MSRS, KVMIO, 0x88, kvmb::kvm_msrs);
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+
+/// according to arch/x86/include/asm/kvm_host.h
+pub const KVM_MAX_CPUID_ENTRIES: usize = 256;
+
+/// for simplicity we use a fixed kvm_cpuid2 instead of the dynamic sized kvmb::kvm_cpuid2
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct kvm_cpuid2 {
+    pub nent: u32,
+    pub padding: u32,
+    pub entries: [kvmb::kvm_cpuid_entry2; KVM_MAX_CPUID_ENTRIES],
+}
+ioctl_iowr_nr!(KVM_GET_CPUID2, KVMIO, 0x91, kvmb::kvm_cpuid2);

@@ -8,33 +8,20 @@ use crate::devices::virtio::block::{self, BlockArgs};
 use crate::devices::virtio::console::{self, ConsoleArgs};
 use crate::devices::virtio::{CommonArgs, MmioConfig};
 use crate::kvm::hypervisor::Hypervisor;
+use crate::kvm::PhysMemAllocator;
 use crate::result::Result;
 use crate::tracer::proc::Mapping;
 use libc::pid_t;
 use simple_error::{bail, try_with};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
-use vm_device::bus::{MmioAddress, MmioRange};
 use vm_device::device_manager::MmioManager;
 use vm_memory::guest_memory::GuestAddress;
 use vm_memory::mmap::MmapRegion;
 use vm_memory::GuestMemoryRegion;
 use vm_memory::{GuestMemoryMmap, GuestRegionMmap};
 
-pub use crate::devices::threads::create_devices;
-
-// Where BIOS/VGA magic would live on a real PC.
-#[allow(dead_code)] // FIXME
-const EBDA_START: u64 = 0x9fc00;
-const FIRST_ADDR_PAST_32BITS: u64 = 1 << 32;
-const MEM_32BIT_GAP_SIZE: u64 = 768 << 20;
-/// The start of the memory area reserved for MMIO devices.
-pub const MMIO_MEM_START: u64 = FIRST_ADDR_PAST_32BITS - MEM_32BIT_GAP_SIZE;
-/// max mem space per device
-pub const DEVICE_MAX_MEM: u64 = 0x1000;
-pub const BLOCK_MEM_START: u64 = MMIO_MEM_START;
-pub const CONSOLE_MEM_START: u64 = BLOCK_MEM_START + DEVICE_MAX_MEM;
-pub const MMIO_MEM_STOP: u64 = CONSOLE_MEM_START + DEVICE_MAX_MEM;
+pub use self::threads::DeviceSet;
 
 pub type Block = block::Block<Arc<GuestMemoryMmap>>;
 pub type Console = console::Console<Arc<GuestMemoryMmap>>;
@@ -74,41 +61,61 @@ fn convert(pid: pid_t, mappings: &[Mapping]) -> Result<GuestMemoryMmap> {
     ))
 }
 
-pub struct DeviceSpace {
+pub struct DeviceContext {
     pub blkdev: Arc<Mutex<Block>>,
     pub console: Arc<Mutex<Console>>,
     pub mmio_mgr: Arc<Mutex<IoPirate>>,
+    /// start address of mmio space
+    pub first_mmio_addr: u64,
+    /// start address of mmio space
+    pub last_mmio_addr: u64,
 }
 
-impl DeviceSpace {
+impl DeviceContext {
+    pub fn mmio_addrs(&self) -> Result<Vec<u64>> {
+        Ok(vec![
+            try_with!(self.blkdev.lock(), "cannot lock block device")
+                .mmio_cfg
+                .range
+                .base()
+                .0,
+            try_with!(self.console.lock(), "cannot lock console device")
+                .mmio_cfg
+                .range
+                .base()
+                .0,
+        ])
+    }
     pub fn new(
         vmm: &Arc<Hypervisor>,
+        allocator: &mut PhysMemAllocator,
         event_mgr: &mut SubscriberEventManager,
         backing: &Path,
-    ) -> Result<DeviceSpace> {
+    ) -> Result<DeviceContext> {
         let guest_memory = try_with!(vmm.get_maps(), "cannot get guests memory");
         let mem = Arc::new(try_with!(
             convert(vmm.pid.as_raw(), &guest_memory),
             "cannot convert Mapping to GuestMemoryMmap"
         ));
 
-        let block_range = MmioRange::new(MmioAddress(BLOCK_MEM_START), 0x1000).unwrap();
         let block_mmio_cfg = MmioConfig {
-            range: block_range,
+            range: allocator.alloc_mmio_range(0x1000)?,
             gsi: 5,
         };
 
-        let console_range = MmioRange::new(MmioAddress(CONSOLE_MEM_START), 0x1000).unwrap();
         let console_mmio_cfg = MmioConfig {
-            range: console_range,
+            range: allocator.alloc_mmio_range(0x1000)?,
             gsi: 5,
         };
+
+        let first_mmio_addr = console_mmio_cfg.range.base().0;
+        let last_mmio_addr = block_mmio_cfg.range.last().0;
 
         // IoManager replacement:
         let device_manager = Arc::new(Mutex::new(IoPirate::default()));
         let blkdev = {
             let guard = device_manager.lock().unwrap();
-            guard.mmio_device(MmioAddress(BLOCK_MEM_START));
+            guard.mmio_device(block_mmio_cfg.range.base());
 
             let common = CommonArgs {
                 mem: Arc::clone(&mem),
@@ -131,7 +138,7 @@ impl DeviceSpace {
         };
         let console = {
             let guard = device_manager.lock().unwrap();
-            guard.mmio_device(MmioAddress(CONSOLE_MEM_START));
+            guard.mmio_device(console_mmio_cfg.range.base());
 
             let common = CommonArgs {
                 mem,
@@ -148,10 +155,12 @@ impl DeviceSpace {
             }
         };
 
-        let device = DeviceSpace {
+        let device = DeviceContext {
             blkdev,
             console,
             mmio_mgr: device_manager,
+            first_mmio_addr,
+            last_mmio_addr,
         };
 
         Ok(device)

@@ -76,25 +76,45 @@ clone-linux:
   fi
 
 # Configure linux kernel build
-configure-linux: clone-linux
+configure-linux: #clone-linux
   #!/usr/bin/env bash
-  set -euxo pipefail
+  set -xeuo pipefail
   if [[ ! -f {{linux_dir}}/.config ]]; then
     cd {{linux_dir}}
-    {{kernel_fhs}} "make x86_64_defconfig kvm_guest.config"
-    {{kernel_fhs}} "scripts/config --set-val DEBUG_INFO_DWARF5 y"
-    {{kernel_fhs}} "scripts/config --set-val DEBUG y"
-    {{kernel_fhs}} "scripts/config --set-val GDB_SCRIPTS y"
-    {{kernel_fhs}} "scripts/config --set-val DEBUG_DRIVER y"
-    {{kernel_fhs}} "scripts/config --set-val KVM y"
-    {{kernel_fhs}} "scripts/config --set-val KVM_INTEL y"
-    {{kernel_fhs}} "scripts/config --set-val BPF_SYSCALL y"
-    {{kernel_fhs}} "scripts/config --set-val IKHEADERS y"
-    {{kernel_fhs}} "scripts/config --set-val IKCONFIG_PROC y"
-    {{kernel_fhs}} "scripts/config --set-val VIRTIO_MMIO y"
-    {{kernel_fhs}} "scripts/config --set-val DRM n"
-    {{kernel_fhs}} "scripts/config --set-val PTDUMP_CORE y"
-    {{kernel_fhs}} "scripts/config --set-val PTDUMP_DEBUGFS y"
+    {{kernel_fhs}} "make defconfig kvm_guest.config"
+    {{kernel_fhs}} "scripts/config \
+       --disable DRM \
+       --disable USB \
+       --disable WIRELESS \
+       --disable WLAN \
+       --disable SOUND \
+       --disable SND \
+       --disable HID \
+       --disable INPUT \
+       --disable NFS_FS \
+       --disable ETHERNET \
+       --disable NETFILTER \
+       --enable DEBUG_INFO_DWARF5 \
+       --enable DEBUG \
+       --enable GDB_SCRIPTS \
+       --enable DEBUG_DRIVER \
+       --enable KVM \
+       --enable BPF_SYSCALL \
+       --enable FTRACE_SYSCALLS \
+       --enable IKHEADERS \
+       --enable IKCONFIG_PROC \
+       --enable VIRTIO_MMIO \
+       --enable PTDUMP_CORE \
+       --enable PTDUMP_DEBUGFS \
+       --enable OVERLAY_FS \
+       --enable SQUASHFS \
+       --enable SQUASHFS_XZ \
+       --enable SQUASHFS_FILE_DIRECT \
+       --disable SQUASHFS_FILE_CACHE \
+       --enable SQUASHFS_DECOMP_MULTI \
+       --disable SQUASHFS_DECOMP_SINGLE \
+       --disable SQUASHFS_DECOMP_MULTI_PERCPU \
+    "
   fi
 
 # Sign drone ci configuration
@@ -125,12 +145,18 @@ notos-image:
 
 # built image for qemu_nested.sh
 nested-nixos-image: nixos-image
-  [[ {{linux_dir}}/nixos.ext4 -nt {{linux_dir}}/nixos-nested.ext4 ]] || \
-  cp --reflink=auto "{{linux_dir}}/nixos.ext4" {{linux_dir}}/nixos-nested.ext4
+  #!/usr/bin/env bash
+  set -eux -o pipefail
+  if [[ ! -e {{linux_dir}}/nixos-nested.ext4 ]] || [[ {{linux_dir}}/nixos.ext4 -nt {{linux_dir}}/nixos-nested.ext4 ]]; then
+    cp -a --reflink=auto "{{linux_dir}}/nixos.ext4" {{linux_dir}}/nixos-nested.ext4
+  fi
 
 vmsh-image: nixos-image
-  [[ {{linux_dir}}/nixos.ext4 -nt {{linux_dir}}/vmsh-image.ext4 ]] || \
-  cp --reflink=auto "{{linux_dir}}/nixos.ext4" {{linux_dir}}/vmsh-image.ext4
+  #!/usr/bin/env bash
+  set -eux -o pipefail
+  if [[ ! -e {{linux_dir}}/vmsh-image.ext4 ]] || [[ {{linux_dir}}/nixos.ext4 -nt {{linux_dir}}/vmsh-image.ext4 ]]; then
+      cp -a --reflink=auto "{{linux_dir}}/nixos.ext4" {{linux_dir}}/vmsh-image.ext4
+  fi
 
 # run qemu with kernel build by `build-linux` and filesystem image build by `nixos-image`
 qemu EXTRA_CMDLINE="nokalsr": build-linux nixos-image
@@ -146,7 +172,7 @@ qemu EXTRA_CMDLINE="nokalsr": build-linux nixos-image
     -virtfs local,path={{linux_dir}},security_model=none,mount_tag=linux \
     -nographic -serial null -enable-kvm \
     -device virtio-serial \
-    -chardev stdio,mux=on,id=char0 \
+    -chardev stdio,mux=on,id=char0,signal=off \
     -mon chardev=char0,mode=readline \
     -device virtconsole,chardev=char0,id=vmsh,nr=0
 
@@ -155,9 +181,11 @@ qemu-notos:
   #!/usr/bin/env python3
   import sys, os, subprocess
   sys.path.insert(0, os.path.join("{{invocation_directory()}}", "tests"))
-  from nix import notos_image
+  from nix import notos_image, notos_image_custom_kernel
   from qemu import qemu_command
-  cmd = qemu_command(notos_image(), "qmp.sock", ssh_port={{qemu_ssh_port}})
+  #image = notos_image()
+  image = notos_image_custom_kernel()
+  cmd = qemu_command(image, "qmp.sock", ssh_port={{qemu_ssh_port}})
   print(" ".join(cmd))
   subprocess.run(cmd)
 
@@ -196,7 +224,7 @@ build-debug-kernel-mod:
 
 # Load debug kernel module into VM started by `just qemu` using ssh
 load-debug-kernel-mod: build-debug-kernel-mod
-  just ssh-qemu "rmmod debug-kernel-mod; insmod /mnt/vmsh/tests/debug-kernel-mod/debug-kernel-mod.ko && dmesg"
+  just qemu_ssh_port={{qemu_ssh_port}} ssh-qemu "rmmod debug-kernel-mod; insmod /mnt/vmsh/tests/debug-kernel-mod/debug-kernel-mod.ko && dmesg"
 
 attach-qemu-img: nixos-image
   cargo run -- \
@@ -206,7 +234,7 @@ attach-qemu-img: nixos-image
 
 # Attach block device to first qemu vm found by pidof and owned by our own user
 attach-qemu: vmsh-image
-  cargo run -- attach -f "{{linux_dir}}/nixos.ext4" "{{qemu_pid}}" --ssh-args " -i {{invocation_directory()}}/nix/ssh_key -p {{qemu_ssh_port}} root@localhost" -- /nix/var/nix/profiles/system/sw/bin/ls -la
+  cargo run -- attach -f "{{linux_dir}}/vmsh-image.ext4" "{{qemu_pid}}" --ssh-args " -i {{invocation_directory()}}/nix/ssh_key -p {{qemu_ssh_port}} root@localhost" -- /nix/var/nix/profiles/system/sw/bin/ls -la
 
 # Inspect first qemu vm found by pidof and owned by our own user
 inspect-qemu:
@@ -220,7 +248,9 @@ coredump-qemu:
 trace-qemu:
   perf trace -p "{{qemu_pid}}"
 
-# Start subshell with capabilities/permissions suitable for vmsh
+clean-coredumps:
+  rm -f core.*
+
 capsh:
   @ if [ -n "${IN_CAPSH:-}" ]; then \
     echo "you are already in a capsh session"; exit 1; \

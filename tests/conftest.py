@@ -5,11 +5,10 @@ import os
 import subprocess
 import sys
 import threading
-from contextlib import contextmanager
 from pathlib import Path
 from queue import Queue
 from shlex import quote
-from typing import Any, Iterator, List, Type, Union, Callable, Optional
+from typing import Any, List, Type, Union, Callable, Optional
 
 import pytest
 from qemu import QemuVm, VmImage, spawn_qemu
@@ -37,21 +36,6 @@ def build_artifacts() -> Path:
     if _build_artifacts is None:
         _build_artifacts = cargo_build()
     return _build_artifacts
-
-
-@contextmanager
-def ensure_debugfs_access() -> Iterator[None]:
-    uid = os.getuid()
-    if os.stat("/sys/kernel/debug/").st_uid != uid:
-        subprocess.run(
-            ["sudo", "chown", "-R", str(uid), "/sys/kernel/debug"], check=True
-        )
-        try:
-            yield
-        finally:
-            subprocess.run(["sudo", "chown", "-R", "0", "/sys/kernel/debug"])
-    else:
-        yield
 
 
 EOF = 1
@@ -119,32 +103,31 @@ def spawn_vmsh_command(args: List[str], cargo_executable: str = "vmsh") -> VmshP
     uid = os.getuid()
     gid = os.getuid()
     groups = ",".join(map(str, os.getgroups()))
-    with ensure_debugfs_access():
-        cmd = [str(build_artifacts().joinpath(cargo_executable))]
-        cmd += args
-        cmd_quoted = " ".join(map(quote, cmd))
+    cmd = [str(build_artifacts().joinpath(cargo_executable))]
+    cmd += args
+    cmd_quoted = " ".join(map(quote, cmd))
 
-        cmd = [
-            "sudo",
-            "-E",
-            "capsh",
-            "--caps=cap_sys_ptrace,cap_dac_override,cap_sys_admin,cap_sys_resource+epi cap_setpcap,cap_setuid,cap_setgid+ep",
-            "--keep=1",
-            f"--groups={groups}",
-            f"--gid={gid}",
-            f"--uid={uid}",
-            "--addamb=cap_sys_resource",
-            "--addamb=cap_dac_override",
-            "--addamb=cap_sys_admin",
-            "--addamb=cap_sys_ptrace",
-            "--",
-            "-c",
-            cmd_quoted,
-        ]
-        print("$ " + " ".join(map(quote, cmd)))
-        p = VmshPopen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        p.process_stdout()
-        return p
+    cmd = [
+        "sudo",
+        "-E",
+        "capsh",
+        "--caps=cap_sys_ptrace,cap_dac_override,cap_sys_admin,cap_sys_resource+epi cap_setpcap,cap_setuid,cap_setgid+ep",
+        "--keep=1",
+        f"--groups={groups}",
+        f"--gid={gid}",
+        f"--uid={uid}",
+        "--addamb=cap_sys_resource",
+        "--addamb=cap_dac_override",
+        "--addamb=cap_sys_admin",
+        "--addamb=cap_sys_ptrace",
+        "--",
+        "-c",
+        cmd_quoted,
+    ]
+    print("$ " + " ".join(map(quote, cmd)))
+    p = VmshPopen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    p.process_stdout()
+    return p
 
 
 class Helpers:

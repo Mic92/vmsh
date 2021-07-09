@@ -1,7 +1,6 @@
 use libc::{c_int, c_long, c_ulong, c_void, off_t, pid_t, size_t, ssize_t, SYS_munmap};
 use libc::{SYS_getpid, SYS_ioctl, SYS_mmap};
 use log::debug;
-use nix::sys::signal::Signal;
 use nix::sys::wait::{waitpid, WaitStatus};
 use nix::unistd::Pid;
 use simple_error::{bail, try_with};
@@ -327,51 +326,33 @@ impl Process {
         self.syscall(&args).map(|v| v as c_int)
     }
 
+    fn wait_for_syscall(&self) -> Result<()> {
+        loop {
+            try_with!(self.main_thread().syscall(), "ptrace_syscall() failed");
+            let status = try_with!(waitpid(self.main_thread().tid, None), "waitpid failed");
+
+            match status {
+                WaitStatus::PtraceSyscall(_) => return Ok(()),
+                WaitStatus::Exited(_, status) => bail!("process exited with: {}", status),
+                _ => {}
+            }
+        }
+    }
+
     fn syscall(&self, regs: &Regs) -> Result<isize> {
         self.check_owner()?;
         try_with!(
             self.main_thread().setregs(regs),
             "cannot set system call args"
         );
-        loop {
-            // FIXME: on arm we would need PTRACE_SET_SYSCALL
-            // stops before sycall
-            try_with!(self.main_thread().syscall(), "cannot run syscall in thread");
-
-            let mut status = try_with!(waitpid(self.main_thread().tid, None), "waitpid failed");
-
-            if let WaitStatus::Stopped(_, Signal::SIGTRAP) = status {
-                // traps after sycall
-                try_with!(self.main_thread().syscall(), "cannot run syscall in thread");
-                status = try_with!(waitpid(self.main_thread().tid, None), "waitpid failed");
-            }
-
-            match status {
-                WaitStatus::PtraceEvent(_, _, _) => {
-                    bail!("got unexpected ptrace event")
-                }
-                WaitStatus::PtraceSyscall(_) => {
-                    bail!("got unexpected ptrace syscall event")
-                }
-                WaitStatus::StillAlive => {
-                    bail!("got unexpected still-alive waitpid() event")
-                }
-                WaitStatus::Continued(_) => {} // noop
-                WaitStatus::Stopped(_, Signal::SIGTRAP) => {
-                    let result_regs =
-                        try_with!(self.main_thread().getregs(), "cannot syscall results");
-                    assert!(self.saved_regs.ip() == result_regs.ip() - cpu::SYSCALL_SIZE as u64);
-                    return Ok(result_regs.syscall_ret() as isize);
-                }
-                WaitStatus::Stopped(_, signal) => {
-                    bail!("process was stopped by by signal: {}", signal);
-                }
-                WaitStatus::Exited(_, status) => bail!("process exited with: {}", status),
-                WaitStatus::Signaled(_, signal, _) => {
-                    bail!("process was stopped by signal: {}", signal)
-                }
-            }
-        }
+        // FIXME: on arm we would need PTRACE_SET_SYSCALL
+        // stops before syscall
+        try_with!(self.wait_for_syscall(), "failed to trap before syscall");
+        // traps after syscall
+        try_with!(self.wait_for_syscall(), "failed to trap after syscall");
+        let result_regs = try_with!(self.main_thread().getregs(), "cannot syscall results");
+        assert!(self.saved_regs.ip() == result_regs.ip() - cpu::SYSCALL_SIZE as u64);
+        Ok(result_regs.syscall_ret() as isize)
     }
 
     pub fn main_thread(&self) -> &ptrace::Thread {

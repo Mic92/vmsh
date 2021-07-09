@@ -143,7 +143,7 @@ pub fn attach_seize(tid: Pid) -> Result<()> {
     // seize seems to be more modern and versatile than `ptrace::attach()`: continue, stop and
     // detach from tracees at (almost) any time
     try_with!(
-        ptrace::seize(tid, ptrace::Options::empty()),
+        ptrace::seize(tid, ptrace::Options::PTRACE_O_TRACESYSGOOD),
         "cannot seize the process"
     );
     try_with!(interrupt(tid), "cannot interrupt/stop the tracee");

@@ -167,21 +167,15 @@ impl Thread {
                 self.ptthread.tid
             );
             match status {
-                WaitStatus::PtraceEvent(pid, _signal, event) => {
-                    if pid != self.ptthread.tid {
-                        continue;
-                    }
-                    if event == libc::PTRACE_EVENT_STOP {
+                WaitStatus::PtraceSyscall(pid)
+                | WaitStatus::PtraceEvent(pid, Signal::SIGSTOP, _) => {
+                    if pid == self.ptthread.tid {
                         break;
                     }
                 }
-                WaitStatus::Stopped(pid, _signal) => {
-                    if pid != self.ptthread.tid {
-                        continue;
-                    }
-                    break;
+                o => {
+                    dbg!(o);
                 }
-                _ => {}
             }
         }
         Ok(())
@@ -354,29 +348,14 @@ impl KvmRunWrapper {
 
     fn process_status(&mut self, status: WaitStatus) -> Result<Option<MmioRw>> {
         match status {
-            WaitStatus::PtraceEvent(_, _, _) => {
-                bail!("got unexpected ptrace event")
-            }
-            WaitStatus::PtraceSyscall(_) => {
-                bail!("got unexpected ptrace syscall event")
-            }
-            WaitStatus::StillAlive => {
-                bail!("got unexpected still-alive waitpid() event")
-            }
-            WaitStatus::Continued(_) => {
-                warn!("WaitStatus::Continued");
-            } // noop
-            WaitStatus::Stopped(pid, signal) => {
-                return self.stopped(pid, &signal);
+            WaitStatus::PtraceSyscall(pid) => {
+                return self.stopped(pid);
             }
             WaitStatus::Exited(tid, status) => {
                 warn!("thread {} exited with: {}", tid, status);
                 self.drop_thread(tid);
-                return Ok(None);
             }
-            WaitStatus::Signaled(_, signal, _) => {
-                bail!("process was stopped by signal: {}", signal)
-            }
+            _ => {}
         }
         Ok(None)
     }
@@ -400,7 +379,7 @@ impl KvmRunWrapper {
         }
     }
 
-    fn stopped(&mut self, pid: Pid, _signal: &Signal) -> Result<Option<MmioRw>> {
+    fn stopped(&mut self, pid: Pid) -> Result<Option<MmioRw>> {
         let thread: &mut Thread = match self
             .threads
             .iter_mut()

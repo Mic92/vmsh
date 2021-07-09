@@ -76,6 +76,7 @@ fn write_padded(f: &mut dyn Write, bytes: &[u8], padded_size: usize) -> Result<(
 fn stage1_thread(
     ssh_args: String,
     command: &[String],
+    mmio_addrs: Vec<u64>,
     should_stop: Arc<AtomicBool>,
 ) -> Result<Stage1> {
     std::thread::sleep(Duration::from_millis(3000));
@@ -83,6 +84,12 @@ fn stage1_thread(
     let debug_stage1 = if log_enabled!(Level::Debug) { "x" } else { "" };
 
     let stage1_size = padded_size(STAGE1_EXE.len());
+    let mmio_addrs = mmio_addrs
+        .iter()
+        .cloned()
+        .map(|a| a.to_string())
+        .collect::<Vec<_>>()
+        .join(",");
     let mut child = ssh_command(&ssh_args, move |cmd| -> &mut Command {
         let script = format!(
             r#"
@@ -92,11 +99,12 @@ trap "rm -rf '$tmpdir'" EXIT
 dd if=/proc/self/fd/0 of="$tmpdir/stage1.ko" count={} bs=512
 # cleanup old driver if still loaded
 rmmod stage1 2>/dev/null || true
-insmod "$tmpdir/stage1.ko" stage2_argv="{}"
+insmod "$tmpdir/stage1.ko" devices="{}" stage2_argv="{}"
 "#,
             debug_stage1,
             stage1_size / 512,
-            command.join(",")
+            mmio_addrs,
+            command.join(","),
         );
         cmd.stdin(Stdio::piped()).arg(script)
     })?;
@@ -150,6 +158,7 @@ insmod "$tmpdir/stage1.ko" stage2_argv="{}"
 pub fn spawn_stage1(
     ssh_args: &str,
     command: &[String],
+    mmio_ranges: Vec<u64>,
     result_sender: &SyncSender<()>,
 ) -> Result<InterrutableThread<Stage1>> {
     let ssh_args = ssh_args.to_string();
@@ -160,7 +169,7 @@ pub fn spawn_stage1(
         result_sender,
         move |should_stop: Arc<AtomicBool>| {
             // wait until vmsh can process block device requests
-            stage1_thread(ssh_args, &command, should_stop)
+            stage1_thread(ssh_args, &command, mmio_ranges, should_stop)
         },
     );
     Ok(try_with!(res, "failed to create stage1 thread"))

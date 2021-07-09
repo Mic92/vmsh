@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use std::sync::mpsc::sync_channel;
 use std::sync::Arc;
 
-use crate::devices::create_devices;
+use crate::devices::DeviceSet;
 use crate::result::Result;
 use crate::stage1::spawn_stage1;
 use crate::{kvm, signal_handler};
@@ -27,19 +27,30 @@ pub fn attach(opts: &AttachOptions) -> Result<()> {
     ));
     vm.stop()?;
 
+    let mut allocator = try_with!(
+        kvm::PhysMemAllocator::new(Arc::clone(&vm)),
+        "cannot create allocator"
+    );
+
     let (sender, receiver) = sync_channel(1);
 
     signal_handler::setup(&sender)?;
 
-    let stage1 = try_with!(
-        spawn_stage1(opts.ssh_args.as_str(), &opts.command, &sender),
-        "stage1 failed"
-    );
-
-    let threads = try_with!(
-        create_devices(&vm, &sender, &opts.backing),
+    let devices = try_with!(
+        DeviceSet::new(&vm, &mut allocator, &opts.backing),
         "cannot create devices"
     );
+
+    let stage1 = try_with!(
+        spawn_stage1(
+            opts.ssh_args.as_str(),
+            &opts.command,
+            devices.mmio_addrs()?,
+            &sender
+        ),
+        "stage1 failed"
+    );
+    let threads = try_with!(devices.start(&vm, &sender), "failed to start devices");
 
     info!("blkdev queue ready.");
     drop(sender);

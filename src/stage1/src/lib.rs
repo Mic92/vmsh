@@ -9,7 +9,6 @@ use core::panic::PanicInfo;
 use core::ptr;
 
 // used by our driver
-const MMIO_BASE: usize = 0xd0000000;
 const MMIO_SIZE: usize = 0x1000;
 const MMIO_IRQ: usize = 5;
 // chosen randomly, hopefully unused
@@ -39,21 +38,21 @@ const STAGE2_EXE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/stage2"));
 
 /// This function is called on panic.
 #[panic_handler]
-fn panic(info: &PanicInfo) -> ! {
-    if let Some(location) = info.location() {
-        printkln!(
-            "[stage1] panic occurred at\n{}:{}",
-            location.file(),
-            location.line(),
-        );
-        // we don't seem to have enough stack space to print this?
-        //if let Some(s) = info.payload().downcast_ref::<&str>() {
-        //    printk!("cause: {:?}\n", s);
-        //}
-    } else {
-        printkln!("[stage1] panic occurred at unknown location...");
+fn panic(_info: &PanicInfo) -> ! {
+    // static assertion to make sure our code never uses a panic
+    extern "C" {
+        #[cfg_attr(
+            target_family = "unix",
+            link_name = "\n\n\x1b[s\x1b[1000D\x1b[0;31m\x1b[1merror\x1b[0m\x1b[1m: the static assertion that no panics are present has failed\x1b[0m\x1b[u\n\n"
+        )]
+        #[cfg_attr(
+            not(target_family = "unix"),
+            link_name = "\n\nerror: the static assertion that no panics are present has failed\n\n"
+        )]
+        fn never_panic() -> !;
     }
-    loop {}
+
+    unsafe { never_panic() }
 }
 
 // from the linux kernel, see `struct resource`
@@ -105,7 +104,6 @@ extern "C" {
     ) -> *mut platform_device;
     pub fn platform_device_unregister(pdev: *mut platform_device);
     pub fn memcpy(dest: *mut libc::c_void, src: *const libc::c_void, count: libc::size_t);
-
     pub fn filp_open(name: *const libc::c_char, flags: libc::c_int, mode: umode_t) -> *mut file;
     pub fn filp_close(filp: *mut file, id: *mut libc::c_void) -> libc::c_int;
     pub fn kernel_write(
@@ -133,7 +131,47 @@ extern "C" {
 
     pub fn wake_up_process(p: *mut task_struct);
     pub fn kthread_stop(k: *mut task_struct) -> libc::c_int;
+    pub fn printk(fmt: *const libc::c_char, ...);
 }
+
+static mut RESOURCES: [resource; 2] = [
+    resource {
+        name: ptr::null(),
+        flags: IORESOURCE_MEM,
+        start: 0,
+        end: 0,
+        desc: 0,
+        parent: ptr::null_mut(),
+        sibling: ptr::null_mut(),
+        child: ptr::null_mut(),
+    },
+    resource {
+        name: ptr::null(),
+        flags: IORESOURCE_IRQ,
+        start: 0,
+        end: 0,
+        desc: 0,
+        parent: ptr::null_mut(),
+        sibling: ptr::null_mut(),
+        child: ptr::null_mut(),
+    },
+];
+
+static mut INFO: platform_device_info = platform_device_info {
+    parent: ptr::null_mut(),
+    fwnode: ptr::null_mut(),
+    of_node_reused: false,
+    name: b"virtio-mmio\0".as_ptr() as *const i8,
+    id: 0,
+    res: unsafe { RESOURCES.as_ptr() },
+    // not stable yet
+    //num_res: resources.as_slice.size(),
+    num_res: 2,
+    data: ptr::null(),
+    size_data: 0,
+    dma_mask: 0,
+    properties: ptr::null(),
+};
 
 unsafe fn register_virtio_mmio(
     id: libc::c_int,
@@ -141,46 +179,14 @@ unsafe fn register_virtio_mmio(
     size: usize,
     irq: usize,
 ) -> Result<PlatformDevice, libc::c_int> {
-    let resources: [resource; 2] = [
-        resource {
-            name: ptr::null(),
-            flags: IORESOURCE_MEM,
-            start: base,
-            end: base + size - 1,
-            desc: 0,
-            parent: ptr::null_mut(),
-            sibling: ptr::null_mut(),
-            child: ptr::null_mut(),
-        },
-        resource {
-            name: ptr::null(),
-            flags: IORESOURCE_IRQ,
-            start: irq,
-            end: irq,
-            desc: 0,
-            parent: ptr::null_mut(),
-            sibling: ptr::null_mut(),
-            child: ptr::null_mut(),
-        },
-    ];
+    // we need to use static here to no got out of stack memory
+    RESOURCES[0].start = base;
+    RESOURCES[0].end = base + size - 1;
+    RESOURCES[1].start = irq;
+    RESOURCES[1].end = irq;
+    INFO.id = id;
 
-    let info = platform_device_info {
-        parent: ptr::null_mut(),
-        fwnode: ptr::null_mut(),
-        of_node_reused: false,
-        name: b"virtio-mmio\0".as_ptr() as *const i8,
-        id,
-        res: resources.as_ptr(),
-        // not stable yet
-        //num_res: resources.as_slice.size(),
-        num_res: 2,
-        data: ptr::null(),
-        size_data: 0,
-        dma_mask: 0,
-        properties: ptr::null(),
-    };
-
-    let dev = platform_device_register_full(&info);
+    let dev = platform_device_register_full(&INFO);
     if is_err_value(dev) {
         return Err(err_value(dev) as libc::c_int);
     }
@@ -188,8 +194,9 @@ unsafe fn register_virtio_mmio(
 }
 
 /// Holds the device we create by this code, so we can unregister it later
-static mut BLK_DEV: Option<PlatformDevice> = None;
-static mut CONSOLE_DEV: Option<PlatformDevice> = None;
+const MAX_DEVICES: usize = 3;
+static mut DEVICES: [Option<PlatformDevice>; MAX_DEVICES] = [None, None, None];
+static mut DEVICE_ADDRS: [libc::c_ulonglong; MAX_DEVICES] = [0; MAX_DEVICES];
 static mut STAGE2_SPAWNER: Option<*mut task_struct> = None;
 
 /// re-implementation of IS_ERR_VALUE
@@ -258,20 +265,47 @@ impl Drop for KFile {
     fn drop(&mut self) {
         let res = unsafe { filp_close(self.file, ptr::null_mut()) };
         if res != 0 {
-            printkln!("stage1: error closing file: {}", res)
+            printkln!("stage1: error closing file: %d", res)
         }
     }
 }
 
-static mut STAGE2_PATH: &str = c_str!("/dev/.vmsh");
+static STAGE2_PATH: &str = c_str!("/dev/.vmsh");
+static mut STAGE2_ARGV: [*mut libc::c_char; 256] = [ptr::null_mut(); 256];
 
-unsafe extern "C" fn spawn_stage2(_data: *mut libc::c_void) -> libc::c_int {
+unsafe extern "C" fn spawn_stage2(_arg: *mut libc::c_void) -> libc::c_int {
+    for (i, addr) in DEVICE_ADDRS.iter().enumerate() {
+        if *addr == 0 {
+            continue;
+        }
+        printkln!("stage1: init dev at 0x%llx", *addr);
+        match register_virtio_mmio(
+            MMIO_DEVICE_ID + (i as i32),
+            *addr as usize,
+            MMIO_SIZE,
+            MMIO_IRQ,
+        ) {
+            Ok(v) => {
+                if let Some(elem) = DEVICES.get_mut(i) {
+                    *elem = Some(v);
+                } else {
+                    printkln!("stage1: out-of-bound write to devs");
+                    return -libc::EFAULT;
+                }
+            }
+            Err(res) => {
+                printkln!("stage1: failed to register block mmio device: %d", res);
+                return res;
+            }
+        };
+    }
+
     // we never delete this file, however deleting files is complex and requires accessing
     // internal structs that might change.
     let mut file = match KFile::open(STAGE2_PATH, libc::O_WRONLY | libc::O_CREAT, 0o755) {
         Ok(f) => f,
         Err(e) => {
-            printkln!("stage1: cannot open /dev/.vmsh: {}", e);
+            printkln!("stage1: cannot open /dev/.vmsh: %d", e);
             return e;
         }
     };
@@ -279,8 +313,7 @@ unsafe extern "C" fn spawn_stage2(_data: *mut libc::c_void) -> libc::c_int {
         Ok(n) => {
             if n != STAGE2_EXE.len() {
                 printkln!(
-                    "{}: incomplete write ({} != {})",
-                    STAGE2_PATH,
+                    "/dev/.vmsh: incomplete write (%zu != %zu)",
                     n,
                     STAGE2_EXE.len()
                 );
@@ -288,7 +321,7 @@ unsafe extern "C" fn spawn_stage2(_data: *mut libc::c_void) -> libc::c_int {
             }
         }
         Err(res) => {
-            printkln!("stage1: cannot write /dev/.vmsh: {}", res);
+            printkln!("stage1: cannot write /dev/.vmsh: %d", res);
             return res;
         }
     }
@@ -296,63 +329,55 @@ unsafe extern "C" fn spawn_stage2(_data: *mut libc::c_void) -> libc::c_int {
     flush_delayed_fput();
 
     let mut envp: [*mut libc::c_char; 1] = [ptr::null_mut()];
-    let mut argv: [*mut libc::c_char; 256] = [ptr::null_mut(); 256];
-    argv[0] = STAGE2_PATH.as_ptr() as *mut libc::c_char;
-    // clone_from_slice uses wrong relocation type
-    memcpy(
-        argv.as_ptr().add(1) as *mut libc::c_void,
-        STAGE2_OPTS.argv as *mut libc::c_void,
-        (STAGE2_OPTS.argc as usize) * size_of::<*mut libc::c_char>(),
-    );
 
     let res = call_usermodehelper(
         STAGE2_PATH.as_ptr() as *mut libc::c_char,
-        argv.as_mut_ptr(),
+        STAGE2_ARGV.as_mut_ptr(),
         envp.as_mut_ptr(),
         UMH_WAIT_EXEC,
     );
     if res != 0 {
-        printkln!("stage1: failed to spawn stage2: {}", res);
+        printkln!("stage1: failed to spawn stage2: %d", res);
     }
     res
 }
-
-struct Stage2Opts {
-    argc: libc::c_int,
-    argv: *mut *mut libc::c_char,
-}
-static mut STAGE2_OPTS: Stage2Opts = Stage2Opts {
-    argc: 0,
-    argv: ptr::null_mut(),
-};
-
 
 /// # Safety
 ///
 /// this code is not thread-safe as it uses static globals
 #[no_mangle]
-pub unsafe fn init_vmsh_stage1(argc: libc::c_int, argv: *mut *mut libc::c_char) -> libc::c_int {
-    printkln!("stage1: init with {} arguments", argc);
-
-    let blk_dev = match register_virtio_mmio(MMIO_DEVICE_ID, MMIO_BASE, MMIO_SIZE, MMIO_IRQ) {
-        Ok(v) => Some(v),
-        Err(res) => {
-            printkln!("stage1: failed to register block mmio device: {}", res);
-            return res;
+unsafe fn init_vmsh_stage1(
+    devices_num: libc::c_int,
+    devices: *mut libc::c_ulonglong,
+    argc: libc::c_int,
+    argv: *mut *mut libc::c_char,
+) -> libc::c_int {
+    printkln!("stage1: init with %d arguments", argc);
+    for i in 0..(devices_num as usize) {
+        if let Some(addr) = DEVICE_ADDRS.get_mut(i) {
+            *addr = *devices.add(i);
+        } else {
+            printkln!(
+                "stage1: received too many devices, expect 1-3, got: %d",
+                devices_num
+            );
+            return -libc::EINVAL;
         }
-    };
-    printkln!("stage1: virt-blk driver set up");
+    }
 
-    let console_dev = match register_virtio_mmio(MMIO_DEVICE_ID + 1, MMIO_BASE + MMIO_SIZE, MMIO_SIZE, MMIO_IRQ) {
-        Ok(v) => Some(v),
-        Err(res) => {
-            printkln!("stage1: failed to register console mmio device: {}", res);
-            return res;
-        }
-    };
-    printkln!("stage1: virt-console driver set up");
+    STAGE2_ARGV[0] = STAGE2_PATH.as_ptr() as *mut libc::c_char;
 
-    STAGE2_OPTS = Stage2Opts { argc, argv };
+    // argv = [ STAGE_PATH, args..., NULL ];
+    if (argc + 2) as usize > STAGE2_ARGV.len() {
+        printkln!("stage1: too many arguments passed to stage2");
+        return -libc::E2BIG;
+    }
+
+    memcpy(
+        STAGE2_ARGV.as_ptr().add(1) as *mut libc::c_void,
+        argv as *mut libc::c_void,
+        (argc as usize) * size_of::<*mut libc::c_char>(),
+    );
 
     // We cannot close a file synchronusly outside of a kthread
     // Within a kthread we can use `flush_delayed_fput`
@@ -360,20 +385,18 @@ pub unsafe fn init_vmsh_stage1(argc: libc::c_int, argv: *mut *mut libc::c_char) 
         spawn_stage2,
         ptr::null_mut(),
         0,
-        c_str!("vmsh-stage2-spawner").as_ptr() as *const libc::c_char,
+        c_str!("vmsh-stage1").as_ptr() as *const libc::c_char,
     );
     if is_err_value(thread) {
         printkln!(
-            "stage1: failed to spawn kernel thread: {}",
+            "stage1: failed to spawn kernel thread: %d",
             err_value(thread)
         );
         return err_value(thread) as libc::c_int;
     }
     wake_up_process(thread);
-
-    BLK_DEV = blk_dev;
-    CONSOLE_DEV = console_dev;
     STAGE2_SPAWNER = Some(thread);
+
     0
 }
 
@@ -383,9 +406,7 @@ pub unsafe fn init_vmsh_stage1(argc: libc::c_int, argv: *mut *mut libc::c_char) 
 #[no_mangle]
 pub unsafe fn cleanup_vmsh_stage1() {
     printkln!("stage1: cleanup");
-    //if let Some(task) = STAGE2_SPAWNER.take() {
-    //    kthread_stop(task);
-    //}
-    BLK_DEV.take();
-    CONSOLE_DEV.take();
+    DEVICES.iter_mut().for_each(|d| {
+        d.take();
+    });
 }

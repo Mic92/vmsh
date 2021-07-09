@@ -372,9 +372,14 @@ impl Hypervisor {
     ///
     /// Safety: This function is safe even for the guest because VmMem enforces, that only the
     /// allocated T is written to.
-    pub fn vm_add_mem<T: Sized + Copy>(&self, guest_addr: u64, readonly: bool) -> Result<VmMem<T>> {
+    pub fn vm_add_mem<T: Sized + Copy>(
+        &self,
+        guest_addr: u64,
+        size: usize,
+        readonly: bool,
+    ) -> Result<VmMem<T>> {
         // must be a multiple of PAGESIZE
-        let slot_len = (size_of::<T>() / page_math::page_size() + 1) * page_math::page_size();
+        let slot_len = (size / page_math::page_size() + 1) * page_math::page_size();
         let hv_memslot = self.alloc_mem_padded::<T>(slot_len)?;
         let mut flags = 0;
         flags |= if readonly { kvmb::KVM_MEM_READONLY } else { 0 };
@@ -550,6 +555,33 @@ impl Hypervisor {
     }
 
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    pub fn get_cpuid2(&self, vcpu: &VCPU) -> Result<ioctls::kvm_cpuid2> {
+        let mem = self.alloc_mem()?;
+        try_with!(
+            mem.write(&ioctls::kvm_cpuid2 {
+                nent: ioctls::KVM_MAX_CPUID_ENTRIES as u32,
+                padding: 0,
+                entries: [kvmb::kvm_cpuid_entry2 {
+                    function: 0,
+                    index: 0,
+                    flags: 0,
+                    eax: 0,
+                    ebx: 0,
+                    ecx: 0,
+                    edx: 0,
+                    padding: [0; 3],
+                }; ioctls::KVM_MAX_CPUID_ENTRIES]
+            }),
+            "cannot update cpuid2 kvm structure in hypervisor"
+        );
+        let tracee = try_with!(
+            self.tracee.write(),
+            "cannot obtain tracee write lock: poinsoned"
+        );
+        tracee.get_cpuid2(vcpu, &mem)
+    }
+
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     pub fn get_sregs(&self, vcpu: &VCPU) -> Result<kvmb::kvm_sregs> {
         let mem = self.alloc_mem()?;
         let tracee = try_with!(
@@ -648,15 +680,16 @@ pub fn get_hypervisor(pid: Pid) -> Result<Hypervisor> {
     let handle = try_with!(openpid(pid), "cannot open handle in proc");
 
     let (vm_fds, vcpus) = try_with!(find_vm_fd(&handle), "failed to access kvm fds");
-    let tracee = Hypervisor::attach(pid, vm_fds[0]);
-    let vcpu_maps = try_with!(tracee.get_vcpu_maps(), "cannot get vcpufd memory maps");
-
     if vm_fds.is_empty() {
-        bail!("no VMs found");
+        bail!("no KVM-VMs found. If this is qemu, does it enable KVM?");
     }
     if vm_fds.len() > 1 {
         bail!("multiple VMs found, this is not supported yet.");
     }
+
+    let tracee = Hypervisor::attach(pid, vm_fds[0]);
+    let vcpu_maps = try_with!(tracee.get_vcpu_maps(), "cannot get vcpufd memory maps");
+
     if vcpus.is_empty() {
         bail!("found KVM instance but no VCPUs");
     }

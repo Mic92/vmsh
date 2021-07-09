@@ -24,6 +24,11 @@ def test_alloc_mem(helpers: conftest.Helpers) -> None:
         run_ioctl_test("alloc_mem", vm)
 
 
+def test_ioctl_cpuid2(helpers: conftest.Helpers) -> None:
+    with helpers.spawn_qemu(helpers.notos_image()) as vm:
+        run_ioctl_test("cpuid2", vm)
+
+
 def test_ioctl_guest_add_mem(helpers: conftest.Helpers) -> None:
     with helpers.spawn_qemu(helpers.notos_image()) as vm:
         run_ioctl_test("guest_add_mem", vm)
