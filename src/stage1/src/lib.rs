@@ -375,7 +375,7 @@ unsafe fn init_vmsh_stage1(
         spawn_stage2,
         ptr::null_mut(),
         0,
-        c_str!("vmsh-stage2-spawner").as_ptr() as *const libc::c_char,
+        c_str!("vmsh-stage1").as_ptr() as *const libc::c_char,
     );
     if is_err_value(thread) {
         printkln!(
