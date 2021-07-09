@@ -7,7 +7,6 @@ use core::include_bytes;
 use core::mem::size_of;
 use core::panic::PanicInfo;
 use core::ptr;
-use core::slice;
 
 // used by our driver
 const MMIO_SIZE: usize = 0x1000;
@@ -195,7 +194,9 @@ unsafe fn register_virtio_mmio(
 }
 
 /// Holds the device we create by this code, so we can unregister it later
-static mut DEVICES: [Option<PlatformDevice>; 3] = [None, None, None];
+const MAX_DEVICES: usize = 3;
+static mut DEVICES: [Option<PlatformDevice>; MAX_DEVICES] = [None, None, None];
+static mut DEVICE_ADDRS: [libc::c_ulonglong; MAX_DEVICES] = [0; MAX_DEVICES];
 static mut STAGE2_SPAWNER: Option<*mut task_struct> = None;
 
 /// re-implementation of IS_ERR_VALUE
@@ -272,7 +273,33 @@ impl Drop for KFile {
 static STAGE2_PATH: &str = c_str!("/dev/.vmsh");
 static mut STAGE2_ARGV: [*mut libc::c_char; 256] = [ptr::null_mut(); 256];
 
-unsafe extern "C" fn spawn_stage2(_data: *mut libc::c_void) -> libc::c_int {
+unsafe extern "C" fn spawn_stage2(_arg: *mut libc::c_void) -> libc::c_int {
+    for (i, addr) in DEVICE_ADDRS.iter().enumerate() {
+        if *addr == 0 {
+            continue;
+        }
+        printkln!("stage1: init dev at 0x%llx", *addr);
+        match register_virtio_mmio(
+            MMIO_DEVICE_ID + (i as i32),
+            *addr as usize,
+            MMIO_SIZE,
+            MMIO_IRQ,
+        ) {
+            Ok(v) => {
+                if let Some(elem) = DEVICES.get_mut(i) {
+                    *elem = Some(v);
+                } else {
+                    printkln!("stage1: out-of-bound write to devs");
+                    return -libc::EFAULT;
+                }
+            }
+            Err(res) => {
+                printkln!("stage1: failed to register block mmio device: %d", res);
+                return res;
+            }
+        };
+    }
+
     // we never delete this file, however deleting files is complex and requires accessing
     // internal structs that might change.
     let mut file = match KFile::open(STAGE2_PATH, libc::O_WRONLY | libc::O_CREAT, 0o755) {
@@ -326,33 +353,16 @@ unsafe fn init_vmsh_stage1(
     argv: *mut *mut libc::c_char,
 ) -> libc::c_int {
     printkln!("stage1: init with %d arguments", argc);
-    if devices_num != 3 && devices_num != 2 {
-        printkln!("stage1: expected 2 or 3 devices, got: %d", devices_num);
-        return -libc::EINVAL;
-    }
-
-    let addrs = slice::from_raw_parts(devices, devices_num as usize);
-    for (i, addr) in addrs.iter().enumerate() {
-        printkln!("stage1: init dev at 0x%llx", *addr);
-        match register_virtio_mmio(
-            MMIO_DEVICE_ID + (i as i32),
-            *addr as usize,
-            MMIO_SIZE,
-            MMIO_IRQ,
-        ) {
-            Ok(v) => {
-                if let Some(elem) = DEVICES.get_mut(i) {
-                    *elem = Some(v);
-                } else {
-                    printkln!("stage1: out-of-bound write to devs");
-                    return -libc::EFAULT;
-                }
-            }
-            Err(res) => {
-                printkln!("stage1: failed to register block mmio device: %d", res);
-                return res;
-            }
-        };
+    for i in 0..(devices_num as usize) {
+        if let Some(addr) = DEVICE_ADDRS.get_mut(i) {
+            *addr = *devices.add(i);
+        } else {
+            printkln!(
+                "stage1: received too many devices, expect 1-3, got: %d",
+                devices_num
+            );
+            return -libc::EINVAL;
+        }
     }
 
     STAGE2_ARGV[0] = STAGE2_PATH.as_ptr() as *mut libc::c_char;
