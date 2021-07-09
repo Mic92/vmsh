@@ -13,7 +13,17 @@ static char *devices[3];
 // FIXME: Right now this is a kernel module in future, this should be replaced
 // something to be injectable into VMs.
 int init_module(void) {
-  return init_vmsh_stage1(devices_num, devices, stage2_argc, stage2_argv);
+  unsigned long long devs[3];
+  size_t i;
+  for (i = 0; i < devices_num; i++) {
+    if (kstrtoull(devices[i], 10, &devs[i])) {
+      printk("stage1: invalid mmio address: %s\n", devices[i]);
+      return -EINVAL;
+    }
+    printk("stage1: addr: %llx\n", devs[i]);
+  }
+
+  return init_vmsh_stage1(devices_num, devs, stage2_argc, stage2_argv);
 }
 
 void cleanup_module(void) {
