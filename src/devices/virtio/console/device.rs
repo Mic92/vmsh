@@ -18,6 +18,7 @@ use vm_memory::GuestAddressSpace;
 use vmm_sys_util::eventfd::EventFd;
 
 use crate::devices::virtio::console::log_handler::LogQueueHandler;
+use crate::devices::USE_IOREGIONFD;
 use crate::devices::virtio::console::VIRTIO_CONSOLE_F_SIZE;
 use crate::devices::virtio::features::{
     VIRTIO_F_IN_ORDER, VIRTIO_F_RING_EVENT_IDX, VIRTIO_F_VERSION_1,
@@ -131,29 +132,31 @@ where
         )
         .map_err(Error::Simple)?;
 
-        //let rx_fd = register_ioeventfd(&self.vmm, &self.mmio_cfg, 0).map_err(Error::Simple)?;
-        let tx_fd = register_ioeventfd(&self.vmm, &self.mmio_cfg, 1).map_err(Error::Simple)?;
+        if !USE_IOREGIONFD {
+            //let rx_fd = register_ioeventfd(&self.vmm, &self.mmio_cfg, 0).map_err(Error::Simple)?;
+            let tx_fd = register_ioeventfd(&self.vmm, &self.mmio_cfg, 1).map_err(Error::Simple)?;
 
-        let handler = Arc::new(Mutex::new(LogQueueHandler {
-            driver_notify,
-            tx_fd,
-            rxq: self.virtio_cfg.queues[0].clone(),
-            txq: self.virtio_cfg.queues[1].clone(),
-            console,
-        }));
+            let handler = Arc::new(Mutex::new(LogQueueHandler {
+                driver_notify,
+                tx_fd,
+                rxq: self.virtio_cfg.queues[0].clone(),
+                txq: self.virtio_cfg.queues[1].clone(),
+                console,
+            }));
 
-        // Register the queue handler with the `EventManager`. We record the `sub_id`
-        // (and/or keep a handler clone) to remove the subscriber when resetting the device
-        let sub_id = self
-            .endpoint
-            .call_blocking(move |mgr| -> EvmgrResult<SubscriberId> {
-                Ok(mgr.add_subscriber(handler))
-            })
-            .map_err(|e| {
-                log::warn!("{}", e);
-                Error::Endpoint(e)
-            })?;
-        self.sub_id = Some(sub_id);
+            // Register the queue handler with the `EventManager`. We record the `sub_id`
+            // (and/or keep a handler clone) to remove the subscriber when resetting the device
+            let sub_id = self
+                .endpoint
+                .call_blocking(move |mgr| -> EvmgrResult<SubscriberId> {
+                    Ok(mgr.add_subscriber(handler))
+                })
+                .map_err(|e| {
+                    log::warn!("{}", e);
+                    Error::Endpoint(e)
+                })?;
+            self.sub_id = Some(sub_id);
+        }
 
         log::debug!("activating device: ok");
         self.virtio_cfg.device_activated = true;

@@ -25,6 +25,7 @@ use crate::devices::virtio::features::{
 };
 use crate::devices::virtio::{IrqAckHandler, MmioConfig, SingleFdSignalQueue, QUEUE_MAX_SIZE};
 use crate::kvm::hypervisor::Hypervisor;
+use crate::devices::USE_IOREGIONFD;
 
 use super::super::register_ioeventfd;
 use super::inorder_handler::InOrderQueueHandler;
@@ -132,8 +133,6 @@ where
             return Err(Error::BadFeatures(self.virtio_cfg.driver_features));
         }
 
-        let ioeventfd = register_ioeventfd(&self.vmm, &self.mmio_cfg, 0).map_err(Error::Simple)?;
-
         let file = OpenOptions::new()
             .read(true)
             .write(!self.read_only)
@@ -164,20 +163,24 @@ where
             disk,
         };
 
-        let handler = Arc::new(Mutex::new(QueueHandler { inner, ioeventfd }));
+        if !USE_IOREGIONFD {
+        //if true {
+            let ioeventfd = register_ioeventfd(&self.vmm, &self.mmio_cfg, 0).map_err(Error::Simple)?;
+            let handler = Arc::new(Mutex::new(QueueHandler { inner, ioeventfd }));
 
-        // Register the queue handler with the `EventManager`. We record the `sub_id`
-        // (and/or keep a handler clone) to remove the subscriber when resetting the device
-        let sub_id = self
-            .endpoint
-            .call_blocking(move |mgr| -> EvmgrResult<SubscriberId> {
-                Ok(mgr.add_subscriber(handler))
-            })
-            .map_err(|e| {
-                log::warn!("{}", e);
-                Error::Endpoint(e)
-            })?;
-        self.sub_id = Some(sub_id);
+            // Register the queue handler with the `EventManager`. We record the `sub_id`
+            // (and/or keep a handler clone) to remove the subscriber when resetting the device
+            let sub_id = self
+                .endpoint
+                .call_blocking(move |mgr| -> EvmgrResult<SubscriberId> {
+                    Ok(mgr.add_subscriber(handler))
+                })
+                .map_err(|e| {
+                    log::warn!("{}", e);
+                    Error::Endpoint(e)
+                })?;
+            self.sub_id = Some(sub_id);
+        }
 
         log::debug!("activating device: ok");
         self.virtio_cfg.device_activated = true;

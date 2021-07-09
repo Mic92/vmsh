@@ -301,17 +301,25 @@ pub struct ioregionfd_cmd {
 }
 impl ioregionfd_cmd {
     pub fn data(&self) -> &[u8] {
-        return self.data_mut();
-    }
-    pub fn data_mut(&self) -> &mut [u8] {
         let data = unsafe { 
-            std::slice::from_raw_parts_mut((self.data as *mut u64) as *mut u8, size_of::<u64>())
+            std::slice::from_raw_parts((&self.data as *const u64) as *const u8, size_of::<u64>())
+        };
+        match self.info.size() {
+            Size::b8 => &data[0..1],
+            Size::b16 => &data[0..2],
+            Size::b32 => &data[0..4],
+            Size::b64 => &data[0..8],
+        }
+    }
+    pub fn data_mut(&mut self) -> &mut [u8] {
+        let data = unsafe { 
+            std::slice::from_raw_parts_mut((&mut self.data as *mut u64) as *mut u8, size_of::<u64>())
         };
         match self.info.size() {
             Size::b8 => &mut data[0..1],
             Size::b16 => &mut data[0..2],
-            Size::b32 => &mut data[0..3],
-            Size::b64 => &mut data[0..4],
+            Size::b32 => &mut data[0..4],
+            Size::b64 => &mut data[0..8],
         }
     }
 }

@@ -76,7 +76,7 @@ impl IoPirate {
     }
 
     /// Used with IoRegionFd.
-    pub fn handle_ioregion_rw(&mut self, ioregionfd: &IoRegionFd, rw: ioregionfd_cmd) -> Result<()> {
+    pub fn handle_ioregion_rw(&mut self, ioregionfd: &IoRegionFd, mut rw: ioregionfd_cmd) -> Result<()> {
         let addr = ioregionfd.ioregion.guest_paddr + rw.offset;
         let fo = match rw.info.cmd() {
             Cmd::Write => {
