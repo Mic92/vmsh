@@ -294,11 +294,28 @@ pub const KVM_CAP_IOREGIONFD: u32 = 195;
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
 pub struct ioregionfd_cmd {
     pub info: Info,
-    pub padding: u32,
+    pub pad: u32,
     pub user_data: u64,
     pub offset: u64,
     pub data: u64,
 }
+impl ioregionfd_cmd {
+    pub fn data(&self) -> &[u8] {
+        return self.data_mut();
+    }
+    pub fn data_mut(&self) -> &mut [u8] {
+        let data = unsafe { 
+            std::slice::from_raw_parts_mut((self.data as *mut u64) as *mut u8, size_of::<u64>())
+        };
+        match self.info.size() {
+            Size::b8 => &mut data[0..1],
+            Size::b16 => &mut data[0..2],
+            Size::b32 => &mut data[0..3],
+            Size::b64 => &mut data[0..4],
+        }
+    }
+}
+use std::mem::size_of;
 
 /// wire protocol
 pub struct ioregionfd_resp {

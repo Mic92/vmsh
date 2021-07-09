@@ -1,6 +1,6 @@
 use crate::result::Result;
 use crate::tracer::wrap_syscall::{MmioRw, MMIO_RW_DATA_MAX};
-use simple_error::map_err_with;
+use simple_error::{map_err_with,try_with};
 use std::sync::Arc;
 use virtio_device::WithDriverSelect;
 use virtio_queue::Queue;
@@ -38,6 +38,8 @@ impl Default for IoPirate {
     }
 }
 
+use crate::kvm::ioctls::{ioregionfd_cmd, Cmd};
+use crate::kvm::hypervisor::IoRegionFd;
 impl IoPirate {
     //pub fn register_mmio_device(
     //    &mut self,
@@ -51,6 +53,7 @@ impl IoPirate {
     //    Ok(())
     //}
 
+    /// Used with MmioExitWrapper.
     pub fn handle_mmio_rw(&mut self, mmio_rw: &mut MmioRw) -> Result<()> {
         if mmio_rw.is_write {
             map_err_with!(
@@ -71,6 +74,33 @@ impl IoPirate {
         }
         Ok(())
     }
+
+    /// Used with IoRegionFd.
+    pub fn handle_ioregion_rw(&mut self, ioregionfd: &IoRegionFd, rw: ioregionfd_cmd) -> Result<()> {
+        let addr = ioregionfd.ioregion.guest_paddr + rw.offset;
+        let fo = match rw.info.cmd() {
+            Cmd::Write => {
+                let data = rw.data();
+                map_err_with!(
+                    self.mmio_write(MmioAddress(addr), data),
+                    "write to mmio device (0x{:x}) failed",
+                    addr
+                )?;
+                // must be acknowledged with an arbitrary response
+                ioregionfd.write(0)
+            }
+            Cmd::Read => {
+                let data = rw.data_mut();
+                map_err_with!(
+                    self.mmio_read(MmioAddress(addr), data),
+                    "read from mmio device (0x{:x}) failed",
+                    addr
+                )?;
+                ioregionfd.write_slice(data)
+            }
+        };
+        Ok(())
+    }
 }
 
 // Enables the automatic implementation of `MmioManager` for `IoManager`.
@@ -89,7 +119,7 @@ impl BusManager<MmioAddress> for IoPirate {
 /// padX fields are reserved for future use.
 #[derive(Copy, Clone, Debug)]
 #[repr(C)] // actually we want packed. Because that has undefined behaviour in rust 2018 we hope that C is effectively the same.
-pub struct MmioDeviceSpace {
+struct MmioDeviceSpace {
     pub magic_value: u32,
     pub version: u32,
     pub device_id: u32,

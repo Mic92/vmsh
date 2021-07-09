@@ -256,6 +256,7 @@ impl AsRawFd for IoEventFd {
 }
 
 pub struct IoRegionFd {
+    pub ioregion: kvm_ioregion,
     rfile: RawFd, // our end: we write responses here
     wfile: RawFd, // we read commands from here
     rf_hv: RawFd, // their end: transferred to hyperisor
@@ -327,7 +328,8 @@ impl IoRegionFd {
             )
         };
         log::warn!("ioregionfd ret {}", ret);
-        Ok(IoRegionFd { 
+        Ok(IoRegionFd {
+            ioregion,
             rfile: rf_dev, 
             wfile: wf_dev,
             rf_hv,
@@ -335,6 +337,7 @@ impl IoRegionFd {
         })
     }
 
+    /// receive read and write events/commands
     pub fn read(&self) -> Result<ioregionfd_cmd> {
         let len = size_of::<ioregionfd_cmd>();
         let mut t_mem = MaybeUninit::<ioregionfd_cmd>::uninit();
@@ -348,6 +351,15 @@ impl IoRegionFd {
         Ok(t)
     }
 
+
+    pub fn write_slice(&self, data: &[u8]) -> Result<()> {
+        let mut arr = [0u8; 8];
+        let arr_slice = &mut arr[0..data.len()];
+        arr_slice.copy_from_slice(data);
+        self.write(u64::from_ne_bytes(arr))
+    }
+
+    /// Write a response back to the VM.
     pub fn write(&self, data: u64) -> Result<()> {
         let len = size_of::<ioregionfd_resp>();
         let response = ioregionfd_resp::new(data);
