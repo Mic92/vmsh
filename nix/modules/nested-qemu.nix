@@ -8,6 +8,8 @@
         -drive format=raw,file=/linux/nixos-nested.ext4 \
         -append "root=/dev/sda console=ttyS0 nokaslr" \
         -m 256M \
+        -net nic,netdev=user.0,model=virtio \
+        -netdev user,id=user.0,hostfwd=tcp:127.0.0.1:3333-:22 \
         -nographic -enable-kvm \
         "$@"
     '')
