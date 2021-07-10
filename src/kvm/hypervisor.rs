@@ -379,7 +379,7 @@ impl Hypervisor {
         readonly: bool,
     ) -> Result<VmMem<T>> {
         // must be a multiple of PAGESIZE
-        let slot_len = (size / page_math::page_size() + 1) * page_math::page_size();
+        let slot_len = page_math::page_align(size);
         let hv_memslot = self.alloc_mem_padded::<T>(slot_len)?;
         let mut flags = 0;
         flags |= if readonly { kvmb::KVM_MEM_READONLY } else { 0 };
