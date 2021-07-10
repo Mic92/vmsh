@@ -4,8 +4,8 @@ use log::debug;
 use simple_error::{bail, require_with, try_with};
 use vm_device::bus::{MmioAddress, MmioRange};
 
-use crate::result::Result;
 use crate::tracer::proc::Mapping;
+use crate::{page_math, result::Result};
 
 use super::hypervisor::{Hypervisor, VmMem};
 
@@ -93,8 +93,9 @@ impl PhysMemAllocator {
 
     pub fn alloc(&mut self, size: usize, readonly: bool) -> Result<VmMem<u8>> {
         let old_start = self.next_allocation;
-        let start = self.reserve_range(size)?;
-        let res = self.hv.vm_add_mem(start as u64, size, readonly);
+        let padded_size = page_math::page_align(size);
+        let start = self.reserve_range(padded_size)?;
+        let res = self.hv.vm_add_mem(start as u64, padded_size, readonly);
         if res.is_err() {
             self.next_allocation = old_start;
         }
