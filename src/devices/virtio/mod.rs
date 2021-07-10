@@ -146,7 +146,7 @@ impl IrqAckHandler {
                 log::error!("Failed write to eventfd when signalling queue: {}", e);
             } else {
                 self.total_ack_timeouted += 1;
-                log::warn!(
+                log::debug!(
                     "re-sending lost interrupt after {:.1}ms. Total lost {:.0}% ({}/{})",
                     passed.as_micros() as f64 / 1000.0,
                     100.0 * self.total_ack_timeouted as f64 / self.total_sent as f64,
