@@ -39,6 +39,13 @@ fn get_first_allocation(hv: &Arc<Hypervisor>) -> Result<usize> {
         "vm/cpu: phys_bits: {}, virt_bits: {}",
         vm_phys_bits, vm_virt_bits
     );
+    // we only implement 4-Level paging for now
+    if vm_virt_bits != 48 {
+        bail!(
+            "VM cpu uses {} bits for virtual addresses. This is unsupported at the moment",
+            vm_virt_bits
+        );
+    }
     // Supported host physical address size in bits
     let host_phys_bits = host_cpuid.eax as u8;
     // Supported host virtual address size in bits
