@@ -1,18 +1,18 @@
 use std::sync::Arc;
 
+use crate::guest_mem::GuestMem;
 use log::debug;
 use simple_error::{bail, require_with, try_with};
 use vm_device::bus::{MmioAddress, MmioRange};
 
-use crate::tracer::proc::Mapping;
 use crate::{page_math, result::Result};
 
 use super::hypervisor::{Hypervisor, VmMem};
 
 pub struct PhysMemAllocator {
     hv: Arc<Hypervisor>,
-    /// the last memory allocation of the VM
-    last_mapping: Mapping,
+    /// Physical guest memory
+    guest_mem: GuestMem,
     /// Physical address where we last allocated memory from.
     /// After an allocating we substract the allocation size from this value.
     next_allocation: usize,
@@ -59,23 +59,11 @@ fn get_first_allocation(hv: &Arc<Hypervisor>) -> Result<usize> {
 
 impl PhysMemAllocator {
     pub fn new(hv: Arc<Hypervisor>) -> Result<Self> {
-        // We only get maps ones. This information could get all if the
-        // hypervisor dynamically allocates physical memory. However this is
-        // problematic anyway since it could override allocations made by us.
-        // To make the design sound we try to allocate memory near the 4 Peta
-        // byte limit in the hope that VMs are not getting close to this limit
-        // any time soon.
-        let maps = try_with!(hv.get_maps(), "cannot vm memory allocations");
-
-        let last_mapping = require_with!(
-            maps.iter().max_by_key(|m| m.phys_addr + m.size()),
-            "vm has no memory assigned"
-        )
-        .clone();
         let next_allocation = get_first_allocation(&hv)?;
+        let guest_mem = GuestMem::new(&hv)?;
         Ok(Self {
             hv,
-            last_mapping,
+            guest_mem,
             next_allocation,
             //next_allocation: 0xd0000000 + 0x1000 * 2,
         })
@@ -83,14 +71,16 @@ impl PhysMemAllocator {
 
     fn reserve_range(&mut self, size: usize) -> Result<usize> {
         let start = require_with!(self.next_allocation.checked_sub(size), "out of memory");
-        let last_alloc = self.last_mapping.phys_addr + self.last_mapping.size();
+        let last_mapping =
+            require_with!(self.guest_mem.last_mapping(), "vm has no memory assigned");
+        let last_alloc = last_mapping.phys_addr + last_mapping.size();
         if start < last_alloc {
             bail!(
                 "cannot allocate memory at {:x}, our allocator conflicts with mapping at {:x} ({:x}B)\
                    This might happen if the last vmsh run did not clean up memory\
                    correctly or the hypervisor has allocated memory at the very end of\
                    the physical address space",
-                start, self.last_mapping.start, self.last_mapping.size()
+                start, last_mapping.start, last_mapping.size()
             );
         }
         self.next_allocation = start;
