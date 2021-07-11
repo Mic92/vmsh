@@ -31,6 +31,7 @@ pub fn process_write<T: Sized + Copy>(pid: Pid, addr: *mut c_void, val: &T) -> R
 }
 
 /// Hypervisor Memory
+#[derive(Debug)]
 pub struct HvMem<T: Copy> {
     pub ptr: libc::uintptr_t,
     pid: Pid,
@@ -63,9 +64,11 @@ impl<T: Copy> HvMem<T> {
 }
 
 /// Physical Memory attached to a VM. Backed by `VmMem.mem`.
+#[derive(Debug)]
 pub struct VmMem<T: Copy> {
     pub mem: HvMem<T>,
     ioctl_arg: HvMem<kvmb::kvm_userspace_memory_region>,
+    pub guest_phys_addr: u64,
 }
 
 impl<T: Copy> Drop for VmMem<T> {
@@ -405,6 +408,7 @@ impl Hypervisor {
         Ok(VmMem {
             mem: hv_memslot,
             ioctl_arg: arg_hv,
+            guest_phys_addr: guest_addr,
         })
     }
 

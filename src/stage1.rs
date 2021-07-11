@@ -14,6 +14,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use crate::interrutable_thread::InterrutableThread;
+use crate::kvm;
+use crate::kvm::hypervisor::VmMem;
 use crate::result::Result;
 
 const STAGE1_EXE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/stage1.ko"));
@@ -21,6 +23,7 @@ const STAGE1_EXE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/stage1.ko"))
 #[derive(Debug)]
 pub struct Stage1 {
     ssh_args: String,
+    pub vm_mem: Option<VmMem<u8>>,
 }
 
 fn cleanup_stage1(ssh_args: &str) -> Result<()> {
@@ -77,6 +80,7 @@ fn stage1_thread(
     ssh_args: String,
     command: &[String],
     mmio_addrs: Vec<u64>,
+    vm_mem: VmMem<u8>,
     should_stop: Arc<AtomicBool>,
 ) -> Result<Stage1> {
     std::thread::sleep(Duration::from_millis(3000));
@@ -90,6 +94,8 @@ fn stage1_thread(
         .map(|a| a.to_string())
         .collect::<Vec<_>>()
         .join(",");
+
+    let phys_mem = vm_mem.guest_phys_addr;
     let mut child = ssh_command(&ssh_args, move |cmd| -> &mut Command {
         let script = format!(
             r#"
@@ -99,12 +105,13 @@ trap "rm -rf '$tmpdir'" EXIT
 dd if=/proc/self/fd/0 of="$tmpdir/stage1.ko" count={} bs=512
 # cleanup old driver if still loaded
 rmmod stage1 2>/dev/null || true
-insmod "$tmpdir/stage1.ko" devices="{}" stage2_argv="{}"
+insmod "$tmpdir/stage1.ko" devices="{}" stage2_argv="{}" phys_mem="{}"
 "#,
             debug_stage1,
             stage1_size / 512,
             mmio_addrs,
             command.join(","),
+            phys_mem,
         );
         cmd.stdin(Stdio::piped()).arg(script)
     })?;
@@ -152,24 +159,32 @@ insmod "$tmpdir/stage1.ko" devices="{}" stage2_argv="{}"
 
     info!("block device driver started");
 
-    Ok(Stage1 { ssh_args })
+    Ok(Stage1 {
+        ssh_args,
+        vm_mem: Some(vm_mem),
+    })
 }
 
 pub fn spawn_stage1(
     ssh_args: &str,
     command: &[String],
     mmio_ranges: Vec<u64>,
+    mut allocator: kvm::PhysMemAllocator,
     result_sender: &SyncSender<()>,
 ) -> Result<InterrutableThread<Stage1>> {
     let ssh_args = ssh_args.to_string();
     let command = command.to_vec();
+    let vm_mem = try_with!(
+        allocator.alloc(0x2000, false),
+        "failed to allocate stage1 memory in vm"
+    );
 
     let res = InterrutableThread::spawn(
         "stage1",
         result_sender,
         move |should_stop: Arc<AtomicBool>| {
             // wait until vmsh can process block device requests
-            stage1_thread(ssh_args, &command, mmio_ranges, should_stop)
+            stage1_thread(ssh_args, &command, mmio_ranges, vm_mem, should_stop)
         },
     );
     Ok(try_with!(res, "failed to create stage1 thread"))
