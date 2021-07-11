@@ -46,6 +46,7 @@ pub fn attach(opts: &AttachOptions) -> Result<()> {
             opts.ssh_args.as_str(),
             &opts.command,
             devices.mmio_addrs()?,
+            allocator,
             &sender
         ),
         "stage1 failed"
@@ -58,9 +59,13 @@ pub fn attach(opts: &AttachOptions) -> Result<()> {
     // termination wait or vmsh_stop()
     let _ = receiver.recv();
     stage1.shutdown();
-    if let Err(e) = stage1.join() {
-        error!("stage1 failed: {}", e);
-    }
+    let vm_memory = match stage1.join() {
+        Ok(mut v) => v.vm_mem.take(),
+        Err(e) => {
+            error!("stage1 failed: {}", e);
+            None
+        }
+    };
     threads.iter().for_each(|t| t.shutdown());
     for t in threads {
         if let Err(e) = t.join() {
@@ -71,6 +76,8 @@ pub fn attach(opts: &AttachOptions) -> Result<()> {
     // MMIO exit handler thread took over pthread control
     // We need ptrace the process again before we can finish.
     vm.finish_thread_transfer()?;
+    // now that we got the tracer back, we can cleanup pysical memory
+    drop(vm_memory);
     vm.resume()?;
 
     Ok(())

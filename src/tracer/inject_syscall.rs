@@ -13,6 +13,7 @@ use crate::result::Result;
 use crate::tracer::proc::Mapping;
 use crate::tracer::{ptrace, Tracer};
 
+#[derive(Debug)]
 pub struct Process {
     process_idx: usize,
     saved_regs: Regs,

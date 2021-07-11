@@ -28,6 +28,7 @@ pub struct kvm_msrs {
 
 /// This is a handle with abstractions for the syscall injector. Its primary goal is to be an interface for the
 /// destructors of `HvMem` and `VmMem` to be able to (de-)allocate memory.
+#[derive(Debug)]
 pub struct Tracee {
     pid: Pid,
     vm_fd: RawFd,

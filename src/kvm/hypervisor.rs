@@ -31,6 +31,7 @@ pub fn process_write<T: Sized + Copy>(pid: Pid, addr: *mut c_void, val: &T) -> R
 }
 
 /// Hypervisor Memory
+#[derive(Debug)]
 pub struct HvMem<T: Copy> {
     pub ptr: libc::uintptr_t,
     pid: Pid,
@@ -63,9 +64,11 @@ impl<T: Copy> HvMem<T> {
 }
 
 /// Physical Memory attached to a VM. Backed by `VmMem.mem`.
+#[derive(Debug)]
 pub struct VmMem<T: Copy> {
     pub mem: HvMem<T>,
     ioctl_arg: HvMem<kvmb::kvm_userspace_memory_region>,
+    pub guest_phys_addr: u64,
 }
 
 impl<T: Copy> Drop for VmMem<T> {
@@ -169,7 +172,7 @@ impl IoEventFd {
     ) -> Result<IoEventFd> {
         let eventfd = try_with!(EventFd::new(EFD_NONBLOCK), "cannot create event fd");
         info!(
-            "ioeventfd {:?}, guest phys addr {:?}",
+            "ioeventfd {}, guest phys addr 0x{:x}",
             eventfd.as_raw_fd(),
             guest_addr
         );
@@ -379,7 +382,7 @@ impl Hypervisor {
         readonly: bool,
     ) -> Result<VmMem<T>> {
         // must be a multiple of PAGESIZE
-        let slot_len = (size / page_math::page_size() + 1) * page_math::page_size();
+        let slot_len = page_math::page_align(size);
         let hv_memslot = self.alloc_mem_padded::<T>(slot_len)?;
         let mut flags = 0;
         flags |= if readonly { kvmb::KVM_MEM_READONLY } else { 0 };
@@ -405,6 +408,7 @@ impl Hypervisor {
         Ok(VmMem {
             mem: hv_memslot,
             ioctl_arg: arg_hv,
+            guest_phys_addr: guest_addr,
         })
     }
 
