@@ -150,9 +150,10 @@ class Helpers:
         return spawn_vmsh_command(args, cargo_executable)
 
     @staticmethod
-    def run_vmsh_command(args: List[str], cargo_executable: str = "vmsh") -> None:
+    def run_vmsh_command(args: List[str], cargo_executable: str = "vmsh") -> VmshPopen:
         proc = spawn_vmsh_command(args, cargo_executable)
         assert proc.wait() == 0
+        return proc
 
     @staticmethod
     def spawn_qemu(
