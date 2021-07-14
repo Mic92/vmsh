@@ -1,6 +1,6 @@
 pub mod mmio;
 mod threads;
-mod virtio;
+pub mod virtio;
 
 use crate::devices::mmio::IoPirate;
 use crate::devices::threads::SubscriberEventManager;

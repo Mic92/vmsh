@@ -68,6 +68,7 @@ fn event_thread(
         let blkdev = try_with!(blkdev.lock(), "cannot unlock thread");
         blkdev.irq_ack_handler.clone()
     };
+    log::warn!("event thread started");
 
     let res = InterrutableThread::spawn(
         "event-manager",
@@ -251,7 +252,7 @@ fn ioregion_event_loop(
 
     loop {
         let cmd = try_with!(ioregionfd.read(), "foo");
-        println!("{:?}, {:?}, response={}: {:?}", cmd.info.cmd(), cmd.info.size(), cmd.info.is_response(), cmd);
+        //println!("{:?}, {:?}, response={}: {:?}", cmd.info.cmd(), cmd.info.size(), cmd.info.is_response(), cmd);
         mmio_mgr.handle_ioregion_rw(ioregionfd, cmd)?;
 
         if should_stop.load(Ordering::Relaxed) {

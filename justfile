@@ -240,7 +240,7 @@ attach-qemu: vmsh-image
   cargo run -- attach -f "{{linux_dir}}/vmsh-image.ext4" "{{qemu_pid}}" --ssh-args " -i {{invocation_directory()}}/nix/ssh_key -p {{qemu_ssh_port}} root@localhost" -- /nix/var/nix/profiles/system/sw/bin/ls -la
 
 attach-nested-qemu: vmsh-image
-  just ssh-qemu '/mnt/vmsh/target/debug/vmsh attach -f "/linux/nixos.ext4" $(pgrep qemu) --ssh-args " -i /mnt/vmsh/nix/ssh_key -p 3333 root@localhost" -- /nix/var/nix/profiles/system/sw/bin/ls -la'
+  just ssh-qemu '/mnt/vmsh/target/debug/vmsh -l info,vmsh::devices::virtio::block::threads=trace,vmsh::kvm::hypervisor::IoEventFd=info attach -f "/linux/nixos.ext4" $(pgrep qemu) --ssh-args " -i /mnt/vmsh/nix/ssh_key -p 3333 root@localhost" -- /nix/var/nix/profiles/system/sw/bin/ls -la'
 
 # Inspect first qemu vm found by pidof and owned by our own user
 inspect-qemu:
