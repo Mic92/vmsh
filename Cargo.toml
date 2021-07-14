@@ -23,7 +23,7 @@ exclude = ["src/stage1", "src/stage2", "src/build-utils"]
 [dependencies]
 clap = { version = "2", default-features = false }
 ioutils = { path = "src/ioutils" }
-nix = "0.21.*"
+nix = "0.22.*"
 libc = "0.2.*"
 bitflags = "1.2.1"
 

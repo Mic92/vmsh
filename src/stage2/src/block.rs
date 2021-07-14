@@ -140,7 +140,7 @@ impl BlockDevice {
             );
             match res {
                 Ok(()) => return Ok(()),
-                Err(nix::Error::Sys(Errno::EINVAL)) => {}
+                Err(Errno::EINVAL) => {}
                 Err(e) => {
                     if let Err(e) = dump_dmesg() {
                         eprintln!("dmesg failed {}", e);
