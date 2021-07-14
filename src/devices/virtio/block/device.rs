@@ -8,6 +8,7 @@ use std::ops::DerefMut;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use virtio_device::{VirtioDevice, VirtioDeviceType};
+use std::os::unix::io::AsRawFd;
 
 use event_manager::{MutEventSubscriber, RemoteEndpoint, Result as EvmgrResult, SubscriberId};
 use virtio_blk::stdio_executor::StdIoBackend;
@@ -17,7 +18,7 @@ use vm_device::bus::MmioAddress;
 use vm_device::device_manager::MmioManager;
 use vm_device::{DeviceMmio, MutDeviceMmio};
 use vm_memory::GuestAddressSpace;
-use vmm_sys_util::eventfd::EventFd;
+use vmm_sys_util::eventfd::{EventFd, EFD_NONBLOCK};
 
 use crate::devices::virtio::block::{BLOCK_DEVICE_ID, VIRTIO_BLK_F_FLUSH, VIRTIO_BLK_F_RO};
 use crate::devices::virtio::features::{
@@ -25,9 +26,10 @@ use crate::devices::virtio::features::{
 };
 use crate::devices::virtio::{IrqAckHandler, MmioConfig, SingleFdSignalQueue, QUEUE_MAX_SIZE};
 use crate::kvm::hypervisor::Hypervisor;
+use crate::kvm::hypervisor::{IoEventFd, IoEvent};
 use crate::devices::USE_IOREGIONFD;
 
-use super::super::register_ioeventfd;
+use super::super::{_register_ioevent, register_ioeventfd, register_ioeventfd_ioregion};
 use super::inorder_handler::InOrderQueueHandler;
 use super::queue_handler::QueueHandler;
 use super::{build_config_space, BlockArgs, Error, Result};
@@ -163,24 +165,21 @@ where
             disk,
         };
 
-        if !USE_IOREGIONFD {
-        //if true {
-            let ioeventfd = register_ioeventfd(&self.vmm, &self.mmio_cfg, 0).map_err(Error::Simple)?;
-            let handler = Arc::new(Mutex::new(QueueHandler { inner, ioeventfd }));
+        let ioeventfd = IoEvent::register(&self.vmm, &self.mmio_cfg, 0).map_err(Error::Simple)?;
+        let handler = Arc::new(Mutex::new(QueueHandler { inner, ioeventfd }));
 
-            // Register the queue handler with the `EventManager`. We record the `sub_id`
-            // (and/or keep a handler clone) to remove the subscriber when resetting the device
-            let sub_id = self
-                .endpoint
-                .call_blocking(move |mgr| -> EvmgrResult<SubscriberId> {
-                    Ok(mgr.add_subscriber(handler))
-                })
-                .map_err(|e| {
-                    log::warn!("{}", e);
-                    Error::Endpoint(e)
-                })?;
-            self.sub_id = Some(sub_id);
-        }
+        // Register the queue handler with the `EventManager`. We record the `sub_id`
+        // (and/or keep a handler clone) to remove the subscriber when resetting the device
+        let sub_id = self
+            .endpoint
+            .call_blocking(move |mgr| -> EvmgrResult<SubscriberId> {
+                Ok(mgr.add_subscriber(handler))
+            })
+            .map_err(|e| {
+                log::warn!("{}", e);
+                Error::Endpoint(e)
+            })?;
+        self.sub_id = Some(sub_id);
 
         log::debug!("activating device: ok");
         self.virtio_cfg.device_activated = true;

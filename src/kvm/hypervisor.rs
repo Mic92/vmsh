@@ -133,6 +133,57 @@ pub struct Hypervisor {
     pub wrapper: Mutex<Option<KvmRunWrapper>>,
 }
 
+use crate::devices::USE_IOREGIONFD;
+use crate::devices::virtio::{MmioConfig, register_ioeventfd};
+
+/// Abstraction around IoEventFd and EventFd.
+/// They can't be placed into the same memory location without an enum, because
+/// vmm_sys_util::EventFd doesn't implement Sized which is required for `dyn`. 
+/// TODO impl Sized in vmm_sys_util
+pub enum IoEvent {
+    IoEventFd(IoEventFd),
+    EventFd(EventFd),
+}
+
+impl IoEvent {
+    pub fn register(
+        vmm: &Arc<Hypervisor>,
+        mmio_cfg: &MmioConfig,
+        queue_idx: u64,
+    ) -> Result<IoEvent> {
+        if !USE_IOREGIONFD {
+            let ioeventfd = register_ioeventfd(vmm, mmio_cfg, queue_idx)?;
+            Ok(IoEvent::IoEventFd(ioeventfd))
+        } else {
+            let eventfd = try_with!(EventFd::new(EFD_NONBLOCK), "foo");
+            log::info!(
+                "eventfd {:?} for ioregionfd",
+                eventfd.as_raw_fd(),
+            );
+            Ok(IoEvent::EventFd(eventfd))
+        }
+    }
+}
+
+impl AsRawFd for IoEvent {
+    fn as_raw_fd(&self) -> RawFd {
+        match self {
+            IoEvent::IoEventFd(e) => e.as_raw_fd(),
+            IoEvent::EventFd(e) => e.as_raw_fd(),
+        }
+    }
+}
+
+impl Deref for IoEvent {
+    type Target = EventFd;
+    fn deref(&self) -> &EventFd {
+        match self {
+            IoEvent::IoEventFd(e) => &e,
+            IoEvent::EventFd(e) => &e,
+        }
+    }
+}
+
 pub struct IoEventFd {
     fd: EventFd,
     hv_eventfd: RawFd,
@@ -347,12 +398,14 @@ impl IoRegionFd {
         if read != len {
             bail!("fas");
         }
-        let t: ioregionfd_cmd = unsafe { t_mem.assume_init() };
-        Ok(t)
+        let cmd: ioregionfd_cmd = unsafe { t_mem.assume_init() };
+        log::info!("read {:?}, {:?}, response={}: {:?}", cmd.info.cmd(), cmd.info.size(), cmd.info.is_response(), cmd);
+        Ok(cmd)
     }
 
 
     pub fn write_slice(&self, data: &[u8]) -> Result<()> {
+        log::info!("write_slice()");
         let mut arr = [0u8; 8];
         let arr_slice = &mut arr[0..data.len()];
         arr_slice.copy_from_slice(data);
@@ -361,6 +414,7 @@ impl IoRegionFd {
 
     /// Write a response back to the VM.
     pub fn write(&self, data: u64) -> Result<()> {
+        log::info!("write {:x}", data);
         let len = size_of::<ioregionfd_resp>();
         let response = ioregionfd_resp::new(data);
         // safe, because we won't need t_bytes for long
