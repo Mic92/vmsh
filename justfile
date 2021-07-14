@@ -5,8 +5,8 @@
 
 linux_dir := invocation_directory() + "/../linux"
 linux_repo := "https://github.com/Mic92/linux"
-
-kernel_fhs := `nix build --json '.#kernel-fhs' | jq -r '.[] | .outputs | .out'` + "/bin/linux-kernel-build"
+nix_results := invocation_directory() + "/.git/nix-results"
+kernel_fhs := "$(nix build --out-link {{nix_results}}/kernel-fhs --json '.#kernel-fhs' | jq -r '.[] | .outputs | .out')/bin/linux-kernel-build"
 
 virtio_blk_img := invocation_directory() + "/../linux/nixos.ext4"
 
@@ -135,12 +135,12 @@ build-linux: configure-linux
 nixos-image:
   [[ {{linux_dir}}/nixos.ext4 -nt nix/nixos-image.nix ]] || \
   [[ {{linux_dir}}/nixos.ext4 -nt flake.lock ]] || \
-  (nix build --builders '' .#nixos-image --out-link nixos-image && \
+  (nix build --out-link {{nix_results}}/nixos-image --builders '' .#nixos-image --out-link nixos-image && \
   install -m600 "nixos-image/nixos.img" {{linux_dir}}/nixos.ext4)
 
 # Build kernel/disk image for not os
 notos-image:
-  nix build '.#not-os-image.json'
+  nix build --out-link {{nix_results}}/notos-image '.#not-os-image.json'
   jq < result
 
 # built image for qemu_nested.sh
