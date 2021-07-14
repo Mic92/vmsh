@@ -398,6 +398,7 @@ name = "vmsh"
 version = "0.1.0"
 dependencies = [
  "bcc",
+ "bitflags",
  "build-utils",
  "clap",
  "container-pid",

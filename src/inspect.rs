@@ -1,6 +1,6 @@
 //mod device;
 
-use crate::result::Result;
+use crate::{guest_mem::GuestMem, result::Result};
 use log::*;
 use nix::unistd::Pid;
 use simple_error::try_with;
@@ -43,6 +43,16 @@ pub fn inspect(opts: &InspectOptions) -> Result<()> {
             kvm::hypervisor::process_read(opts.pid, reason_ptr as *const libc::c_void)?;
         info!("reason ptr = {:?}", reason_ptr);
         info!("reason = {}", reason);
+    }
+
+    let mem = GuestMem::new(&vm)?;
+    match mem.find_kernel(&vm) {
+        Ok(e) => info!(
+            "found kernel at 0x{:x}-0x{:x}",
+            e.virt_start,
+            e.virt_start + e.len
+        ),
+        Err(e) => info!("could not find kernel: {}", e),
     }
 
     Ok(())

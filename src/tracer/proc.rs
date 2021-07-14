@@ -12,7 +12,7 @@ use std::path::PathBuf;
 
 use crate::result::Result;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Mapping {
     pub start: usize,
     pub end: usize,
@@ -32,6 +32,23 @@ impl Mapping {
     pub fn size(&self) -> usize {
         self.end - self.start
     }
+    pub fn phys_end(&self) -> usize {
+        self.phys_addr + self.size()
+    }
+    pub fn phys_to_host_offset(&self) -> isize {
+        if self.start > self.phys_addr {
+            (self.start - self.phys_addr) as isize
+        } else {
+            -((self.phys_addr - self.start) as isize)
+        }
+    }
+    //pub fn phys_to_host_addr(&self, phys_addr: usize) -> Result<usize> {
+    //    let offset = phys_addr - self.phys_addr;
+    //    if phys_addr < self.phys_addr || offset > self.size() {
+    //        bail!("address is not included in this mapping")
+    //    }
+    //    Ok(self.start + offset)
+    //}
 }
 
 pub fn find_mapping(mappings: &[Mapping], ip: usize) -> Option<Mapping> {

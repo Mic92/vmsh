@@ -25,6 +25,7 @@ clap = { version = "2", default-features = false }
 ioutils = { path = "src/ioutils" }
 nix = "0.21.*"
 libc = "0.2.*"
+bitflags = "1.2.1"
 
 # drops regex dependency -> faster build
 # https://github.com/rust-bpf/rust-bcc/pull/179
