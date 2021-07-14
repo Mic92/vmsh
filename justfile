@@ -100,7 +100,6 @@ configure-linux: #clone-linux
        --enable DEBUG_DRIVER \
        --enable KVM \
        --enable BPF_SYSCALL \
-       --enable FTRACE_SYSCALLS \
        --enable IKHEADERS \
        --enable IKCONFIG_PROC \
        --enable VIRTIO_MMIO \
