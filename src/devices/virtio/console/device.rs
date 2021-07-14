@@ -26,7 +26,7 @@ use crate::devices::virtio::features::{
 use crate::devices::virtio::{
     _register_ioevent, register_ioeventfd, register_ioeventfd_ioregion, IrqAckHandler, MmioConfig, SingleFdSignalQueue, QUEUE_MAX_SIZE,
 };
-use crate::kvm::hypervisor::{Hypervisor, IoRegionFd, IoEvent};
+use crate::kvm::hypervisor::{UserspaceIoEventFd, Hypervisor, IoRegionFd, IoEvent};
 
 //use super::queue_handler::QueueHandler;
 use super::{build_config_space, ConsoleArgs, Error, Result, CONSOLE_DEVICE_ID};
@@ -39,7 +39,8 @@ pub struct Console<M: GuestAddressSpace> {
     pub irq_ack_handler: Arc<Mutex<IrqAckHandler>>,
     vmm: Arc<Hypervisor>,
     irqfd: Arc<EventFd>,
-    ioregionfd: Option<IoRegionFd>,
+    pub ioregionfd: Option<IoRegionFd>,
+    pub uioefd: UserspaceIoEventFd, /// only used when ioregionfd != None
     sub_id: Option<SubscriberId>,
 
     // Before resetting we return the handler to the mmio thread for cleanup
@@ -100,6 +101,7 @@ where
             vmm: args.common.vmm.clone(),
             irqfd,
             ioregionfd,
+            uioefd: UserspaceIoEventFd::default(),
             sub_id: None,
             handler: None,
         }));
@@ -140,7 +142,7 @@ where
         .map_err(Error::Simple)?;
 
         //let rx_fd = register_ioeventfd(&self.vmm, &self.mmio_cfg, 0).map_err(Error::Simple)?;
-        let tx_fd = IoEvent::register(&self.vmm, &mut self.ioregionfd, &self.mmio_cfg, 0).map_err(Error::Simple)?;
+        let tx_fd = IoEvent::register(&self.vmm, &mut self.uioefd, &self.mmio_cfg, 0).map_err(Error::Simple)?;
         //let tx_fd = register_ioeventfd(&self.vmm, &self.mmio_cfg, 1).map_err(Error::Simple)?;
 
         let handler = Arc::new(Mutex::new(LogQueueHandler {
@@ -229,8 +231,7 @@ impl<M: GuestAddressSpace + Clone + Send + 'static> VirtioDeviceActions for Cons
 impl<M: GuestAddressSpace + Clone + Send + 'static> VirtioQueueNotifiable for Console<M> {
     fn queue_notify(&mut self, val: u32) {
         if USE_IOREGIONFD {
-            let uioefd = &self.ioregionfd.as_ref().expect("programming error: ioregionfd = None despite USE_IOREGIONFD = true").uioefd;
-            uioefd.queue_notify(val);
+            self.uioefd.queue_notify(val);
             log::error!("queue_notify {}", val);
         }
     }

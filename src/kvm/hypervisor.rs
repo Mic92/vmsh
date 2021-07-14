@@ -148,7 +148,8 @@ pub enum IoEvent {
 impl IoEvent {
     pub fn register(
         vmm: &Arc<Hypervisor>,
-        ioregionfd: &mut Option<IoRegionFd>,
+        //ioregionfd: &mut Option<IoRegionFd>,
+        uioefd: &mut UserspaceIoEventFd,
         mmio_cfg: &MmioConfig,
         queue_idx: u64,
     ) -> Result<IoEvent> {
@@ -156,7 +157,7 @@ impl IoEvent {
             let ioeventfd = register_ioeventfd(vmm, mmio_cfg, queue_idx)?;
             Ok(IoEvent::IoEventFd(ioeventfd))
         } else {
-            let uioefd = &mut ioregionfd.as_mut().ok_or(simple_error!("programming error: foo"))?.uioefd;
+            //let uioefd = &mut ioregionfd.as_mut().ok_or(simple_error!("programming error: foo"))?.uioefd;
             let eventfd = uioefd.userpace_ioeventfd(Some(queue_idx as u32))?;
             Ok(IoEvent::EventFd(eventfd))
         }
@@ -357,9 +358,9 @@ impl UserspaceIoEventFd {
     }
 }
 
+#[derive(Debug,Clone,Copy)]
 pub struct IoRegionFd {
     pub ioregion: kvm_ioregion,
-    pub uioefd: UserspaceIoEventFd,
     rfile: RawFd, // our end: we write responses here
     wfile: RawFd, // we read commands from here
     rf_hv: RawFd, // their end: transferred to hyperisor
@@ -433,7 +434,6 @@ impl IoRegionFd {
         log::warn!("ioregionfd ret {}", ret);
         Ok(IoRegionFd {
             ioregion,
-            uioefd: UserspaceIoEventFd::default(),
             rfile: rf_dev, 
             wfile: wf_dev,
             rf_hv,
@@ -442,12 +442,12 @@ impl IoRegionFd {
     }
 
     /// receive read and write events/commands
-    pub fn read(&self) -> Result<ioregionfd_cmd> {
+    pub fn read_(wfile: RawFd) -> Result<ioregionfd_cmd> {
         let len = size_of::<ioregionfd_cmd>();
         let mut t_mem = MaybeUninit::<ioregionfd_cmd>::uninit();
         let t_slice = unsafe { std::slice::from_raw_parts_mut(t_mem.as_mut_ptr() as *mut u8, len) };
         //let read = vm_memory::process_read_bytes(pid, t_slice, addr)?;
-        let read = try_with!(read(self.wfile, t_slice), "foo");
+        let read = try_with!(read(wfile, t_slice), "foo");
         if read != len {
             bail!("fas");
         }
@@ -456,6 +456,9 @@ impl IoRegionFd {
         Ok(cmd)
     }
 
+    pub fn read(&self) -> Result<ioregionfd_cmd> {
+        Self::read_(self.wfile)
+    }
 
     pub fn write_slice(&self, data: &[u8]) -> Result<()> {
         log::info!("write_slice()");
