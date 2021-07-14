@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex};
 use virtio_device::{VirtioDevice, VirtioDeviceType};
 
 use event_manager::{MutEventSubscriber, RemoteEndpoint, Result as EvmgrResult, SubscriberId};
-use virtio_device::{VirtioConfig, VirtioDeviceActions, VirtioMmioDevice};
+use virtio_device::{VirtioConfig, VirtioDeviceActions, VirtioMmioDevice, VirtioQueueNotifiable};
 use virtio_queue::Queue;
 use vm_device::bus::MmioAddress;
 use vm_device::device_manager::MmioManager;
@@ -26,7 +26,7 @@ use crate::devices::virtio::features::{
 use crate::devices::virtio::{
     _register_ioevent, register_ioeventfd, register_ioeventfd_ioregion, IrqAckHandler, MmioConfig, SingleFdSignalQueue, QUEUE_MAX_SIZE,
 };
-use crate::kvm::hypervisor::{Hypervisor, IoEvent};
+use crate::kvm::hypervisor::{Hypervisor, IoRegionFd, IoEvent};
 
 //use super::queue_handler::QueueHandler;
 use super::{build_config_space, ConsoleArgs, Error, Result, CONSOLE_DEVICE_ID};
@@ -39,6 +39,7 @@ pub struct Console<M: GuestAddressSpace> {
     pub irq_ack_handler: Arc<Mutex<IrqAckHandler>>,
     vmm: Arc<Hypervisor>,
     irqfd: Arc<EventFd>,
+    ioregionfd: Option<IoRegionFd>,
     sub_id: Option<SubscriberId>,
 
     // Before resetting we return the handler to the mmio thread for cleanup
@@ -86,6 +87,11 @@ where
             Arc::clone(&irqfd),
         )));
 
+        let mut ioregionfd = None;
+        if USE_IOREGIONFD {
+            ioregionfd = Some(args.common.vmm.ioregionfd(mmio_cfg.range.base().0, mmio_cfg.range.size() as usize).map_err(Error::Simple)?);
+        }
+
         let console = Arc::new(Mutex::new(Console {
             virtio_cfg,
             mmio_cfg,
@@ -93,6 +99,7 @@ where
             irq_ack_handler,
             vmm: args.common.vmm.clone(),
             irqfd,
+            ioregionfd,
             sub_id: None,
             handler: None,
         }));
@@ -133,7 +140,7 @@ where
         .map_err(Error::Simple)?;
 
         //let rx_fd = register_ioeventfd(&self.vmm, &self.mmio_cfg, 0).map_err(Error::Simple)?;
-        let tx_fd = IoEvent::register(&self.vmm, &self.mmio_cfg, 1).map_err(Error::Simple)?;
+        let tx_fd = IoEvent::register(&self.vmm, &mut self.ioregionfd, &self.mmio_cfg, 0).map_err(Error::Simple)?;
         //let tx_fd = register_ioeventfd(&self.vmm, &self.mmio_cfg, 1).map_err(Error::Simple)?;
 
         let handler = Arc::new(Mutex::new(LogQueueHandler {
@@ -216,6 +223,16 @@ impl<M: GuestAddressSpace + Clone + Send + 'static> VirtioDeviceActions for Cons
         self.set_device_status(0);
         self._reset()?;
         Ok(())
+    }
+}
+
+impl<M: GuestAddressSpace + Clone + Send + 'static> VirtioQueueNotifiable for Console<M> {
+    fn queue_notify(&mut self, val: u32) {
+        if USE_IOREGIONFD {
+            let uioefd = &self.ioregionfd.as_ref().expect("programming error: ioregionfd = None despite USE_IOREGIONFD = true").uioefd;
+            uioefd.queue_notify(val);
+            log::error!("queue_notify {}", val);
+        }
     }
 }
 
