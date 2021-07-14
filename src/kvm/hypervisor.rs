@@ -148,6 +148,7 @@ pub enum IoEvent {
 impl IoEvent {
     pub fn register(
         vmm: &Arc<Hypervisor>,
+        ioregionfd: &mut Option<IoRegionFd>,
         mmio_cfg: &MmioConfig,
         queue_idx: u64,
     ) -> Result<IoEvent> {
@@ -155,11 +156,8 @@ impl IoEvent {
             let ioeventfd = register_ioeventfd(vmm, mmio_cfg, queue_idx)?;
             Ok(IoEvent::IoEventFd(ioeventfd))
         } else {
-            let eventfd = try_with!(EventFd::new(EFD_NONBLOCK), "foo");
-            log::info!(
-                "eventfd {:?} for ioregionfd",
-                eventfd.as_raw_fd(),
-            );
+            let uioefd = &mut ioregionfd.as_mut().ok_or(simple_error!("programming error: foo"))?.uioefd;
+            let eventfd = uioefd.userpace_ioeventfd(Some(queue_idx as u32))?;
             Ok(IoEvent::EventFd(eventfd))
         }
     }
@@ -306,8 +304,62 @@ impl AsRawFd for IoEventFd {
     }
 }
 
+struct UIoEFd {
+    datamatch: Option<u32>,
+    fd: EventFd,
+}
+
+/// For 32bit wide accesses on the queue notify register of virtio devices. Requires one UIoEventFd
+/// per device.
+pub struct UserspaceIoEventFd {
+    ioeventfds: Vec<UIoEFd>
+}
+
+impl Default for UserspaceIoEventFd {
+    fn default() -> Self {
+        Self { ioeventfds: vec![] }
+    }
+}
+
+impl UserspaceIoEventFd {
+    // TODO refactor IoEvent and remove EventFd as parameter here
+    pub fn userpace_ioeventfd(&mut self, datamatch: Option<u32>) -> Result<EventFd> {
+        if datamatch.is_none() && !self.ioeventfds.is_empty() {
+            bail!("cannot add a userspace ioeventfd without datamatch when others with datamatch have already been registered");
+        }
+
+        let fd = try_with!(EventFd::new(EFD_NONBLOCK), "foo");
+        log::info!(
+            "eventfd {:?} for ioregionfd",
+            fd.as_raw_fd(),
+        );
+        let uioefd = UIoEFd {
+            datamatch, fd: try_with!(fd.try_clone(), "foo")
+        };
+        self.ioeventfds.push(uioefd);
+        Ok(fd)
+    }
+
+    /// Callback for writes to QueueNotify register. Forwards notification to the corresponding
+    /// EventFd reader.
+    pub fn queue_notify(&self, val: u32) {
+        let criterion = |uioefd: &&UIoEFd| match uioefd.datamatch {
+            Some(dm) => dm == val,
+            None => true,
+        };
+        if let Some(ioefd) = self.ioeventfds.iter().find(criterion) {
+            if let Err(e) = ioefd.fd.write(1) {
+                log::trace!("cannot write to UserspaceIoEventFd (datamatch {:?}, fd {}): {}", ioefd.datamatch, ioefd.fd.as_raw_fd(), e);
+            }
+        } else {
+            log::trace!("cannot find datamatch for ");
+        }
+    }
+}
+
 pub struct IoRegionFd {
     pub ioregion: kvm_ioregion,
+    pub uioefd: UserspaceIoEventFd,
     rfile: RawFd, // our end: we write responses here
     wfile: RawFd, // we read commands from here
     rf_hv: RawFd, // their end: transferred to hyperisor
@@ -381,6 +433,7 @@ impl IoRegionFd {
         log::warn!("ioregionfd ret {}", ret);
         Ok(IoRegionFd {
             ioregion,
+            uioefd: UserspaceIoEventFd::default(),
             rfile: rf_dev, 
             wfile: wf_dev,
             rf_hv,

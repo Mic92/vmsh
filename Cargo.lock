@@ -357,7 +357,7 @@ dependencies = [
 [[package]]
 name = "virtio-blk"
 version = "0.1.0"
-source = "git+https://github.com/Mic92/vm-virtio.git?rev=f3f31f60aebb2698c2464636bfc433df4bab190e#f3f31f60aebb2698c2464636bfc433df4bab190e"
+source = "git+https://github.com/Mic92/vm-virtio.git?rev=2c9cc78d1757f85d7fe469d5b44ba6ce2c83996d#2c9cc78d1757f85d7fe469d5b44ba6ce2c83996d"
 dependencies = [
  "log",
  "virtio-device",
@@ -369,7 +369,7 @@ dependencies = [
 [[package]]
 name = "virtio-device"
 version = "0.1.0"
-source = "git+https://github.com/Mic92/vm-virtio.git?rev=f3f31f60aebb2698c2464636bfc433df4bab190e#f3f31f60aebb2698c2464636bfc433df4bab190e"
+source = "git+https://github.com/Mic92/vm-virtio.git?rev=2c9cc78d1757f85d7fe469d5b44ba6ce2c83996d#2c9cc78d1757f85d7fe469d5b44ba6ce2c83996d"
 dependencies = [
  "log",
  "virtio-queue",
@@ -379,7 +379,7 @@ dependencies = [
 [[package]]
 name = "virtio-queue"
 version = "0.1.0"
-source = "git+https://github.com/Mic92/vm-virtio.git?rev=f3f31f60aebb2698c2464636bfc433df4bab190e#f3f31f60aebb2698c2464636bfc433df4bab190e"
+source = "git+https://github.com/Mic92/vm-virtio.git?rev=2c9cc78d1757f85d7fe469d5b44ba6ce2c83996d#2c9cc78d1757f85d7fe469d5b44ba6ce2c83996d"
 dependencies = [
  "log",
  "vm-memory",

@@ -12,7 +12,7 @@ use std::os::unix::io::AsRawFd;
 
 use event_manager::{MutEventSubscriber, RemoteEndpoint, Result as EvmgrResult, SubscriberId};
 use virtio_blk::stdio_executor::StdIoBackend;
-use virtio_device::{VirtioConfig, VirtioDeviceActions, VirtioMmioDevice};
+use virtio_device::{VirtioConfig, VirtioDeviceActions, VirtioMmioDevice, VirtioQueueNotifiable};
 use virtio_queue::Queue;
 use vm_device::bus::MmioAddress;
 use vm_device::device_manager::MmioManager;
@@ -26,7 +26,7 @@ use crate::devices::virtio::features::{
 };
 use crate::devices::virtio::{IrqAckHandler, MmioConfig, SingleFdSignalQueue, QUEUE_MAX_SIZE};
 use crate::kvm::hypervisor::Hypervisor;
-use crate::kvm::hypervisor::{IoEventFd, IoEvent};
+use crate::kvm::hypervisor::{IoRegionFd, IoEventFd, IoEvent};
 use crate::devices::USE_IOREGIONFD;
 
 use super::super::{_register_ioevent, register_ioeventfd, register_ioeventfd_ioregion};
@@ -44,6 +44,7 @@ pub struct Block<M: GuestAddressSpace> {
     pub irq_ack_handler: Arc<Mutex<IrqAckHandler>>,
     vmm: Arc<Hypervisor>,
     irqfd: Arc<EventFd>,
+    ioregionfd: Option<IoRegionFd>,
     file_path: PathBuf,
     read_only: bool,
     sub_id: Option<SubscriberId>,
@@ -102,6 +103,11 @@ where
             irqfd.clone(),
         )));
 
+        let mut ioregionfd = None;
+        if USE_IOREGIONFD {
+            ioregionfd = Some(args.common.vmm.ioregionfd(mmio_cfg.range.base().0, mmio_cfg.range.size() as usize).map_err(Error::Simple)?);
+        }
+
         let block = Arc::new(Mutex::new(Block {
             virtio_cfg,
             mmio_cfg,
@@ -109,6 +115,7 @@ where
             irq_ack_handler,
             vmm: args.common.vmm.clone(),
             irqfd,
+            ioregionfd,
             file_path: args.file_path,
             read_only: args.read_only,
             sub_id: None,
@@ -165,7 +172,8 @@ where
             disk,
         };
 
-        let ioeventfd = IoEvent::register(&self.vmm, &self.mmio_cfg, 0).map_err(Error::Simple)?;
+        //let ioregionfd = self.ioregionfd.ok_or(simple_error::simple_error!("foo")).map_err(Error::Simple)?;
+        let ioeventfd = IoEvent::register(&self.vmm, &mut self.ioregionfd, &self.mmio_cfg, 0).map_err(Error::Simple)?;
         let handler = Arc::new(Mutex::new(QueueHandler { inner, ioeventfd }));
 
         // Register the queue handler with the `EventManager`. We record the `sub_id`
@@ -242,6 +250,17 @@ impl<M: GuestAddressSpace + Clone + Send + 'static> VirtioDeviceActions for Bloc
         Ok(())
     }
 }
+
+impl<M: GuestAddressSpace + Clone + Send + 'static> VirtioQueueNotifiable for Block<M> {
+    fn queue_notify(&mut self, val: u32) {
+        if USE_IOREGIONFD {
+            let uioefd = &self.ioregionfd.as_ref().expect("programming error: ioregionfd = None despite USE_IOREGIONFD = true").uioefd;
+            uioefd.queue_notify(val);
+            log::error!("queue_notify {}", val);
+        }
+    }
+}
+
 
 impl<M: GuestAddressSpace + Clone + Send + 'static> VirtioMmioDevice<M> for Block<M> {}
 
