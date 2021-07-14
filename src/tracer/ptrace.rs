@@ -184,7 +184,7 @@ impl Drop for Thread {
     fn drop(&mut self) {
         match ptrace::detach(self.tid, None) {
             // ESRCH == thread already terminated
-            Ok(()) | Err(nix::Error::Sys(nix::errno::Errno::ESRCH)) => {}
+            Ok(()) | Err(nix::errno::Errno::ESRCH) => {}
             Err(e) => log::warn!("Cannot ptrace::detach from {}: {}", self.tid, e),
         };
     }

@@ -6,7 +6,7 @@ edition = "2018"
 license = "MIT"
 
 [dependencies]
-nix = "0.21.*"
+nix = "0.22.*"
 libc = "0.2.*"
 simple-error = "0.2.*"
 container-pid = "0.1.0"

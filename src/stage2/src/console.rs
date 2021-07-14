@@ -35,7 +35,7 @@ pub fn find_vmsh_consoles() -> Result<File> {
         let name = format!("/dev/hvc{}", num);
         match fcntl::open(name.as_str(), OFlag::O_RDWR, stat::Mode::empty()) {
             Ok(fd) => return Ok(unsafe { File::from_raw_fd(fd) }),
-            Err(nix::Error::Sys(Errno::ENODEV)) => {}
+            Err(Errno::ENODEV) => {}
             e => {
                 try_with!(e, "failed to open {}", &name);
             }
