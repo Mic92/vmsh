@@ -269,4 +269,4 @@ capsh:
       --addamb=cap_sys_admin \
       --addamb=cap_sys_ptrace \
       --addamb=cap_dac_override \
-      -- -c 'export USER=$(id -un); direnv exec "$0" "$1"' . "$SHELL"
+      -- -c 'export USER=$(id -un); touch .envrc; direnv exec "$0" "$1"' . "$SHELL"
