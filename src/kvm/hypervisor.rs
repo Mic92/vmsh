@@ -1,3 +1,4 @@
+use crate::page_table::PhysAddr;
 use crate::tracer::inject_syscall;
 use kvm_bindings as kvmb;
 use libc::{c_int, c_void};
@@ -17,7 +18,7 @@ use crate::cpu;
 use crate::kvm::fd_transfer;
 use crate::kvm::ioctls;
 use crate::kvm::tracee::{kvm_msrs, Tracee};
-use crate::page_math;
+use crate::page_math::{self, compute_host_offset};
 use crate::result::Result;
 use crate::tracer::proc::{openpid, Mapping, PidHandle};
 use crate::tracer::wrap_syscall::KvmRunWrapper;
@@ -63,15 +64,15 @@ impl<T: Copy> HvMem<T> {
     }
 }
 
-/// Physical Memory attached to a VM. Backed by `VmMem.mem`.
+/// Physical Memory attached to a VM. Backed by `PhysMem.mem`.
 #[derive(Debug)]
-pub struct VmMem<T: Copy> {
+pub struct PhysMem<T: Copy> {
     pub mem: HvMem<T>,
     ioctl_arg: HvMem<kvmb::kvm_userspace_memory_region>,
-    pub guest_phys_addr: u64,
+    pub guest_phys_addr: PhysAddr,
 }
 
-impl<T: Copy> Drop for VmMem<T> {
+impl<T: Copy> Drop for PhysMem<T> {
     fn drop(&mut self) {
         let tracee = match self.mem.tracee.write() {
             Err(e) => {
@@ -380,7 +381,7 @@ impl Hypervisor {
         guest_addr: u64,
         size: usize,
         readonly: bool,
-    ) -> Result<VmMem<T>> {
+    ) -> Result<PhysMem<T>> {
         // must be a multiple of PAGESIZE
         let slot_len = page_math::page_align(size);
         let hv_memslot = self.alloc_mem_padded::<T>(slot_len)?;
@@ -404,11 +405,14 @@ impl Hypervisor {
         if ret != 0 {
             bail!("ioctl_with_ref failed: {}", ret)
         }
-
-        Ok(VmMem {
+        let host_offset = compute_host_offset(hv_memslot.ptr, guest_addr as usize);
+        Ok(PhysMem {
             mem: hv_memslot,
             ioctl_arg: arg_hv,
-            guest_phys_addr: guest_addr,
+            guest_phys_addr: PhysAddr {
+                value: guest_addr as usize,
+                host_offset,
+            },
         })
     }
 

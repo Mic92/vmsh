@@ -1,6 +1,9 @@
 //mod device;
 
-use crate::{guest_mem::GuestMem, result::Result};
+use crate::{
+    guest_mem::{GuestMem, LINUX_KERNEL_KASLR_RANGE_END, LINUX_KERNEL_KASLR_RANGE_START},
+    result::Result,
+};
 use log::*;
 use nix::unistd::Pid;
 use simple_error::try_with;
@@ -47,11 +50,17 @@ pub fn inspect(opts: &InspectOptions) -> Result<()> {
 
     let mem = GuestMem::new(&vm)?;
     match mem.find_kernel(&vm) {
-        Ok(e) => info!(
-            "found kernel at 0x{:x}-0x{:x}",
-            e.virt_start,
-            e.virt_start + e.len
-        ),
+        Ok(e) => {
+            let space_before = e.virt_start - LINUX_KERNEL_KASLR_RANGE_START;
+            let space_after = LINUX_KERNEL_KASLR_RANGE_END - e.virt_start - e.len;
+            info!(
+                "found kernel at 0x{:x}-0x{:x} (free space before: {} kib, free space after: {} kib)",
+                e.virt_start,
+                e.virt_start + e.len,
+                space_before / 1024,
+                space_after / 1024,
+            );
+        }
         Err(e) => info!("could not find kernel: {}", e),
     }
 

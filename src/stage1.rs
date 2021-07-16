@@ -1,5 +1,6 @@
 use log::debug;
 use log::{info, log_enabled, warn, Level};
+use nix::sys::mman::ProtFlags;
 use nix::sys::signal::{kill, SIGTERM};
 use nix::sys::wait::{waitpid, WaitPidFlag, WaitStatus};
 /// This module loads kernel code into the VM that we want to attach to.
@@ -15,15 +16,15 @@ use std::time::Duration;
 
 use crate::interrutable_thread::InterrutableThread;
 use crate::kvm;
-use crate::kvm::hypervisor::VmMem;
+use crate::kvm::allocator::VirtAlloc;
+use crate::page_table::VirtMem;
 use crate::result::Result;
 
 const STAGE1_EXE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/stage1.ko"));
 
-#[derive(Debug)]
 pub struct Stage1 {
     ssh_args: String,
-    pub vm_mem: Option<VmMem<u8>>,
+    pub virt_mem: Option<VirtMem>,
 }
 
 fn cleanup_stage1(ssh_args: &str) -> Result<()> {
@@ -80,7 +81,7 @@ fn stage1_thread(
     ssh_args: String,
     command: &[String],
     mmio_addrs: Vec<u64>,
-    vm_mem: VmMem<u8>,
+    virt_mem: VirtMem,
     should_stop: Arc<AtomicBool>,
 ) -> Result<Stage1> {
     std::thread::sleep(Duration::from_millis(3000));
@@ -95,7 +96,8 @@ fn stage1_thread(
         .collect::<Vec<_>>()
         .join(",");
 
-    let phys_mem = vm_mem.guest_phys_addr;
+    let virt_addr = virt_mem.mappings[0].virt_start;
+    info!("virt: 0x{:x}", virt_addr);
     let mut child = ssh_command(&ssh_args, move |cmd| -> &mut Command {
         let script = format!(
             r#"
@@ -105,13 +107,13 @@ trap "rm -rf '$tmpdir'" EXIT
 dd if=/proc/self/fd/0 of="$tmpdir/stage1.ko" count={} bs=512
 # cleanup old driver if still loaded
 rmmod stage1 2>/dev/null || true
-insmod "$tmpdir/stage1.ko" devices="{}" stage2_argv="{}" phys_mem="{}"
+insmod "$tmpdir/stage1.ko" devices="{}" stage2_argv="{}" virt_mem="{}"
 "#,
             debug_stage1,
             stage1_size / 512,
             mmio_addrs,
             command.join(","),
-            phys_mem,
+            virt_addr
         );
         cmd.stdin(Stdio::piped()).arg(script)
     })?;
@@ -161,7 +163,7 @@ insmod "$tmpdir/stage1.ko" devices="{}" stage2_argv="{}" phys_mem="{}"
 
     Ok(Stage1 {
         ssh_args,
-        vm_mem: Some(vm_mem),
+        virt_mem: Some(virt_mem),
     })
 }
 
@@ -174,9 +176,18 @@ pub fn spawn_stage1(
 ) -> Result<InterrutableThread<Stage1>> {
     let ssh_args = ssh_args.to_string();
     let command = command.to_vec();
-    let vm_mem = try_with!(
-        allocator.alloc(0x2000, false),
-        "failed to allocate stage1 memory in vm"
+    let kernel = try_with!(
+        allocator.find_kernel(),
+        "could not find Linux kernel in VM memory"
+    );
+    let virt_start = kernel.virt_start + kernel.len;
+    let alloc = [VirtAlloc {
+        len: 0x2000,
+        prot: ProtFlags::PROT_WRITE,
+    }];
+    let virt_mem = try_with!(
+        allocator.virt_alloc(virt_start, &alloc),
+        "cannot map virtual memory"
     );
 
     let res = InterrutableThread::spawn(
@@ -184,7 +195,7 @@ pub fn spawn_stage1(
         result_sender,
         move |should_stop: Arc<AtomicBool>| {
             // wait until vmsh can process block device requests
-            stage1_thread(ssh_args, &command, mmio_ranges, vm_mem, should_stop)
+            stage1_thread(ssh_args, &command, mmio_ranges, virt_mem, should_stop)
         },
     );
     Ok(try_with!(res, "failed to create stage1 thread"))

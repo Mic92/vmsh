@@ -1,6 +1,5 @@
 use log::info;
 use simple_error::bail;
-use std::fmt::Debug;
 use std::io;
 use std::ops::FnOnce;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -16,7 +15,7 @@ pub const DEFAULT_THREAD_STACKSIZE: usize = 128 * 1024;
 
 pub struct InterrutableThread<T>
 where
-    T: Debug + Send + 'static,
+    T: Send + 'static,
 {
     handle: JoinHandle<Result<T>>,
     should_stop: Arc<AtomicBool>,
@@ -24,7 +23,7 @@ where
 
 impl<T> InterrutableThread<T>
 where
-    T: Debug + Send + 'static,
+    T: Send + 'static,
 {
     /// Creates and runs a threads with the given name.
     /// The thread function will receive an atomic boolean as its first argument
