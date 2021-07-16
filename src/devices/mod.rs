@@ -63,6 +63,11 @@ fn convert(pid: pid_t, mappings: &[Mapping]) -> Result<GuestMemoryMmap> {
     ))
 }
 
+use crate::kvm::hypervisor::IoRegionFd;
+trait MaybeIoRegionFd {
+    fn get_ioregionfd(&self) -> &Option<IoRegionFd>;
+}
+
 pub struct DeviceContext {
     pub blkdev: Arc<Mutex<Block>>,
     pub console: Arc<Mutex<Console>>,
