@@ -262,9 +262,9 @@ fn ioregion_event_loop(
         //println!("{:?}, {:?}, response={}: {:?}", cmd.info.cmd(), cmd.info.size(), cmd.info.is_response(), cmd);
         let cmd = try_with!(block_ioregionfd.read(), "foo");
         mmio_mgr.handle_ioregion_rw(&block_ioregionfd, cmd)?;
-        let cmd = try_with!(console_ioregionfd.read(), "foo");
-        mmio_mgr.handle_ioregion_rw(&console_ioregionfd, cmd)?;
-        // TODO same for console
+        info!("console"); // TODO needs one thread per device! But we only have one global mmio_mgr, so we need to switch back to one global ioregionfd
+        //let cmd = try_with!(console_ioregionfd.read(), "foo");
+        //mmio_mgr.handle_ioregion_rw(&console_ioregionfd, cmd)?;
 
         if should_stop.load(Ordering::Relaxed) {
             break;
