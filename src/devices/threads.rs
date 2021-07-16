@@ -247,9 +247,13 @@ fn ioregion_event_loop(
     should_stop: &Arc<AtomicBool>,
     device_ready: &Arc<DeviceReady>,
     mmio_mgr: Arc<Mutex<IoPirate>>,
-    ioregionfd: &Option<IoRegionFd>,
+    device: Arc<Mutex<dyn MaybeIoRegionFd + Send>>, 
                        ) -> Result<()> {
-    let ioregionfd = ioregionfd.ok_or(simple_error!("foo"))?;
+    let ioregionfd = {
+        let device = try_with!(device.lock(), "foo");
+        let ioregionfd = device.get_ioregionfd();
+        ioregionfd.ok_or(simple_error!("foo"))?.clone()
+    };
     device_ready.notify()?;
 
     loop {
@@ -299,9 +303,7 @@ fn ioregion_handler_thread(
 
             let ioregionfd = try_with!(vm.ioregionfd(mmio_start, mmio_len as usize), "foo");
             vm.resume()?; // TODO make ioregionfd() independent of resumed/stopped
-            let device = try_with!(device.lock(), "foo");
-            let ioregionfd = device.get_ioregionfd();
-            try_with!(ioregion_event_loop(&should_stop, &device_ready, mmio_mgr, ioregionfd), "foo");
+            try_with!(ioregion_event_loop(&should_stop, &device_ready, mmio_mgr, device), "foo");
 
             // drop remote resources like ioeventfd before disowning traced process.
             //drop(device);
