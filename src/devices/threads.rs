@@ -288,28 +288,28 @@ fn ioregion_handler_thread(
     mmio_len: usize,
 ) -> Result<InterrutableThread<()>> {
     let device_ready = Arc::clone(device_ready);
-    let vm = Arc::clone(vm);
+    //let vm = Arc::clone(vm);
     info!("mmio dev attached");
 
-    vm.prepare_thread_transfer()?;
+    //vm.prepare_thread_transfer()?;
 
     let res = InterrutableThread::spawn(
         "ioregion-handler",
         err_sender,
         move |should_stop: Arc<AtomicBool>| {
-            vm.finish_thread_transfer()?;
+            //vm.finish_thread_transfer()?;
 
             info!("mmio dev attached");
 
-            let ioregionfd = try_with!(vm.ioregionfd(mmio_start, mmio_len as usize), "foo");
-            vm.resume()?; // TODO make ioregionfd() independent of resumed/stopped
+            //let ioregionfd = try_with!(vm.ioregionfd(mmio_start, mmio_len as usize), "foo");
+            //vm.resume()?; // TODO make ioregionfd() independent of resumed/stopped
             try_with!(ioregion_event_loop(&should_stop, &device_ready, mmio_mgr, device), "foo");
 
             // drop remote resources like ioeventfd before disowning traced process.
             //drop(device);
 
             // we need to return ptrace control before returning to the main thread
-            vm.prepare_thread_transfer()?;
+            //vm.prepare_thread_transfer()?;
             Ok(())
         },
     );
@@ -362,7 +362,7 @@ impl DeviceSet {
         } else {
             let mmio_start = self.context.first_mmio_addr;
             let mmio_len = self.context.last_mmio_addr - mmio_start;
-            //vm.resume()?;
+            vm.resume()?;
             threads.push(try_with!(ioregion_handler_thread(
                 vm,
                 self.context.blkdev,
