@@ -188,6 +188,13 @@ where
     }
 }
 
+use crate::devices::MaybeIoRegionFd;
+impl<M: GuestAddressSpace + Clone + Send + 'static> MaybeIoRegionFd for Console<M> {
+    fn get_ioregionfd(&self) -> &Option<IoRegionFd> {
+        &self.ioregionfd
+    }
+}
+
 // We now implement `WithVirtioConfig` and `WithDeviceOps` to get the automatic implementation
 // for `VirtioDevice`.
 impl<M: GuestAddressSpace + Clone + Send + 'static> VirtioDeviceType for Console<M> {
