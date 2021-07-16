@@ -6,7 +6,7 @@
 linux_dir := invocation_directory() + "/../linux"
 linux_repo := "https://github.com/Mic92/linux"
 nix_results := invocation_directory() + "/.git/nix-results"
-kernel_fhs := "$(nix build --out-link {{nix_results}}/kernel-fhs --json '.#kernel-fhs' | jq -r '.[] | .outputs | .out')/bin/linux-kernel-build"
+kernel_fhs := "$(nix build --out-link " + nix_results + "/kernel-fhs --json '.#kernel-fhs' | jq -r '.[] | .outputs | .out')/bin/linux-kernel-build"
 
 virtio_blk_img := invocation_directory() + "/../linux/nixos.ext4"
 
