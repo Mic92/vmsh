@@ -6,7 +6,7 @@
 linux_dir := invocation_directory() + "/../linux"
 linux_repo := "https://github.com/Mic92/linux"
 nix_results := invocation_directory() + "/.git/nix-results"
-kernel_fhs := "$(nix build --out-link {{nix_results}}/kernel-fhs --json '.#kernel-fhs' | jq -r '.[] | .outputs | .out')/bin/linux-kernel-build"
+kernel_fhs := "$(nix build --out-link " + nix_results + "/kernel-fhs --json '.#kernel-fhs' | jq -r '.[] | .outputs | .out')/bin/linux-kernel-build"
 
 virtio_blk_img := invocation_directory() + "/../linux/nixos.ext4"
 
@@ -132,10 +132,12 @@ build-linux: configure-linux
 
 # Build kernel-less disk image for NixOS
 nixos-image:
-  [[ {{linux_dir}}/nixos.ext4 -nt nix/nixos-image.nix ]] || \
-  [[ {{linux_dir}}/nixos.ext4 -nt flake.lock ]] || \
-  (nix build --out-link {{nix_results}}/nixos-image --builders '' .#nixos-image --out-link nixos-image && \
-  install -m600 "nixos-image/nixos.img" {{linux_dir}}/nixos.ext4)
+  #!/usr/bin/env bash
+  set -eux -o pipefail
+  if [[ nix/nixos-image.nix -nt {{linux_dir}}/nixos.ext4 ]] || [[ flake.lock -nt {{linux_dir}}/nixos.ext4 ]]; then
+     nix build --out-link {{nix_results}}/nixos-image --builders '' .#nixos-image --out-link nixos-image
+     install -m600 "nixos-image/nixos.img" {{linux_dir}}/nixos.ext4
+  fi
 
 # Build kernel/disk image for not os
 notos-image:
