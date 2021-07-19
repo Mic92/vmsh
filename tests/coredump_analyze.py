@@ -299,6 +299,15 @@ class kernel_symbol(ct.Structure):
     ]
 
 
+def get_name_addr(mem: MappedMemory, idx: int) -> int:
+    sym_size = ct.sizeof(kernel_symbol)
+    addr = idx - sym_size
+    sym = kernel_symbol.from_buffer_copy(mem[addr:idx].data)
+    name_addr = sym.name_offset + kernel_symbol.name_offset.offset + addr
+    print(f"0x{mem.virt_addr(addr):x} - 0x{name_addr:x} ({sym.name_offset:=})")
+    return name_addr
+
+
 def get_ksymtab_start(
     mem: MappedMemory, ksymtab_strings: MappedMemory
 ) -> Optional[int]:
@@ -310,19 +319,13 @@ def get_ksymtab_start(
     sym_size = ct.sizeof(kernel_symbol)
     # each entry in kcrctab is 32 bytes
     step_size = ct.sizeof(ct.c_int32)
-    matches = 0
     for ii in range(ksymtab_strings.start, mem.start, -step_size):
-        addr = ii - sym_size
-        sym = kernel_symbol.from_buffer_copy(mem[addr:ii].data)
-        name_addr = sym.name_offset + kernel_symbol.name_offset.offset + addr
-        print(f"0x{mem.virt_addr(addr):x} - 0x{name_addr:x} ({sym.name_offset:=})")
+        name_addr = get_name_addr(mem, ii)
 
-        if ksymtab_strings.inrange(name_addr):
-            matches += 1
-            if matches == 2:
-                return ii - ct.sizeof(ct.c_int32)
-        else:
-            matches = 0
+        if ksymtab_strings.inrange(name_addr) and ii - mem.start > step_size:
+            name_addr_2 = get_name_addr(mem, ii - sym_size)
+            if ksymtab_strings.inrange(name_addr_2):
+                return ii
     return None
 
 
@@ -361,7 +364,7 @@ def get_kernel_symbols(
         return {}
 
     print(
-        f"found ksymtab at physical address: 0x{ksymtab_start:x}, {ksymtab_strings.start - ksymtab_start} bytes before ksymtab_strings"
+        f"found ksymtab at physical address: 0x{ksymtab_start:x} / virtual address: 0x{mem.virt_addr(ksymtab_start):x}, {ksymtab_strings.start - ksymtab_start} bytes before ksymtab_strings"
     )
 
     for ii in range(ksymtab_start, mem.start, -ct.sizeof(kernel_symbol)):
@@ -374,6 +377,7 @@ def get_kernel_symbols(
 
         name_len = 0
         if not ksymtab_strings.inrange(name_addr):
+            # print(name_addr)
             break
         for b in ksymtab_strings[name_addr : ksymtab_strings.end]:
             if b == 0x0:
@@ -416,11 +420,10 @@ def inspect_coredump(fd: IO[bytes]) -> None:
     ksymtab_strings_section = kernel_memory[strings_start_addr:strings_end_addr]
     string_num = count_ksymtab_strings(ksymtab_strings_section)
     print(
-        f"found ksymtab_string at physical 0x{strings_start_addr:x}:0x{strings_end_addr:x} with {string_num} symbols"
+        f"found ksymtab_string at physical 0x{strings_start_addr:x}:0x{strings_end_addr:x} with {string_num} strings"
     )
     symbols = get_kernel_symbols(kernel_memory, ksymtab_strings_section)
     print(f"found ksymtab with {len(symbols)} functions")
-    breakpoint()
 
 
 def main() -> None:
