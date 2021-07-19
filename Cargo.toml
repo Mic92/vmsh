@@ -33,7 +33,7 @@ bcc = { git = "https://github.com/rust-bpf/rust-bcc.git", rev = "f456aa57cd969c2
 simple-error = "0.2.*"
 kvm-bindings = "0.4.*"
 virtio = { path = "src/virtio" }
-env_logger = { version = "0.8.*", default-features = false }
+env_logger = { version = "0.9.*", default-features = false }
 lazy_static = "*"
 container-pid = "0.1.0"
 
