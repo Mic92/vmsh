@@ -22,23 +22,41 @@ pub struct PhysMemAllocator {
     next_allocation: usize,
 }
 
+const EXTEND_CPU_INFO_FUNCTION: u32 = 0x80000001;
 const ADDRESS_SIZE_FUNCTION: u32 = 0x80000008;
+const LONG_MODE: u32 = 1 << 29;
+
 fn get_first_allocation(hv: &Arc<Hypervisor>) -> Result<usize> {
     let host_cpuid = unsafe { core::arch::x86_64::__cpuid(ADDRESS_SIZE_FUNCTION) };
     let vm_cpuid = try_with!(hv.get_cpuid2(&hv.vcpus[0]), "cannot get cpuid2");
-    // Get Virtual and Physical address Sizes
-    let entry = vm_cpuid
+    // Get Extended Processor Info and Feature Bits
+    let extended_cpu_info_entry = vm_cpuid
+        .entries
+        .iter()
+        .find(|c| c.function == EXTEND_CPU_INFO_FUNCTION);
+    let extended_cpu_info_entry = require_with!(
+        extended_cpu_info_entry,
+        "could not get the vm's cpuid entry for extended processor info and features bits ({})",
+        EXTEND_CPU_INFO_FUNCTION
+    );
+    if extended_cpu_info_entry.edx & LONG_MODE == 0 {
+        bail!("VM is not 64-bit");
+    }
+
+    // Get Virtual and Physical address sizes
+    let address_size_entry = vm_cpuid
         .entries
         .iter()
         .find(|c| c.function == ADDRESS_SIZE_FUNCTION);
-    let entry = require_with!(
-        entry,
-        "could not get the vm's cpuid entry for virtual and physical address size"
+    let address_size_entry = require_with!(
+        address_size_entry,
+        "could not get the vm's cpuid entry for virtual and physical address size ({})",
+        ADDRESS_SIZE_FUNCTION
     );
     // Supported guest physical address size in bits
-    let vm_phys_bits = entry.eax as u8;
+    let vm_phys_bits = address_size_entry.eax as u8;
     // Supported guest virtual address size in bits
-    let vm_virt_bits = (entry.eax >> 8) as u8;
+    let vm_virt_bits = (address_size_entry.eax >> 8) as u8;
     debug!(
         "vm/cpu: phys_bits: {}, virt_bits: {}",
         vm_phys_bits, vm_virt_bits
