@@ -10,6 +10,7 @@ use std::os::unix::io::{AsRawFd, FromRawFd};
 use std::os::unix::prelude::RawFd;
 use std::path::PathBuf;
 
+use crate::page_math::compute_host_offset;
 use crate::result::Result;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -36,19 +37,8 @@ impl Mapping {
         self.phys_addr + self.size()
     }
     pub fn phys_to_host_offset(&self) -> isize {
-        if self.start > self.phys_addr {
-            (self.start - self.phys_addr) as isize
-        } else {
-            -((self.phys_addr - self.start) as isize)
-        }
+        compute_host_offset(self.start, self.phys_addr)
     }
-    //pub fn phys_to_host_addr(&self, phys_addr: usize) -> Result<usize> {
-    //    let offset = phys_addr - self.phys_addr;
-    //    if phys_addr < self.phys_addr || offset > self.size() {
-    //        bail!("address is not included in this mapping")
-    //    }
-    //    Ok(self.start + offset)
-    //}
 }
 
 pub fn find_mapping(mappings: &[Mapping], ip: usize) -> Option<Mapping> {

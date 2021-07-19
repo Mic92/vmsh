@@ -59,8 +59,8 @@ pub fn attach(opts: &AttachOptions) -> Result<()> {
     // termination wait or vmsh_stop()
     let _ = receiver.recv();
     stage1.shutdown();
-    let vm_memory = match stage1.join() {
-        Ok(mut v) => v.vm_mem.take(),
+    let virt_memory = match stage1.join() {
+        Ok(mut v) => v.virt_mem.take(),
         Err(e) => {
             error!("stage1 failed: {}", e);
             None
@@ -77,7 +77,7 @@ pub fn attach(opts: &AttachOptions) -> Result<()> {
     // We need ptrace the process again before we can finish.
     vm.finish_thread_transfer()?;
     // now that we got the tracer back, we can cleanup pysical memory
-    drop(vm_memory);
+    drop(virt_memory);
     vm.resume()?;
 
     Ok(())

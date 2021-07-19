@@ -7,7 +7,7 @@ use std::os::unix::io::AsRawFd;
 use std::sync::Mutex;
 use std::time::Duration;
 use vmm_sys_util::eventfd::{EventFd, EFD_NONBLOCK};
-use vmsh::kvm::hypervisor::{get_hypervisor, VmMem};
+use vmsh::kvm::hypervisor::{get_hypervisor, PhysMem};
 use vmsh::result::Result;
 use vmsh::tracer::wrap_syscall::KvmRunWrapper;
 
@@ -72,7 +72,7 @@ fn guest_add_mem(pid: Pid, re_get_slots: bool) -> Result<()> {
         });
 
         // add memslot
-        let vm_mem: VmMem<u64> = vm.vm_add_mem::<u64>(0xd0000000, size_of::<u64>(), false)?;
+        let vm_mem: PhysMem<u64> = vm.vm_add_mem::<u64>(0xd0000000, size_of::<u64>(), false)?;
         println!("--");
 
         if re_get_slots {

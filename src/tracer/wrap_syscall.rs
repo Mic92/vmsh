@@ -166,15 +166,11 @@ impl Thread {
                 "failed to waitpid on thread {}",
                 self.ptthread.tid
             );
-            match status {
-                WaitStatus::PtraceSyscall(pid)
-                | WaitStatus::PtraceEvent(pid, Signal::SIGSTOP, _) => {
-                    if pid == self.ptthread.tid {
-                        break;
-                    }
-                }
-                o => {
-                    dbg!(o);
+            if let WaitStatus::PtraceSyscall(pid)
+            | WaitStatus::PtraceEvent(pid, Signal::SIGSTOP, _) = status
+            {
+                if pid == self.ptthread.tid {
+                    break;
                 }
             }
         }

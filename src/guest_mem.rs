@@ -1,9 +1,13 @@
-use crate::page_math::add_offset;
-use crate::page_table::PageTable;
+use std::sync::Arc;
+
+use crate::kvm::hypervisor::PhysMem;
+use crate::page_math::page_size;
+use crate::page_table::{self, PageTable, PhysAddr, VirtMem};
 use crate::tracer::proc::Mapping;
 use crate::{cpu::Regs, kvm::hypervisor::Hypervisor};
 use kvm_bindings as kvmb;
-use log::info;
+use log::debug;
+use nix::sys::mman::ProtFlags;
 use simple_error::{bail, require_with, try_with};
 
 use crate::result::Result;
@@ -12,6 +16,8 @@ pub struct GuestMem {
     maps: Vec<Mapping>,
     regs: Regs,
     sregs: kvmb::kvm_sregs,
+    page_table_mapping_idx: usize,
+    pml4: PageTable,
 }
 
 // x86_64 & linux address to load the Linux kernel too
@@ -29,15 +35,16 @@ fn get_page_table_addr(sregs: &kvmb::kvm_sregs) -> usize {
     }) as usize
 }
 
-const LINUX_KERNEL_KASLR_RANGE_START: usize = 0xFFFFFFFF80000000;
-const LINUX_KERNEL_KASLR_RANGE_END: usize = 0xFFFFFFFFC0000000;
+pub const LINUX_KERNEL_KASLR_RANGE_START: usize = 0xFFFFFFFF80000000;
+pub const LINUX_KERNEL_KASLR_RANGE_END: usize = 0xFFFFFFFFC0000000;
 
 /// Contineous physical memory that is mapped virtual contineous
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct MappedMemory {
-    pub phys_start: usize,
+    pub phys_start: PhysAddr,
     pub virt_start: usize,
     pub len: usize,
+    pub prot: ProtFlags,
 }
 
 impl GuestMem {
@@ -56,7 +63,39 @@ impl GuestMem {
             "failed to get vcpu special registers"
         );
 
-        Ok(GuestMem { maps, regs, sregs })
+        let pt_addr = get_page_table_addr(&sregs);
+
+        debug!("pml4: 0x{:x}\n", pt_addr);
+
+        let (idx, pt_mapping) = require_with!(
+            maps.iter()
+                .enumerate()
+                .find(|(_, m)| { m.phys_addr <= pt_addr && pt_addr < m.phys_end() }),
+            "cannot find page table memory"
+        );
+
+        let host_offset = pt_mapping.phys_to_host_offset();
+
+        let pt = try_with!(
+            PageTable::read(
+                hv,
+                &PhysAddr {
+                    value: pt_addr,
+                    host_offset
+                },
+                0,
+                0
+            ),
+            "cannot load page table"
+        );
+
+        Ok(GuestMem {
+            maps,
+            regs,
+            sregs,
+            page_table_mapping_idx: idx,
+            pml4: pt,
+        })
     }
 
     pub fn last_mapping(&self) -> Option<&Mapping> {
@@ -69,6 +108,19 @@ impl GuestMem {
             .find(|m| m.phys_addr == KERNEL_PHYS_LOAD_ADDR)
     }
 
+    fn page_table_mapping(&self) -> &Mapping {
+        &self.maps[self.page_table_mapping_idx]
+    }
+
+    pub fn map_memory(
+        &mut self,
+        hv: Arc<Hypervisor>,
+        phys_mem: PhysMem<u8>,
+        map: &[MappedMemory],
+    ) -> Result<VirtMem> {
+        page_table::map_memory(hv, phys_mem, &mut self.pml4, map)
+    }
+
     pub fn find_kernel(&self, hv: &Hypervisor) -> Result<MappedMemory> {
         let cpl = self.regs.cs & 3;
         if cpl == 3 {
@@ -76,52 +128,46 @@ impl GuestMem {
         }
 
         let kernel_mapping = require_with!(self.kernel_mapping(), "cannot find kernel memory");
+        let pt_mapping = self.page_table_mapping();
         let pt_addr = get_page_table_addr(&self.sregs);
-        let pt_mapping = require_with!(
-            self.maps
-                .iter()
-                .find(|m| { m.phys_addr <= pt_addr && pt_addr < m.phys_end() }),
-            "cannot find page table memory"
-        );
         if kernel_mapping != pt_mapping {
             bail!("kernel memory and page table (0x{:x}) is not in the same physical memory block: 0x{:x}-0x{:x} vs 0x{:x}-0x{:x}", pt_addr, kernel_mapping.phys_addr, kernel_mapping.phys_end(), pt_mapping.phys_addr, pt_mapping.phys_end());
         }
-        let host_offset = pt_mapping.phys_to_host_offset();
-        let host_addr = add_offset(pt_addr, host_offset);
 
-        info!("pml4: 0x{:x} -> 0x{:x}\n", pt_addr, host_addr);
-
-        let pt = try_with!(
-            PageTable::new(hv, host_addr as u64, 0, 0),
-            "cannot load page table"
-        );
-        let mut iter = pt.iter(
+        let mut iter = self.pml4.clone().iter(
             hv,
-            host_offset,
             LINUX_KERNEL_KASLR_RANGE_START,
             LINUX_KERNEL_KASLR_RANGE_END,
         );
         let mut first: Option<_> = None;
         for e in &mut iter {
-            let (virt_addr, entry) = try_with!(e, "cannot read page table");
-            if virt_addr as usize > LINUX_KERNEL_KASLR_RANGE_START {
-                first = Some((virt_addr, entry));
+            let entry = try_with!(e, "cannot read page table");
+            if entry.virt_addr as usize > LINUX_KERNEL_KASLR_RANGE_START {
+                first = Some(entry);
                 break;
             }
         }
         let first = require_with!(first, "no linux kernel found in page table");
         let mut last = first;
         for e in &mut iter {
-            let (virt_addr, entry) = try_with!(e, "cannot read page table");
-            if virt_addr as usize > LINUX_KERNEL_KASLR_RANGE_END {
+            let entry = try_with!(e, "cannot read page table");
+            if entry.virt_addr as usize > LINUX_KERNEL_KASLR_RANGE_END {
                 break;
             }
-            last = (virt_addr, entry);
+            last = entry;
         }
+        let host_offset = pt_mapping.phys_to_host_offset();
+        let len =
+            ((last.virt_addr - first.virt_addr) as usize) + (page_size() << (9 * (3 - last.level)));
         Ok(MappedMemory {
-            phys_start: first.1.addr() as usize,
-            virt_start: first.0 as usize,
-            len: (last.0 - first.0) as usize,
+            phys_start: PhysAddr {
+                value: first.entry.addr() as usize,
+                host_offset,
+            },
+            virt_start: first.virt_addr as usize,
+            len,
+            // don't care
+            prot: ProtFlags::empty(),
         })
     }
 }

@@ -1,13 +1,17 @@
 use std::sync::Arc;
 
-use crate::guest_mem::GuestMem;
+use crate::{
+    guest_mem::{GuestMem, MappedMemory},
+    page_table::{estimate_page_table_size, VirtMem},
+};
 use log::debug;
+use nix::sys::mman::ProtFlags;
 use simple_error::{bail, require_with, try_with};
 use vm_device::bus::{MmioAddress, MmioRange};
 
 use crate::{page_math, result::Result};
 
-use super::hypervisor::{Hypervisor, VmMem};
+use super::hypervisor::{Hypervisor, PhysMem};
 
 pub struct PhysMemAllocator {
     hv: Arc<Hypervisor>,
@@ -57,6 +61,11 @@ fn get_first_allocation(hv: &Arc<Hypervisor>) -> Result<usize> {
     Ok(std::cmp::min(1 << vm_phys_bits, 1 << host_phys_bits))
 }
 
+pub struct VirtAlloc {
+    pub len: usize,
+    pub prot: ProtFlags,
+}
+
 impl PhysMemAllocator {
     pub fn new(hv: Arc<Hypervisor>) -> Result<Self> {
         let next_allocation = get_first_allocation(&hv)?;
@@ -76,9 +85,9 @@ impl PhysMemAllocator {
         let last_alloc = last_mapping.phys_addr + last_mapping.size();
         if start < last_alloc {
             bail!(
-                "cannot allocate memory at {:x}, our allocator conflicts with mapping at {:x} ({:x}B)\
-                   This might happen if the last vmsh run did not clean up memory\
-                   correctly or the hypervisor has allocated memory at the very end of\
+                "cannot allocate memory at {:x}, our allocator conflicts with mapping at {:x} ({:x}B). \
+                   This might happen if the last vmsh run did not clean up memory \
+                   correctly or the hypervisor has allocated memory at the very end of \
                    the physical address space",
                 start, last_mapping.start, last_mapping.size()
             );
@@ -88,7 +97,7 @@ impl PhysMemAllocator {
         Ok(start)
     }
 
-    pub fn alloc(&mut self, size: usize, readonly: bool) -> Result<VmMem<u8>> {
+    pub fn phys_alloc(&mut self, size: usize, readonly: bool) -> Result<PhysMem<u8>> {
         let old_start = self.next_allocation;
         let padded_size = page_math::page_align(size);
         let start = self.reserve_range(padded_size)?;
@@ -97,6 +106,34 @@ impl PhysMemAllocator {
             self.next_allocation = old_start;
         }
         res
+    }
+    pub fn virt_alloc(&mut self, mut virt_start: usize, alloc: &[VirtAlloc]) -> Result<VirtMem> {
+        let len = alloc.iter().map(|a| a.len).sum();
+        let phys_mem = self.phys_alloc(estimate_page_table_size(len), false)?;
+
+        let mut next_addr = phys_mem.guest_phys_addr.clone();
+
+        let mapped_mem = alloc
+            .iter()
+            .map(|a| {
+                let m = MappedMemory {
+                    phys_start: next_addr.clone(),
+                    virt_start,
+                    len: a.len,
+                    prot: a.prot,
+                };
+                virt_start += a.len;
+                next_addr.value += a.len;
+                m
+            })
+            .collect::<Vec<MappedMemory>>();
+
+        self.guest_mem
+            .map_memory(self.hv.clone(), phys_mem, &mapped_mem)
+    }
+
+    pub fn find_kernel(&self) -> Result<MappedMemory> {
+        self.guest_mem.find_kernel(&self.hv)
     }
 
     pub fn alloc_mmio_range(&mut self, size: usize) -> Result<MmioRange> {

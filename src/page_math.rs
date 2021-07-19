@@ -8,10 +8,14 @@ pub fn page_align(v: usize) -> usize {
     (v + page_size() - 1) & !(page_size() - 1)
 }
 
-pub fn add_offset(addr: usize, offset: isize) -> usize {
-    if offset < 0 {
-        addr - offset.wrapping_abs() as usize
+pub fn is_page_aligned(v: usize) -> bool {
+    v & (page_size() - 1) == 0
+}
+
+pub fn compute_host_offset(host_addr: usize, phys_addr: usize) -> isize {
+    if host_addr > phys_addr {
+        (host_addr - phys_addr) as isize
     } else {
-        addr + offset as usize
+        -((phys_addr - host_addr) as isize)
     }
 }
