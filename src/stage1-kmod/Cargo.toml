@@ -1,0 +1,22 @@
+[package]
+name = "stage1-kmod"
+version = "0.0.1"
+authors = [ "Jörg Thalheim <joerg@thalheim.io>" ]
+edition = "2018"
+license = "MIT"
+
+[lib]
+crate_type = ["staticlib"]
+
+[dependencies]
+stage1 = { path = "../stage1" }
+
+[profile.dev]
+panic = "abort"
+lto = true
+opt-level = "z"
+
+[profile.release]
+panic = "abort"
+lto = true
+opt-level = "z"

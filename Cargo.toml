@@ -18,7 +18,7 @@ build-utils = { path = "src/build-utils" }
 
 [workspace]
 members = ["src/virtio", "src/ioutils"]
-exclude = ["src/stage1", "src/stage2", "src/build-utils"]
+exclude = ["src/stage1", "src/stage1-kmod", "src/stage1-freestanding", "src/stage2", "src/build-utils"]
 
 [dependencies]
 clap = { version = "2", default-features = false }

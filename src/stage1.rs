@@ -21,6 +21,7 @@ use crate::page_table::VirtMem;
 use crate::result::Result;
 
 const STAGE1_EXE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/stage1.ko"));
+const STAGE1_LIB: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/libstage1_freestanding.so"));
 
 pub struct Stage1 {
     ssh_args: String,
@@ -87,6 +88,8 @@ fn stage1_thread(
     std::thread::sleep(Duration::from_millis(3000));
 
     let debug_stage1 = if log_enabled!(Level::Debug) { "x" } else { "" };
+
+    debug!("load stage1 ({} kB) into vm", STAGE1_LIB.len() / 1024);
 
     let stage1_size = padded_size(STAGE1_EXE.len());
     let mmio_addrs = mmio_addrs

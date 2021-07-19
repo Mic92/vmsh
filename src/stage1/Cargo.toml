@@ -11,16 +11,3 @@ build-utils = { path = "../build-utils" }
 
 [dependencies]
 libc = { version = "0.2.*" }
-
-[lib]
-crate_type = ["staticlib"]
-
-[profile.dev]
-panic = "abort"
-lto = true
-opt-level = "z"
-
-[profile.release]
-panic = "abort"
-lto = true
-opt-level = "z"
