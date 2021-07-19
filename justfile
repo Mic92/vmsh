@@ -33,7 +33,7 @@ fmt:
 
 # Continously run clippy checks whenever the source changes
 watch:
-  cargo watch -x clippy
+  cargo watch -x build
 
 # Run unit and integration tests
 test:
