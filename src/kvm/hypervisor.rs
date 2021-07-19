@@ -452,7 +452,7 @@ impl IoRegionFd {
             bail!("fas");
         }
         let cmd: ioregionfd_cmd = unsafe { t_mem.assume_init() };
-        log::info!("read {:?}, {:?}, response={}: {:?}", cmd.info.cmd(), cmd.info.size(), cmd.info.is_response(), cmd);
+        log::trace!("read {:?}, {:?}, response={}: {:?}", cmd.info.cmd(), cmd.info.size(), cmd.info.is_response(), cmd);
         Ok(cmd)
     }
 
@@ -461,7 +461,7 @@ impl IoRegionFd {
     }
 
     pub fn write_slice(&self, data: &[u8]) -> Result<()> {
-        log::info!("write_slice()");
+        log::trace!("write_slice()");
         let mut arr = [0u8; 8];
         let arr_slice = &mut arr[0..data.len()];
         arr_slice.copy_from_slice(data);
@@ -470,7 +470,7 @@ impl IoRegionFd {
 
     /// Write a response back to the VM.
     pub fn write(&self, data: u64) -> Result<()> {
-        log::info!("write {:x}", data);
+        log::trace!("write {:x}", data);
         let len = size_of::<ioregionfd_resp>();
         let response = ioregionfd_resp::new(data);
         // safe, because we won't need t_bytes for long

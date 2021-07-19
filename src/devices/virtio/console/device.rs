@@ -239,7 +239,7 @@ impl<M: GuestAddressSpace + Clone + Send + 'static> VirtioQueueNotifiable for Co
     fn queue_notify(&mut self, val: u32) {
         if USE_IOREGIONFD {
             self.uioefd.queue_notify(val);
-            log::error!("queue_notify {}", val);
+            log::trace!("queue_notify {}", val);
         }
     }
 }
