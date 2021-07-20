@@ -80,9 +80,8 @@ configure-linux: #clone-linux
   #!/usr/bin/env bash
   set -xeuo pipefail
   if [[ ! -f {{linux_dir}}/.config ]]; then
-    cd {{linux_dir}}
-    {{kernel_fhs}} "make defconfig kvm_guest.config"
-    {{kernel_fhs}} "scripts/config \
+    {{kernel_fhs}} "make -C {{linux_dir}} defconfig kvm_guest.config"
+    {{kernel_fhs}} "cd {{linux_dir}} && scripts/config \
        --disable DRM \
        --disable USB \
        --disable WIRELESS \
