@@ -18,9 +18,18 @@ build-utils = { path = "src/build-utils" }
 
 [workspace]
 members = ["src/virtio", "src/ioutils"]
-exclude = ["src/stage1", "src/stage1-kmod", "src/stage1-freestanding", "src/stage2", "src/build-utils"]
+exclude = [
+  "src/build-utils",
+  "src/stage1",
+  "src/stage1-kmod",
+  "src/stage1-freestanding",
+  "src/stage2"
+]
 
 [dependencies]
+#elfloader = { path = "src/rust-elfloader" }
+elfloader = "*"
+xmas-elf = "*"
 clap = { version = "2", default-features = false }
 ioutils = { path = "src/ioutils" }
 nix = "0.22.*"
