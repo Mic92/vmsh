@@ -142,7 +142,7 @@ nixos-image:
 # Build kernel/disk image for not os
 notos-image:
   nix build --out-link {{nix_results}}/notos-image '.#not-os-image.json'
-  jq < result
+  jq < {{nix_results}}/notos-image
 
 # built image for qemu_nested.sh
 nested-nixos-image: nixos-image
