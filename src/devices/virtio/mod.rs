@@ -110,9 +110,11 @@ impl SignalUsedQueue for SingleFdSignalQueue {
 /// Note: `device::threads::EVENT_LOOP_TIMEOUT_MS` typically determines how often the irq ack
 /// timeout is handled and thus is typically the lower bound.
 const INTERRUPT_ACK_TIMEOUT: Duration = Duration::from_millis(1);
+const RESEND_RATELIMIT: Duration = Duration::from_millis(500);
 
 pub struct IrqAckHandler {
     last_sent: Instant,
+    resent: Instant,
     interrupt_status: Arc<AtomicU8>,
     irqfd: Arc<EventFd>,
     total_sent: usize,
@@ -123,6 +125,7 @@ impl IrqAckHandler {
     pub fn new(interrupt_status: Arc<AtomicU8>, irqfd: Arc<EventFd>) -> Self {
         IrqAckHandler {
             last_sent: Instant::now(),
+            resent: Instant::now(),
             interrupt_status,
             irqfd,
             total_sent: 0,
@@ -140,12 +143,14 @@ impl IrqAckHandler {
     pub fn handle_timeouts(&mut self) {
         let passed = Instant::now().duration_since(self.last_sent);
         let unacked = self.interrupt_status.load(Ordering::Acquire) != 0;
-        if passed >= INTERRUPT_ACK_TIMEOUT && unacked {
+        let ratelimit = Instant::now().duration_since(self.resent) <= RESEND_RATELIMIT;
+        if passed >= INTERRUPT_ACK_TIMEOUT && unacked && !ratelimit{
             // interrupt timed out && has not been acked
             if let Err(e) = self.irqfd.write(1) {
                 log::error!("Failed write to eventfd when signalling queue: {}", e);
             } else {
                 self.total_ack_timeouted += 1;
+                self.resent = Instant::now();
                 log::warn!(
                     "re-sending lost interrupt after {:.1}ms. Total lost {:.0}% ({}/{})",
                     passed.as_micros() as f64 / 1000.0,
