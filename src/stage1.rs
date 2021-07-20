@@ -1,5 +1,5 @@
-use log::debug;
-use log::{info, log_enabled, warn, Level};
+use log::{debug, warn};
+use log::{info, log_enabled, Level};
 use nix::sys::mman::ProtFlags;
 use nix::sys::signal::{kill, SIGTERM};
 use nix::sys::wait::{waitpid, WaitPidFlag, WaitStatus};
@@ -17,6 +17,7 @@ use std::time::Duration;
 use crate::interrutable_thread::InterrutableThread;
 use crate::kvm;
 use crate::kvm::allocator::VirtAlloc;
+use crate::loader::Loader;
 use crate::page_table::VirtMem;
 use crate::result::Result;
 
@@ -85,7 +86,8 @@ fn stage1_thread(
     virt_mem: VirtMem,
     should_stop: Arc<AtomicBool>,
 ) -> Result<Stage1> {
-    std::thread::sleep(Duration::from_millis(3000));
+    let mut loader = try_with!(Loader::new(STAGE1_LIB), "cannot load stage1");
+    try_with!(loader.load_binary(), "cannot load stage1");
 
     let debug_stage1 = if log_enabled!(Level::Debug) { "x" } else { "" };
 
@@ -202,4 +204,15 @@ pub fn spawn_stage1(
         },
     );
     Ok(try_with!(res, "failed to create stage1 thread"))
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{loader::Loader, stage1::STAGE1_LIB};
+
+    #[test]
+    fn test_load_binary() {
+        let mut loader = Loader::new(STAGE1_LIB).expect("cannot load stage1");
+        loader.load_binary().expect("cannot load stage1");
+    }
 }
