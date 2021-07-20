@@ -156,7 +156,8 @@ vmsh-image: nixos-image
   #!/usr/bin/env bash
   set -eux -o pipefail
   if [[ ! -e {{linux_dir}}/vmsh-image.ext4 ]] || [[ {{linux_dir}}/nixos.ext4 -nt {{linux_dir}}/vmsh-image.ext4 ]]; then
-      cp -a --reflink=auto "{{linux_dir}}/nixos.ext4" {{linux_dir}}/vmsh-image.ext4
+      cp -a --reflink=auto "{{linux_dir}}/nixos.ext4" "{{linux_dir}}/vmsh-image.ext4"
+      touch -r "{{linux_dir}}/nixos.ext4" "{{linux_dir}}/vmsh-image.ext4"
   fi
 
 # run qemu with kernel build by `build-linux` and filesystem image build by `nixos-image`
