@@ -374,10 +374,12 @@ impl DeviceSet {
             ), "cannot spawn block ioregion handler"));
             //threads.push(try_with!(ioregion_handler_thread(
             //    vm,
-            //    device.console,
-            //    device.mmio_mgr.clone(),
+            //    self.context.console,
+            //    self.context.mmio_mgr.clone(),
             //    err_sender,
             //    &device_ready,
+            //    mmio_start,
+            //    mmio_len as usize
             //), "cannot spawn console ioregion handler"));
         }
 
