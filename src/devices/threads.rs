@@ -252,7 +252,7 @@ fn ioregion_event_loop(
     let ioregionfd = {
         let device = try_with!(device.lock(), "cannot lock device");
         let ioregionfd = device.get_ioregionfd();
-        ioregionfd.ok_or(simple_error!("cannot start ioregion event loop when ioregion does not exist"))?.clone()
+        ioregionfd.ok_or(simple_error!("cannot start ioregion event loop when ioregion does not exist"))?
     };
     device_ready.notify()?;
 
@@ -340,7 +340,7 @@ impl DeviceSet {
             ), "cannot spawn block ioregion handler"));
             threads.push(try_with!(ioregion_handler_thread(
                 self.context.console,
-                self.context.mmio_mgr.clone(),
+                self.context.mmio_mgr,
                 err_sender,
                 &device_ready,
             ), "cannot spawn console ioregion handler"));

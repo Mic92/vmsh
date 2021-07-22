@@ -84,7 +84,8 @@ impl IoPirate {
                 ioregionfd.write_slice(data)
             }
         };
-        Ok(try_with!(res, "cannot handle ioregion command"))
+        try_with!(res, "cannot handle ioregion command");
+        Ok(())
     }
 }
 

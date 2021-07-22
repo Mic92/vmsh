@@ -177,8 +177,8 @@ impl Deref for IoEvent {
     type Target = EventFd;
     fn deref(&self) -> &EventFd {
         match self {
-            IoEvent::IoEventFd(e) => &e,
-            IoEvent::EventFd(e) => &e,
+            IoEvent::IoEventFd(e) => e,
+            IoEvent::EventFd(e) => e,
         }
     }
 }

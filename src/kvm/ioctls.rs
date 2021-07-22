@@ -383,22 +383,22 @@ impl Info {
 
     pub fn cmd(&self) -> Cmd {
         let mut i: u32 = self.0 >> IOREGIONFD_CMD_OFFSET;
-        let foo = !(!0 << IOREGIONFD_CMD_LEN);
-        i &= foo;
+        let valid_bits = !(!0 << IOREGIONFD_CMD_LEN);
+        i &= valid_bits;
         num::FromPrimitive::from_u32(i).unwrap_or(Cmd::Write)
     }
 
     pub fn size(&self) -> Size {
         let mut i: u32 = self.0 >> IOREGIONFD_SIZE_OFFSET;
-        let foo = !(!0 << IOREGIONFD_SIZE_LEN);
-        i &= foo;
+        let valid_bits = !(!0 << IOREGIONFD_SIZE_LEN);
+        i &= valid_bits;
         num::FromPrimitive::from_u32(i).unwrap_or(Size::b8)
     }
 
     pub fn is_response(&self) -> bool {
         let mut i: u32 = self.0 >> IOREGIONFD_RESP_OFFSET;
-        let foo = !(!0 << IOREGIONFD_RESP_LEN);
-        i &= foo;
+        let valid_bits = !(!0 << IOREGIONFD_RESP_LEN);
+        i &= valid_bits;
         i == 0
     }
 }
