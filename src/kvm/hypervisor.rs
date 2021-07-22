@@ -3,11 +3,14 @@ use crate::tracer::inject_syscall;
 use kvm_bindings as kvmb;
 use libc::{c_int, c_void};
 use log::*;
+use nix::sys::socket::{socketpair, AddressFamily, SockFlag, SockType};
 use nix::unistd::Pid;
+use nix::unistd::{read, write};
 use simple_error::{bail, simple_error, try_with};
 use std::ffi::OsStr;
 use std::marker::PhantomData;
 use std::mem::size_of;
+use std::mem::MaybeUninit;
 use std::os::unix::io::AsRawFd;
 use std::os::unix::prelude::RawFd;
 use std::sync::{Arc, Mutex, RwLock, RwLockWriteGuard};
@@ -15,8 +18,12 @@ use vm_memory::remote_mem;
 use vmm_sys_util::eventfd::{EventFd, EFD_NONBLOCK};
 
 use crate::cpu;
+use crate::devices::virtio::{register_ioeventfd, MmioConfig};
+use crate::devices::USE_IOREGIONFD;
 use crate::kvm::fd_transfer;
 use crate::kvm::ioctls;
+use crate::kvm::ioctls::kvm_ioregion;
+use crate::kvm::ioctls::{ioregionfd_cmd, ioregionfd_resp};
 use crate::kvm::tracee::{kvm_msrs, Tracee};
 use crate::page_math::{self, compute_host_offset};
 use crate::result::Result;
@@ -130,6 +137,56 @@ pub struct Hypervisor {
     pub vcpu_maps: Vec<Mapping>,
     tracee: Arc<RwLock<Tracee>>,
     pub wrapper: Mutex<Option<KvmRunWrapper>>,
+}
+
+/// Abstraction around IoEventFd and EventFd.
+/// They can't be placed into the same memory location without an enum, because
+/// vmm_sys_util::EventFd doesn't implement Sized which is required for `dyn`.
+pub enum IoEvent {
+    IoEventFd(IoEventFd),
+    EventFd(EventFd),
+}
+
+impl IoEvent {
+    pub fn register(
+        vmm: &Arc<Hypervisor>,
+        uioefd: &mut UserspaceIoEventFd,
+        mmio_cfg: &MmioConfig,
+        queue_idx: u64,
+    ) -> Result<IoEvent> {
+        if USE_IOREGIONFD {
+            let eventfd = try_with!(
+                uioefd.userpace_ioeventfd(Some(queue_idx as u32)),
+                "cannot register userspace ioeventfd"
+            );
+            Ok(IoEvent::EventFd(eventfd))
+        } else {
+            let ioeventfd = try_with!(
+                register_ioeventfd(vmm, mmio_cfg, queue_idx),
+                "cannot register ioeventfd"
+            );
+            Ok(IoEvent::IoEventFd(ioeventfd))
+        }
+    }
+}
+
+impl AsRawFd for IoEvent {
+    fn as_raw_fd(&self) -> RawFd {
+        match self {
+            IoEvent::IoEventFd(e) => e.as_raw_fd(),
+            IoEvent::EventFd(e) => e.as_raw_fd(),
+        }
+    }
+}
+
+impl Deref for IoEvent {
+    type Target = EventFd;
+    fn deref(&self) -> &EventFd {
+        match self {
+            IoEvent::IoEventFd(e) => e,
+            IoEvent::EventFd(e) => e,
+        }
+    }
 }
 
 pub struct IoEventFd {
@@ -253,6 +310,196 @@ impl AsRawFd for IoEventFd {
         self.fd.as_raw_fd()
     }
 }
+
+struct UIoEFd {
+    datamatch: Option<u32>,
+    fd: EventFd,
+}
+
+/// For 32bit wide accesses on the queue notify register of virtio devices. Requires one UIoEventFd
+/// per device.
+pub struct UserspaceIoEventFd {
+    ioeventfds: Vec<UIoEFd>,
+}
+
+impl Default for UserspaceIoEventFd {
+    fn default() -> Self {
+        Self { ioeventfds: vec![] }
+    }
+}
+
+impl UserspaceIoEventFd {
+    pub fn userpace_ioeventfd(&mut self, datamatch: Option<u32>) -> Result<EventFd> {
+        if datamatch.is_none() && !self.ioeventfds.is_empty() {
+            bail!("cannot add a userspace ioeventfd without datamatch when others with datamatch have already been registered");
+        }
+
+        let fd = try_with!(
+            EventFd::new(EFD_NONBLOCK),
+            "cannot create non-blocking eventfd for uioefd"
+        );
+        log::info!("eventfd {:?} for ioregionfd", fd.as_raw_fd(),);
+        let uioefd = UIoEFd {
+            datamatch,
+            fd: try_with!(fd.try_clone(), "cannot clone uioefd"),
+        };
+        self.ioeventfds.push(uioefd);
+        Ok(fd)
+    }
+
+    /// Callback for writes to QueueNotify register. Forwards notification to the corresponding
+    /// EventFd reader.
+    pub fn queue_notify(&self, val: u32) {
+        let criterion = |uioefd: &&UIoEFd| match uioefd.datamatch {
+            Some(dm) => dm == val,
+            None => true,
+        };
+        if let Some(ioefd) = self.ioeventfds.iter().find(criterion) {
+            // ioefd is the correct fd from our list
+            if let Err(e) = ioefd.fd.write(1) {
+                log::trace!(
+                    "cannot write to UserspaceIoEventFd (datamatch {:?}, fd {}): {}",
+                    ioefd.datamatch,
+                    ioefd.fd.as_raw_fd(),
+                    e
+                );
+            }
+        } else {
+            log::trace!("cannot find datamatch for ");
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct IoRegionFd {
+    pub ioregion: kvm_ioregion,
+    rfile: RawFd, // our end: we write responses here
+    wfile: RawFd, // we read commands from here
+    rf_hv: RawFd, // their end: transferred to hyperisor
+    wf_hv: RawFd,
+}
+
+impl IoRegionFd {
+    fn new(hv: &Hypervisor, guest_paddr: u64, len: usize) -> Result<Self> {
+        if Self::capability_present(hv)? {
+            bail!("This operation requires KVM_CAP_IOREGIONFD which your KVM does not have.");
+        }
+
+        let (rf_dev, rf_hv) = try_with!(
+            socketpair(
+                AddressFamily::Unix,
+                SockType::SeqPacket,
+                None,
+                SockFlag::SOCK_CLOEXEC
+            ),
+            "cannot create sockets for IoRegionFd"
+        );
+        let (wf_dev, wf_hv) = try_with!(
+            socketpair(
+                AddressFamily::Unix,
+                SockType::SeqPacket,
+                None,
+                SockFlag::SOCK_CLOEXEC
+            ),
+            "cannot create sockets for IoRegionFd"
+        );
+        let hv_rf_hv = hv.transfer(vec![rf_hv.as_raw_fd()].as_slice())?[0];
+        let hv_wf_hv = hv.transfer(vec![wf_hv.as_raw_fd()].as_slice())?[0];
+        let ioregion = kvm_ioregion::new(guest_paddr, len, hv_rf_hv, hv_wf_hv);
+        let mem = hv.alloc_mem()?;
+        mem.write(&ioregion)?;
+
+        let ret = {
+            let tracee = try_with!(
+                hv.tracee.read(),
+                "cannot obtain tracee read lock: poinsoned"
+            );
+            try_with!(
+                tracee.vm_ioctl_with_ref(ioctls::KVM_SET_IOREGION(), &mem),
+                "kvm ioeventfd ioctl injection failed"
+            )
+        };
+        if ret != 0 {
+            bail!("ioregionfd ioctl failed with {}", ret);
+        }
+
+        Ok(IoRegionFd {
+            ioregion,
+            rfile: rf_dev,
+            wfile: wf_dev,
+            rf_hv,
+            wf_hv,
+        })
+    }
+
+    pub fn capability_present(hv: &Hypervisor) -> Result<bool> {
+        let has_cap = try_with!(
+            hv.check_extension(ioctls::KVM_CAP_IOREGIONFD as i32),
+            "cannot check kvm extension capabilities"
+        );
+        Ok(has_cap == 0)
+    }
+
+    /// receive read and write events/commands
+    pub fn read(&self) -> Result<ioregionfd_cmd> {
+        let len = size_of::<ioregionfd_cmd>();
+        let mut t_mem = MaybeUninit::<ioregionfd_cmd>::uninit();
+        // safe, because slice.len() == len
+        let t_slice = unsafe { std::slice::from_raw_parts_mut(t_mem.as_mut_ptr() as *mut u8, len) };
+        let read = try_with!(
+            read(self.wfile, t_slice),
+            "read on ioregionfd {} failed",
+            self.wfile
+        );
+        if read != len {
+            bail!(
+                "read returned ioregionfd command of incorrect length {}",
+                read
+            );
+        }
+        // safe, because we wrote exactly the correct amount of bytes (len)
+        let cmd: ioregionfd_cmd = unsafe { t_mem.assume_init() };
+        log::trace!(
+            "read {:?}, {:?}, response={}: {:?}",
+            cmd.info.cmd(),
+            cmd.info.size(),
+            cmd.info.is_response(),
+            cmd
+        );
+        Ok(cmd)
+    }
+
+    /// Write a response back to the VM.
+    pub fn write_slice(&self, data: &[u8]) -> Result<()> {
+        log::trace!("write_slice()");
+        let mut arr = [0u8; 8];
+        let arr_slice = &mut arr[0..data.len()];
+        arr_slice.copy_from_slice(data);
+        self.write(u64::from_ne_bytes(arr))
+    }
+
+    /// Write a response back to the VM.
+    pub fn write(&self, data: u64) -> Result<()> {
+        log::trace!("write {:x}", data);
+        let len = size_of::<ioregionfd_resp>();
+        let response = ioregionfd_resp::new(data);
+        // safe, because we won't need t_bytes for longer than this stack frame
+        let t_bytes = unsafe {
+            std::slice::from_raw_parts((&response as *const ioregionfd_resp) as *const u8, len)
+        };
+        let written = try_with!(
+            write(self.rfile, t_bytes),
+            "write on ioregionfd {} failed",
+            self.rfile
+        );
+        if written != len {
+            bail!("cannot write entire ioregionfd command {}/{}", written, len);
+        }
+        Ok(())
+    }
+}
+
+// TODO impl Drop for IoRegionFd
 
 impl Hypervisor {
     fn attach(pid: Pid, vm_fd: RawFd) -> Tracee {
@@ -503,6 +750,10 @@ impl Hypervisor {
         datamatch: Option<u64>,
     ) -> Result<IoEventFd> {
         IoEventFd::new(self, guest_addr, len, datamatch)
+    }
+
+    pub fn ioregionfd(&self, start: u64, len: usize) -> Result<IoRegionFd> {
+        IoRegionFd::new(self, start, len)
     }
 
     /// param `gsi`: pin on the irqchip to be toggled by fd events

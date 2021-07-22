@@ -1,6 +1,6 @@
 pub mod mmio;
 mod threads;
-mod virtio;
+pub mod virtio;
 
 use crate::devices::mmio::IoPirate;
 use crate::devices::threads::SubscriberEventManager;
@@ -8,6 +8,7 @@ use crate::devices::virtio::block::{self, BlockArgs};
 use crate::devices::virtio::console::{self, ConsoleArgs};
 use crate::devices::virtio::{CommonArgs, MmioConfig};
 use crate::kvm::hypervisor::Hypervisor;
+use crate::kvm::hypervisor::IoRegionFd;
 use crate::kvm::PhysMemAllocator;
 use crate::result::Result;
 use crate::tracer::proc::Mapping;
@@ -22,6 +23,8 @@ use vm_memory::GuestMemoryRegion;
 use vm_memory::{GuestMemoryMmap, GuestRegionMmap};
 
 pub use self::threads::DeviceSet;
+
+pub const USE_IOREGIONFD: bool = false;
 
 pub type Block = block::Block<Arc<GuestMemoryMmap>>;
 pub type Console = console::Console<Arc<GuestMemoryMmap>>;
@@ -59,6 +62,10 @@ fn convert(pid: pid_t, mappings: &[Mapping]) -> Result<GuestMemoryMmap> {
         GuestMemoryMmap::from_arc_regions(pid, regions),
         "GuestMemoryMmap error"
     ))
+}
+
+trait MaybeIoRegionFd {
+    fn get_ioregionfd(&self) -> &Option<IoRegionFd>;
 }
 
 pub struct DeviceContext {

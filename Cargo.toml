@@ -45,12 +45,14 @@ virtio = { path = "src/virtio" }
 env_logger = { version = "0.9.*", default-features = false }
 lazy_static = "*"
 container-pid = "0.1.0"
+num-traits = "0.2"
+num-derive = "0.3"
 
 # src/device/ deps:
-# Switch back to upstream, once https://github.com/rust-vmm/vm-virtio/pull/56 is merged
-virtio-blk = { git = "https://github.com/Mic92/vm-virtio.git", features = ["backend-stdio"], rev = "f3f31f60aebb2698c2464636bfc433df4bab190e"} # does no kvm operations
-virtio-device = { git = "https://github.com/Mic92/vm-virtio.git", rev = "f3f31f60aebb2698c2464636bfc433df4bab190e"}
-virtio-queue = { git = "https://github.com/Mic92/vm-virtio.git", rev = "f3f31f60aebb2698c2464636bfc433df4bab190e"}
+# Switch back to upstream, once https://github.com/rust-vmm/vm-virtio/pull/TODO is merged
+virtio-blk = { git = "https://github.com/Mic92/vm-virtio.git", features = ["backend-stdio"], rev = "2c9cc78d1757f85d7fe469d5b44ba6ce2c83996d"} # does no kvm operations
+virtio-device = { git = "https://github.com/Mic92/vm-virtio.git", rev = "2c9cc78d1757f85d7fe469d5b44ba6ce2c83996d"}
+virtio-queue = { git = "https://github.com/Mic92/vm-virtio.git", rev = "2c9cc78d1757f85d7fe469d5b44ba6ce2c83996d"}
 #virtio-blk = { path = "../rust-vmm/vm-virtio/crates/devices/virtio-blk", features = ["backend-stdio"]} # does no kvm operations
 #virtio-device = { path = "../rust-vmm/vm-virtio/crates/virtio-device" }
 #virtio-queue = { path = "../rust-vmm/vm-virtio/crates/virtio-queue" }

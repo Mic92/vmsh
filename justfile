@@ -98,6 +98,9 @@ configure-linux: #clone-linux
        --enable GDB_SCRIPTS \
        --enable DEBUG_DRIVER \
        --enable KVM \
+       --enable KVM_INTEL \
+       --enable KVM_AMD \
+       --enable KVM_IOREGION \
        --enable BPF_SYSCALL \
        --enable IKHEADERS \
        --enable IKCONFIG_PROC \
@@ -236,6 +239,10 @@ attach-qemu-img: nixos-image
 # Attach block device to first qemu vm found by pidof and owned by our own user
 attach-qemu: vmsh-image
   cargo run -- attach -f "{{linux_dir}}/vmsh-image.ext4" "{{qemu_pid}}" --ssh-args " -i {{invocation_directory()}}/nix/ssh_key -p {{qemu_ssh_port}} root@localhost" -- /nix/var/nix/profiles/system/sw/bin/ls -la
+
+attach-nested-qemu: vmsh-image
+  cargo build
+  just ssh-qemu '/mnt/vmsh/target/debug/vmsh -l info,vmsh::devices::virtio::block::threads=trace,vmsh::kvm::hypervisor=info attach -f "/linux/vmsh-image.ext4" $(pgrep qemu) --ssh-args " -i /mnt/vmsh/nix/ssh_key -p 3333 root@localhost" -- /nix/var/nix/profiles/system/sw/bin/ls -la'
 
 # Inspect first qemu vm found by pidof and owned by our own user
 inspect-qemu:
