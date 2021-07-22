@@ -417,24 +417,22 @@ impl IoRegionFd {
     }
 
     /// receive read and write events/commands
-    fn read_(wfile: RawFd) -> Result<ioregionfd_cmd> {
+    pub fn read(&self) -> Result<ioregionfd_cmd> {
         let len = size_of::<ioregionfd_cmd>();
         let mut t_mem = MaybeUninit::<ioregionfd_cmd>::uninit();
+        // safe, because slice.len() == len
         let t_slice = unsafe { std::slice::from_raw_parts_mut(t_mem.as_mut_ptr() as *mut u8, len) };
-        //let read = vm_memory::process_read_bytes(pid, t_slice, addr)?;
-        let read = try_with!(read(wfile, t_slice), "foo");
+        let read = try_with!(read(self.wfile, t_slice), "read on ioregionfd {} failed", self.wfile);
         if read != len {
-            bail!("fas");
+            bail!("read returned ioregionfd command of incorrect length {}", read);
         }
+        // safe, because we wrote exactly the correct amount of bytes (len)
         let cmd: ioregionfd_cmd = unsafe { t_mem.assume_init() };
         log::trace!("read {:?}, {:?}, response={}: {:?}", cmd.info.cmd(), cmd.info.size(), cmd.info.is_response(), cmd);
         Ok(cmd)
     }
 
-    pub fn read(&self) -> Result<ioregionfd_cmd> {
-        Self::read_(self.wfile)
-    }
-
+    /// Write a response back to the VM.
     pub fn write_slice(&self, data: &[u8]) -> Result<()> {
         log::trace!("write_slice()");
         let mut arr = [0u8; 8];
@@ -448,12 +446,11 @@ impl IoRegionFd {
         log::trace!("write {:x}", data);
         let len = size_of::<ioregionfd_resp>();
         let response = ioregionfd_resp::new(data);
-        // safe, because we won't need t_bytes for long
+        // safe, because we won't need t_bytes for longer than this stack frame
         let t_bytes = unsafe { std::slice::from_raw_parts((&response as *const ioregionfd_resp) as *const u8, len) };
-        //let written = process_write_bytes(pid, addr, t_bytes)?;
-        let written = try_with!(write(self.rfile, t_bytes), "foo");
+        let written = try_with!(write(self.rfile, t_bytes), "write on ioregionfd {} failed", self.rfile);
         if written != len {
-            bail!("foo");
+            bail!("cannot write entire ioregionfd command {}/{}", written, len);
         }
         Ok(())
     }
