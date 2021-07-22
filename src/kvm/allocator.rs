@@ -150,7 +150,7 @@ impl PhysMemAllocator {
             .map_memory(self.hv.clone(), phys_mem, &mapped_mem)
     }
 
-    pub fn find_kernel(&self) -> Result<MappedMemory> {
+    pub fn find_kernel(&self) -> Result<Vec<MappedMemory>> {
         self.guest_mem.find_kernel(&self.hv)
     }
 
