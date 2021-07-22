@@ -110,7 +110,7 @@ impl SignalUsedQueue for SingleFdSignalQueue {
 /// Note: `device::threads::EVENT_LOOP_TIMEOUT_MS` typically determines how often the irq ack
 /// timeout is handled and thus is typically the lower bound.
 const INTERRUPT_ACK_TIMEOUT: Duration = Duration::from_millis(1);
-const RESEND_RATELIMIT: Duration = Duration::from_millis(500);
+const RESEND_RATELIMIT: Duration = Duration::from_millis(25);
 
 pub struct IrqAckHandler {
     last_sent: Instant,

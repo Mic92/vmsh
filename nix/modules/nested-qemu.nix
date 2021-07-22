@@ -2,6 +2,7 @@
 {
   environment.systemPackages = [
     pkgs.linuxPackages.bcc
+    pkgs.gdb # for debugging the nested guest
     (pkgs.writeShellScriptBin "qemu-nested" ''
       exec ${pkgs.qemu_kvm}/bin/qemu-system-x86_64 \
         -kernel /linux/arch/x86/boot/bzImage \
