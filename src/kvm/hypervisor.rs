@@ -381,6 +381,10 @@ pub struct IoRegionFd {
 
 impl IoRegionFd {
     fn new(hv: &Hypervisor, guest_paddr: u64, len: usize) -> Result<Self> {
+        if Self::capability_present(hv)? {
+            bail!("This operation requires KVM_CAP_IOREGIONFD which your KVM does not have.");
+        }
+
         let (rf_dev, rf_hv) = try_with!(
             socketpair(
                 AddressFamily::Unix,
@@ -426,6 +430,14 @@ impl IoRegionFd {
             rf_hv,
             wf_hv,
         })
+    }
+
+    pub fn capability_present(hv: &Hypervisor) -> Result<bool> {
+        let has_cap = try_with!(
+            hv.check_extension(ioctls::KVM_CAP_IOREGIONFD as i32),
+            "cannot check kvm extension capabilities"
+        );
+        Ok(has_cap == 0)
     }
 
     /// receive read and write events/commands
