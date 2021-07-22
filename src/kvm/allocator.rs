@@ -23,8 +23,26 @@ pub struct PhysMemAllocator {
 }
 
 const EXTEND_CPU_INFO_FUNCTION: u32 = 0x80000001;
+const ENCRYPTED_MEMORY_CAPABILITIES: u32 = 0x8000001f;
 const ADDRESS_SIZE_FUNCTION: u32 = 0x80000008;
 const LONG_MODE: u32 = 1 << 29;
+
+fn sme_sev_bits() -> u8 {
+    // get AMD Encrypted Memory Capabilities information according to AMD doc 24594—Rev. 3.32
+    let host_cpuid = unsafe { core::arch::x86_64::__cpuid(ENCRYPTED_MEMORY_CAPABILITIES) };
+    //host_cpuid(0x8000001f, 0, &eax, &ebx, NULL, NULL);
+    // bits:
+    // 0:1 SME
+    // 1:2 SEV
+    // ...
+    if host_cpuid.eax & 1 != 0 || host_cpuid.eax & 2 != 0 {
+        // bits:
+        // 11:6 PhysAddrReduction
+        ((host_cpuid.ebx >> 6) & 0x3f) as u8
+    } else {
+        0
+    }
+}
 
 fn get_first_allocation(hv: &Arc<Hypervisor>) -> Result<usize> {
     let host_cpuid = unsafe { core::arch::x86_64::__cpuid(ADDRESS_SIZE_FUNCTION) };
@@ -69,7 +87,7 @@ fn get_first_allocation(hv: &Arc<Hypervisor>) -> Result<usize> {
         );
     }
     // Supported host physical address size in bits
-    let host_phys_bits = host_cpuid.eax as u8;
+    let host_phys_bits = host_cpuid.eax as u8 - sme_sev_bits();
     // Supported host virtual address size in bits
     let host_virt_bits = (host_cpuid.eax >> 8) as u8;
     debug!(
