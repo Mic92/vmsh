@@ -6,12 +6,10 @@ use event_manager::{EventOps, Events, MutEventSubscriber};
 use log::error;
 use vm_memory::GuestAddressSpace;
 use vmm_sys_util::epoll::EventSet;
-use vmm_sys_util::eventfd::{EventFd, EFD_NONBLOCK};
-use std::os::unix::io::AsRawFd;
 
 use crate::devices::virtio::block::inorder_handler::InOrderQueueHandler;
 use crate::devices::virtio::SingleFdSignalQueue;
-use crate::kvm::hypervisor::{IoEventFd, IoEvent};
+use crate::kvm::hypervisor::IoEvent;
 
 const IOEVENT_DATA: u32 = 0;
 

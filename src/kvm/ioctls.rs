@@ -1,6 +1,8 @@
 // borrowed from vmm-sys-util
 
 use kvm_bindings as kvmb;
+use std::mem::size_of;
+use num_traits as num;
 
 /// Expression that calculates an ioctl number.
 ///
@@ -279,16 +281,17 @@ enum kvm_ioregion_flag_nr {
     max,
 }
 
+// TODO bitflags!?
 //#define KVM_IOREGION_PIO (1 << kvm_ioregion_flag_nr_pio)
-const KVM_IOREGION_PIO: u32 = (1 << kvm_ioregion_flag_nr::pio as u32);
+pub const KVM_IOREGION_PIO: u32 = 1 << kvm_ioregion_flag_nr::pio as u32;
 //#define KVM_IOREGION_POSTED_WRITES (1 << kvm_ioregion_flag_nr_posted_writes)
-const KVM_IOREGION_POSTED_WRITES: u32 = (1 << kvm_ioregion_flag_nr::posted_writes as u32);
+pub const KVM_IOREGION_POSTED_WRITES: u32 = 1 << kvm_ioregion_flag_nr::posted_writes as u32;
 //#define KVM_IOREGION_VALID_FLAG_MASK ((1 << kvm_ioregion_flag_nr_max) - 1)
-const KVM_IOREGION_VALID_FLAG_MASK: u32 = ((1 << kvm_ioregion_flag_nr::max as u32) - 1);
+pub const KVM_IOREGION_VALID_FLAG_MASK: u32 = (1 << kvm_ioregion_flag_nr::max as u32) - 1;
 
 pub const KVM_CAP_IOREGIONFD: u32 = 195;
 
-/// wire protocol
+/// wire protocol guest->host
 #[repr(C)]
 #[allow(non_camel_case_types)]
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
@@ -299,6 +302,7 @@ pub struct ioregionfd_cmd {
     pub offset: u64,
     pub data: u64,
 }
+
 impl ioregionfd_cmd {
     pub fn data(&self) -> &[u8] {
         let data = unsafe { 
@@ -323,13 +327,14 @@ impl ioregionfd_cmd {
         }
     }
 }
-use std::mem::size_of;
 
-/// wire protocol
+/// wire protocol host->guest
+#[allow(non_camel_case_types)]
 pub struct ioregionfd_resp {
     pub data: u64,
     pub pad: [u8; 24],
 }
+
 impl ioregionfd_resp {
     pub fn new(data: u64) -> Self {
         ioregionfd_resp {
@@ -339,23 +344,20 @@ impl ioregionfd_resp {
     }
 }
 
-//libc_bitflags! {
-//pub struct Info
-
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
 pub struct Info(u32);
 
-pub const IOREGIONFD_CMD_OFFSET: usize = 0;
-pub const IOREGIONFD_CMD_LEN: usize = 1;
-pub const IOREGIONFD_SIZE_OFFSET: usize = 4;
-pub const IOREGIONFD_SIZE_LEN: usize = 2;
-pub const IOREGIONFD_RESP_OFFSET: usize = 6;
-pub const IOREGIONFD_RESP_LEN: usize = 1;
-//+#define IOREGIONFD_SIZE(x) ((x) << IOREGIONFD_SIZE_OFFSET)
-//+#define IOREGIONFD_RESP(x) ((x) << IOREGIONFD_RESP_OFFSET)
+const IOREGIONFD_CMD_OFFSET: usize = 0;
+const IOREGIONFD_CMD_LEN: usize = 1;
+const IOREGIONFD_SIZE_OFFSET: usize = 4;
+const IOREGIONFD_SIZE_LEN: usize = 2;
+const IOREGIONFD_RESP_OFFSET: usize = 6;
+const IOREGIONFD_RESP_LEN: usize = 1;
+//#define IOREGIONFD_SIZE(x) ((x) << IOREGIONFD_SIZE_OFFSET)
+//#define IOREGIONFD_RESP(x) ((x) << IOREGIONFD_RESP_OFFSET)
 impl Info {
-    fn new(cmd: Cmd, size: Size, response: bool) -> Self {
+    pub fn new(cmd: Cmd, size: Size, response: bool) -> Self {
         let mut ret = 0;
         ret |= (cmd as u32) << IOREGIONFD_CMD_OFFSET;
         ret |= (size as u32) << IOREGIONFD_SIZE_OFFSET;
@@ -384,10 +386,9 @@ impl Info {
         i == 0
     }
 }
-use num_traits as num;
 
-pub const IOREGIONFD_CMD_READ: usize = 0;
-pub const IOREGIONFD_CMD_WRITE: usize = 1;
+// pub const IOREGIONFD_CMD_READ: usize = 0;
+// pub const IOREGIONFD_CMD_WRITE: usize = 1;
 #[derive(Debug,FromPrimitive)]
 pub enum Cmd {
     Read,

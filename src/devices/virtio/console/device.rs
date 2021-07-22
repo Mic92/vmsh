@@ -23,8 +23,9 @@ use crate::devices::virtio::console::VIRTIO_CONSOLE_F_SIZE;
 use crate::devices::virtio::features::{
     VIRTIO_F_IN_ORDER, VIRTIO_F_RING_EVENT_IDX, VIRTIO_F_VERSION_1,
 };
+use crate::devices::MaybeIoRegionFd;
 use crate::devices::virtio::{
-    _register_ioevent, register_ioeventfd, register_ioeventfd_ioregion, IrqAckHandler, MmioConfig, SingleFdSignalQueue, QUEUE_MAX_SIZE,
+    IrqAckHandler, MmioConfig, SingleFdSignalQueue, QUEUE_MAX_SIZE,
 };
 use crate::kvm::hypervisor::{UserspaceIoEventFd, Hypervisor, IoRegionFd, IoEvent};
 
@@ -143,7 +144,6 @@ where
 
         //let rx_fd = register_ioeventfd(&self.vmm, &self.mmio_cfg, 0).map_err(Error::Simple)?;
         let tx_fd = IoEvent::register(&self.vmm, &mut self.uioefd, &self.mmio_cfg, 1).map_err(Error::Simple)?;
-        //let tx_fd = register_ioeventfd(&self.vmm, &self.mmio_cfg, 1).map_err(Error::Simple)?;
 
         let handler = Arc::new(Mutex::new(LogQueueHandler {
             driver_notify,
@@ -188,7 +188,6 @@ where
     }
 }
 
-use crate::devices::MaybeIoRegionFd;
 impl<M: GuestAddressSpace + Clone + Send + 'static> MaybeIoRegionFd for Console<M> {
     fn get_ioregionfd(&self) -> &Option<IoRegionFd> {
         &self.ioregionfd

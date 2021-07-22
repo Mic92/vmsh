@@ -8,7 +8,6 @@ use std::ops::DerefMut;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use virtio_device::{VirtioDevice, VirtioDeviceType};
-use std::os::unix::io::AsRawFd;
 
 use event_manager::{MutEventSubscriber, RemoteEndpoint, Result as EvmgrResult, SubscriberId};
 use virtio_blk::stdio_executor::StdIoBackend;
@@ -18,18 +17,18 @@ use vm_device::bus::MmioAddress;
 use vm_device::device_manager::MmioManager;
 use vm_device::{DeviceMmio, MutDeviceMmio};
 use vm_memory::GuestAddressSpace;
-use vmm_sys_util::eventfd::{EventFd, EFD_NONBLOCK};
+use vmm_sys_util::eventfd::EventFd;
 
+use crate::devices::MaybeIoRegionFd;
 use crate::devices::virtio::block::{BLOCK_DEVICE_ID, VIRTIO_BLK_F_FLUSH, VIRTIO_BLK_F_RO};
 use crate::devices::virtio::features::{
     VIRTIO_F_IN_ORDER, VIRTIO_F_RING_EVENT_IDX, VIRTIO_F_VERSION_1,
 };
 use crate::devices::virtio::{IrqAckHandler, MmioConfig, SingleFdSignalQueue, QUEUE_MAX_SIZE};
 use crate::kvm::hypervisor::Hypervisor;
-use crate::kvm::hypervisor::{IoRegionFd, IoEventFd, IoEvent, UserspaceIoEventFd};
+use crate::kvm::hypervisor::{IoRegionFd, IoEvent, UserspaceIoEventFd};
 use crate::devices::USE_IOREGIONFD;
 
-use super::super::{_register_ioevent, register_ioeventfd, register_ioeventfd_ioregion};
 use super::inorder_handler::InOrderQueueHandler;
 use super::queue_handler::QueueHandler;
 use super::{build_config_space, BlockArgs, Error, Result};
@@ -174,7 +173,6 @@ where
             disk,
         };
 
-        //let ioregionfd = self.ioregionfd.ok_or(simple_error::simple_error!("foo")).map_err(Error::Simple)?;
         let ioeventfd = IoEvent::register(&self.vmm, &mut self.uioefd, &self.mmio_cfg, 0).map_err(Error::Simple)?;
         let handler = Arc::new(Mutex::new(QueueHandler { inner, ioeventfd }));
 
@@ -213,7 +211,6 @@ where
     }
 }
 
-use crate::devices::MaybeIoRegionFd;
 impl<M: GuestAddressSpace + Clone + Send + 'static> MaybeIoRegionFd for Block<M> {
     fn get_ioregionfd(&self) -> &Option<IoRegionFd> {
         &self.ioregionfd

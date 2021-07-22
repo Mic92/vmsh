@@ -9,7 +9,7 @@ use vmm_sys_util::epoll::EventSet;
 
 use crate::devices::virtio::console::console_handler::LogQueueHandler;
 use crate::devices::virtio::SingleFdSignalQueue;
-use crate::kvm::hypervisor::{IoEvent,IoEventFd};
+use crate::kvm::hypervisor::IoEventFd;
 
 const RX_IOEVENT_DATA: u32 = 0;
 const TX_IOEVENT_DATA: u32 = 1;

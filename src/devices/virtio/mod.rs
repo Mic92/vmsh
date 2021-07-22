@@ -110,7 +110,7 @@ impl SignalUsedQueue for SingleFdSignalQueue {
 /// Note: `device::threads::EVENT_LOOP_TIMEOUT_MS` typically determines how often the irq ack
 /// timeout is handled and thus is typically the lower bound.
 const INTERRUPT_ACK_TIMEOUT: Duration = Duration::from_millis(1);
-const RESEND_RATELIMIT: Duration = Duration::from_millis(25);
+const RESEND_RATELIMIT: Duration = Duration::from_millis(0);
 
 pub struct IrqAckHandler {
     last_sent: Instant,
@@ -151,7 +151,7 @@ impl IrqAckHandler {
             } else {
                 self.total_ack_timeouted += 1;
                 self.resent = Instant::now();
-                log::warn!(
+                log::debug!(
                     "re-sending lost interrupt after {:.1}ms. Total lost {:.0}% ({}/{})",
                     passed.as_micros() as f64 / 1000.0,
                     100.0 * self.total_ack_timeouted as f64 / self.total_sent as f64,
@@ -163,48 +163,6 @@ impl IrqAckHandler {
     }
 }
 
-// TODO move all of the following to kvm::?hypervisor?
-
-use crate::kvm::hypervisor::{IoEvent};
-use crate::devices::USE_IOREGIONFD;
-use vmm_sys_util::eventfd::{EFD_NONBLOCK};
-use std::os::unix::io::AsRawFd;
-pub fn _register_ioevent(
-    vmm: &Arc<Hypervisor>,
-    mmio_cfg: &MmioConfig,
-    queue_idx: u64,
-) -> Result<IoEvent> {
-    if !USE_IOREGIONFD {
-        let ioeventfd = register_ioeventfd(vmm, mmio_cfg, queue_idx)?;
-        Ok(IoEvent::IoEventFd(ioeventfd))
-    } else {
-        let eventfd = try_with!(EventFd::new(EFD_NONBLOCK), "foo");
-        log::info!(
-            "eventfd {:?} for ioregionfd",
-            eventfd.as_raw_fd(),
-        );
-        Ok(IoEvent::EventFd(eventfd))
-    }
-}
-
-use log::*;
-pub fn register_ioeventfd_ioregion(
-    vmm: &Arc<Hypervisor>,
-    mmio_cfg: &MmioConfig,
-    queue_idx: u64,
-) -> Result<IoEventFd> {
-    warn!("ioeventfd 1");
-    vmm.stop()?;
-    // we need to drop tracee for ioeventfd_
-    let ret = vmm.ioeventfd_(
-        mmio_cfg.range.base().0 + VIRTIO_MMIO_QUEUE_NOTIFY_OFFSET,
-        4,
-        Some(queue_idx),
-    );
-    warn!("ioeventfd 2");
-    vmm.resume()?;
-    ret
-}
 pub fn register_ioeventfd(
     vmm: &Arc<Hypervisor>,
     mmio_cfg: &MmioConfig,
