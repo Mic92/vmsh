@@ -1,8 +1,10 @@
 use std::sync::Arc;
 
 use crate::kvm::hypervisor::PhysMem;
-use crate::page_math::page_size;
-use crate::page_table::{self, PageTable, PhysAddr, VirtMem};
+use crate::page_math::huge_page_size;
+use crate::page_table::{
+    self, PageTable, PageTableFlags, PageTableIteratorValue, PhysAddr, VirtMem,
+};
 use crate::tracer::proc::Mapping;
 use crate::{cpu::Regs, kvm::hypervisor::Hypervisor};
 use kvm_bindings as kvmb;
@@ -45,6 +47,29 @@ pub struct MappedMemory {
     pub virt_start: usize,
     pub len: usize,
     pub prot: ProtFlags,
+}
+
+fn prot_flags(ptflags: PageTableFlags) -> ProtFlags {
+    let mut f = ProtFlags::PROT_READ;
+    if ptflags.contains(PageTableFlags::WRITABLE) {
+        f |= ProtFlags::PROT_WRITE;
+    }
+    if !ptflags.contains(PageTableFlags::NO_EXECUTE) {
+        f |= ProtFlags::PROT_EXEC;
+    }
+    f
+}
+
+fn mapped_memory(e: &PageTableIteratorValue, host_offset: isize) -> MappedMemory {
+    MappedMemory {
+        phys_start: PhysAddr {
+            value: e.entry.addr() as usize,
+            host_offset,
+        },
+        virt_start: e.virt_addr as usize,
+        len: huge_page_size(e.level),
+        prot: prot_flags(e.entry.flags()),
+    }
 }
 
 impl GuestMem {
@@ -121,7 +146,7 @@ impl GuestMem {
         page_table::map_memory(hv, phys_mem, &mut self.pml4, map)
     }
 
-    pub fn find_kernel(&self, hv: &Hypervisor) -> Result<MappedMemory> {
+    pub fn find_kernel(&self, hv: &Hypervisor) -> Result<Vec<MappedMemory>> {
         let cpl = self.regs.cs & 3;
         if cpl == 3 {
             bail!("program stopped in userspace. Linux kernel might be not mapped in thise mode");
@@ -139,35 +164,32 @@ impl GuestMem {
             LINUX_KERNEL_KASLR_RANGE_START,
             LINUX_KERNEL_KASLR_RANGE_END,
         );
-        let mut first: Option<_> = None;
+        let mut sections: Vec<_> = vec![];
+        let host_offset = pt_mapping.phys_to_host_offset();
         for e in &mut iter {
             let entry = try_with!(e, "cannot read page table");
             if entry.virt_addr as usize > LINUX_KERNEL_KASLR_RANGE_START {
-                first = Some(entry);
+                //info!("0x{:x}/0x{:x}: {:?}", entry.entry.addr(), entry.virt_addr, &entry.entry.flags());
+                sections.push(mapped_memory(&entry, host_offset));
                 break;
             }
         }
-        let first = require_with!(first, "no linux kernel found in page table");
-        let mut last = first;
+        if sections.is_empty() {
+            bail!("no linux kernel found in page table");
+        }
         for e in &mut iter {
             let entry = try_with!(e, "cannot read page table");
+            //info!("0x{:x}/0x{:x}: {:?}", entry.entry.addr(), entry.virt_addr, &entry.entry.flags());
             if entry.virt_addr as usize > LINUX_KERNEL_KASLR_RANGE_END {
                 break;
             }
-            last = entry;
+            let last = sections.last_mut().unwrap();
+            if last.prot == prot_flags(entry.entry.flags()) {
+                last.len += huge_page_size(entry.level);
+            } else {
+                sections.push(mapped_memory(&entry, host_offset));
+            }
         }
-        let host_offset = pt_mapping.phys_to_host_offset();
-        let len =
-            ((last.virt_addr - first.virt_addr) as usize) + (page_size() << (9 * (3 - last.level)));
-        Ok(MappedMemory {
-            phys_start: PhysAddr {
-                value: first.entry.addr() as usize,
-                host_offset,
-            },
-            virt_start: first.virt_addr as usize,
-            len,
-            // don't care
-            prot: ProtFlags::empty(),
-        })
+        Ok(sections)
     }
 }

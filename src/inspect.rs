@@ -50,13 +50,15 @@ pub fn inspect(opts: &InspectOptions) -> Result<()> {
 
     let mem = GuestMem::new(&vm)?;
     match mem.find_kernel(&vm) {
-        Ok(e) => {
-            let space_before = e.virt_start - LINUX_KERNEL_KASLR_RANGE_START;
-            let space_after = LINUX_KERNEL_KASLR_RANGE_END - e.virt_start - e.len;
+        Ok(maps) => {
+            let first = maps.first().unwrap();
+            let space_before = first.virt_start - LINUX_KERNEL_KASLR_RANGE_START;
+            let last = maps.last().unwrap();
+            let space_after = LINUX_KERNEL_KASLR_RANGE_END - last.virt_start - last.len;
             info!(
                 "found kernel at 0x{:x}-0x{:x} (free space before: {} kib, free space after: {} kib)",
-                e.virt_start,
-                e.virt_start + e.len,
+                first.virt_start,
+                last.virt_start + last.len,
                 space_before / 1024,
                 space_after / 1024,
             );
