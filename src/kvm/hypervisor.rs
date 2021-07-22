@@ -13,7 +13,13 @@ use std::os::unix::prelude::RawFd;
 use std::sync::{Arc, Mutex, RwLock, RwLockWriteGuard};
 use vm_memory::remote_mem;
 use vmm_sys_util::eventfd::{EventFd, EFD_NONBLOCK};
+use nix::sys::socket::{socketpair, AddressFamily, SockFlag, SockType};
+use std::mem::MaybeUninit;
+use nix::unistd::{read,write};
 
+use crate::kvm::ioctls::{ioregionfd_cmd,ioregionfd_resp};
+use crate::devices::USE_IOREGIONFD;
+use crate::devices::virtio::{MmioConfig, register_ioeventfd};
 use crate::cpu;
 use crate::kvm::fd_transfer;
 use crate::kvm::ioctls;
@@ -129,17 +135,13 @@ pub struct Hypervisor {
     /// hypervisor memory where fd_num is mapped to.
     /// sorted by vcpu nr. TODO what if there exist cpu [0, 1, 4]?
     pub vcpu_maps: Vec<Mapping>,
-    pub tracee: Arc<RwLock<Tracee>>,
+    tracee: Arc<RwLock<Tracee>>,
     pub wrapper: Mutex<Option<KvmRunWrapper>>,
 }
-
-use crate::devices::USE_IOREGIONFD;
-use crate::devices::virtio::{MmioConfig, register_ioeventfd};
 
 /// Abstraction around IoEventFd and EventFd.
 /// They can't be placed into the same memory location without an enum, because
 /// vmm_sys_util::EventFd doesn't implement Sized which is required for `dyn`. 
-/// TODO impl Sized in vmm_sys_util
 pub enum IoEvent {
     IoEventFd(IoEventFd),
     EventFd(EventFd),
@@ -148,18 +150,16 @@ pub enum IoEvent {
 impl IoEvent {
     pub fn register(
         vmm: &Arc<Hypervisor>,
-        //ioregionfd: &mut Option<IoRegionFd>,
         uioefd: &mut UserspaceIoEventFd,
         mmio_cfg: &MmioConfig,
         queue_idx: u64,
     ) -> Result<IoEvent> {
-        if !USE_IOREGIONFD {
-            let ioeventfd = register_ioeventfd(vmm, mmio_cfg, queue_idx)?;
-            Ok(IoEvent::IoEventFd(ioeventfd))
-        } else {
-            //let uioefd = &mut ioregionfd.as_mut().ok_or(simple_error!("programming error: foo"))?.uioefd;
-            let eventfd = uioefd.userpace_ioeventfd(Some(queue_idx as u32))?;
+        if USE_IOREGIONFD {
+            let eventfd = try_with!(uioefd.userpace_ioeventfd(Some(queue_idx as u32)), "cannot register userspace ioeventfd");
             Ok(IoEvent::EventFd(eventfd))
+        } else {
+            let ioeventfd = try_with!(register_ioeventfd(vmm, mmio_cfg, queue_idx), "cannot register ioeventfd");
+            Ok(IoEvent::IoEventFd(ioeventfd))
         }
     }
 }
@@ -323,19 +323,18 @@ impl Default for UserspaceIoEventFd {
 }
 
 impl UserspaceIoEventFd {
-    // TODO refactor IoEvent and remove EventFd as parameter here
     pub fn userpace_ioeventfd(&mut self, datamatch: Option<u32>) -> Result<EventFd> {
         if datamatch.is_none() && !self.ioeventfds.is_empty() {
             bail!("cannot add a userspace ioeventfd without datamatch when others with datamatch have already been registered");
         }
 
-        let fd = try_with!(EventFd::new(EFD_NONBLOCK), "foo");
+        let fd = try_with!(EventFd::new(EFD_NONBLOCK), "cannot create non-blocking eventfd for uioefd");
         log::info!(
             "eventfd {:?} for ioregionfd",
             fd.as_raw_fd(),
         );
         let uioefd = UIoEFd {
-            datamatch, fd: try_with!(fd.try_clone(), "foo")
+            datamatch, fd: try_with!(fd.try_clone(), "cannot clone uioefd")
         };
         self.ioeventfds.push(uioefd);
         Ok(fd)
@@ -349,6 +348,7 @@ impl UserspaceIoEventFd {
             None => true,
         };
         if let Some(ioefd) = self.ioeventfds.iter().find(criterion) {
+            // ioefd is the correct fd from our list
             if let Err(e) = ioefd.fd.write(1) {
                 log::trace!("cannot write to UserspaceIoEventFd (datamatch {:?}, fd {}): {}", ioefd.datamatch, ioefd.fd.as_raw_fd(), e);
             }
@@ -367,36 +367,8 @@ pub struct IoRegionFd {
     wf_hv: RawFd,
 }
 
-fn kvm_ioregionfd(guest_paddr: u64, len: usize, rfd: RawFd, wfd: RawFd) -> kvm_ioregion {
-    kvm_ioregion {
-        guest_paddr,
-        memory_size: len as u64,
-        user_data: 0,
-        rfd,
-        wfd,
-        flags: 0,
-        pad: [0; 28],
-    }
-}
-use nix::sys::socket::{socketpair, AddressFamily, SockFlag, SockType};
-use nix::sys::stat::Mode;
-use nix::unistd::mkfifo;
-use simple_error::map_err_with;
-use std::fs::File;
-use std::path::PathBuf;
 impl IoRegionFd {
     fn new(hv: &Hypervisor, guest_paddr: u64, len: usize) -> Result<Self> {
-        //info!("1");
-        //let rpath = PathBuf::from("/tmp/rfile");
-        //let wpath = PathBuf::from("/tmp/wfile");
-        //TODO give qemu read perms?
-        //info!("2");
-        //try_with!(mkfifo(&rpath, Mode::S_IRWXU), "cannot create read fifo");
-        //try_with!(mkfifo(&wpath, Mode::S_IRWXU), "cannot create write fifo");
-        //info!("3");
-        //TODO this open hangs
-        //let rfile = try_with!(File::open(&rpath), "foo");
-        //let wfile = try_with!(File::open(&wpath), "foo");
         let (rf_dev, rf_hv) = try_with!(
             socketpair(
                 AddressFamily::Unix,
@@ -404,7 +376,7 @@ impl IoRegionFd {
                 None,
                 SockFlag::SOCK_CLOEXEC
             ),
-            "{}"
+            "cannot create sockets for IoRegionFd"
         );
         let (wf_dev, wf_hv) = try_with!(
             socketpair(
@@ -413,11 +385,11 @@ impl IoRegionFd {
                 None,
                 SockFlag::SOCK_CLOEXEC
             ),
-            "{}"
+            "cannot create sockets for IoRegionFd"
         );
         let hv_rf_hv = hv.transfer(vec![rf_hv.as_raw_fd()].as_slice())?[0];
-        let hv_wf_hv = hv.transfer(vec![wf_hv.as_raw_fd()].as_slice())?[0]; // TODO dedup
-        let ioregion = kvm_ioregionfd(guest_paddr, len, hv_rf_hv, hv_wf_hv);
+        let hv_wf_hv = hv.transfer(vec![wf_hv.as_raw_fd()].as_slice())?[0];
+        let ioregion = kvm_ioregion::new(guest_paddr, len, hv_rf_hv, hv_wf_hv);
         let mem = hv.alloc_mem()?;
         mem.write(&ioregion)?;
 
@@ -431,7 +403,10 @@ impl IoRegionFd {
                 "kvm ioeventfd ioctl injection failed"
             )
         };
-        log::warn!("ioregionfd ret {}", ret);
+        if ret != 0 {
+            bail!("ioregionfd ioctl failed with {}", ret);
+        }
+
         Ok(IoRegionFd {
             ioregion,
             rfile: rf_dev, 
@@ -442,7 +417,7 @@ impl IoRegionFd {
     }
 
     /// receive read and write events/commands
-    pub fn read_(wfile: RawFd) -> Result<ioregionfd_cmd> {
+    fn read_(wfile: RawFd) -> Result<ioregionfd_cmd> {
         let len = size_of::<ioregionfd_cmd>();
         let mut t_mem = MaybeUninit::<ioregionfd_cmd>::uninit();
         let t_slice = unsafe { std::slice::from_raw_parts_mut(t_mem.as_mut_ptr() as *mut u8, len) };
@@ -483,9 +458,6 @@ impl IoRegionFd {
         Ok(())
     }
 }
-use crate::kvm::ioctls::{ioregionfd_cmd,ioregionfd_resp};
-use std::mem::MaybeUninit;
-use nix::unistd::{read,write};
 
 // TODO impl Drop for IoRegionFd
 

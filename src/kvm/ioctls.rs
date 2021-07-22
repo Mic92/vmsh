@@ -2,6 +2,7 @@
 
 use kvm_bindings as kvmb;
 use std::mem::size_of;
+use std::os::unix::prelude::RawFd;
 use num_traits as num;
 
 /// Expression that calculates an ioctl number.
@@ -273,6 +274,21 @@ pub struct kvm_ioregion {
     pub flags: u32,
     pub pad: [u8; 28],
 }
+
+impl kvm_ioregion {
+    pub fn new(guest_paddr: u64, len: usize, rfd: RawFd, wfd: RawFd) -> Self {
+        kvm_ioregion {
+            guest_paddr,
+            memory_size: len as u64,
+            user_data: 0,
+            rfd,
+            wfd,
+            flags: 0,
+            pad: [0; 28],
+        }
+    }
+}
+
 
 #[allow(non_camel_case_types)]
 enum kvm_ioregion_flag_nr {
