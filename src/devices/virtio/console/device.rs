@@ -18,16 +18,14 @@ use vm_memory::GuestAddressSpace;
 use vmm_sys_util::eventfd::EventFd;
 
 use crate::devices::virtio::console::log_handler::LogQueueHandler;
-use crate::devices::USE_IOREGIONFD;
 use crate::devices::virtio::console::VIRTIO_CONSOLE_F_SIZE;
 use crate::devices::virtio::features::{
     VIRTIO_F_IN_ORDER, VIRTIO_F_RING_EVENT_IDX, VIRTIO_F_VERSION_1,
 };
+use crate::devices::virtio::{IrqAckHandler, MmioConfig, SingleFdSignalQueue, QUEUE_MAX_SIZE};
 use crate::devices::MaybeIoRegionFd;
-use crate::devices::virtio::{
-    IrqAckHandler, MmioConfig, SingleFdSignalQueue, QUEUE_MAX_SIZE,
-};
-use crate::kvm::hypervisor::{UserspaceIoEventFd, Hypervisor, IoRegionFd, IoEvent};
+use crate::devices::USE_IOREGIONFD;
+use crate::kvm::hypervisor::{Hypervisor, IoEvent, IoRegionFd, UserspaceIoEventFd};
 
 //use super::queue_handler::QueueHandler;
 use super::{build_config_space, ConsoleArgs, Error, Result, CONSOLE_DEVICE_ID};
@@ -41,7 +39,8 @@ pub struct Console<M: GuestAddressSpace> {
     vmm: Arc<Hypervisor>,
     irqfd: Arc<EventFd>,
     pub ioregionfd: Option<IoRegionFd>,
-    pub uioefd: UserspaceIoEventFd, /// only used when ioregionfd != None
+    pub uioefd: UserspaceIoEventFd,
+    /// only used when ioregionfd != None
     sub_id: Option<SubscriberId>,
 
     // Before resetting we return the handler to the mmio thread for cleanup
@@ -91,7 +90,12 @@ where
 
         let mut ioregionfd = None;
         if USE_IOREGIONFD {
-            ioregionfd = Some(args.common.vmm.ioregionfd(mmio_cfg.range.base().0, mmio_cfg.range.size() as usize).map_err(Error::Simple)?);
+            ioregionfd = Some(
+                args.common
+                    .vmm
+                    .ioregionfd(mmio_cfg.range.base().0, mmio_cfg.range.size() as usize)
+                    .map_err(Error::Simple)?,
+            );
         }
 
         let console = Arc::new(Mutex::new(Console {
@@ -143,7 +147,8 @@ where
         .map_err(Error::Simple)?;
 
         //let rx_fd = register_ioeventfd(&self.vmm, &self.mmio_cfg, 0).map_err(Error::Simple)?;
-        let tx_fd = IoEvent::register(&self.vmm, &mut self.uioefd, &self.mmio_cfg, 1).map_err(Error::Simple)?;
+        let tx_fd = IoEvent::register(&self.vmm, &mut self.uioefd, &self.mmio_cfg, 1)
+            .map_err(Error::Simple)?;
 
         let handler = Arc::new(Mutex::new(LogQueueHandler {
             driver_notify,

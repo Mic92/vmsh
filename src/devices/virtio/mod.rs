@@ -144,7 +144,7 @@ impl IrqAckHandler {
         let passed = Instant::now().duration_since(self.last_sent);
         let unacked = self.interrupt_status.load(Ordering::Acquire) != 0;
         let ratelimit = Instant::now().duration_since(self.resent) <= RESEND_RATELIMIT;
-        if passed >= INTERRUPT_ACK_TIMEOUT && unacked && !ratelimit{
+        if passed >= INTERRUPT_ACK_TIMEOUT && unacked && !ratelimit {
             // interrupt timed out && has not been acked
             if let Err(e) = self.irqfd.write(1) {
                 log::error!("Failed write to eventfd when signalling queue: {}", e);

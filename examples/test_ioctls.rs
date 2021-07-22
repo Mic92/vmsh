@@ -235,7 +235,13 @@ fn ioregionfd(pid: Pid) -> Result<()> {
 
     for _ in 0..100 {
         let cmd = try_with!(ioregionfd.read(), "foo");
-        println!("{:?}, {:?}, response={}: {:?}", cmd.info.cmd(), cmd.info.size(), cmd.info.is_response(), cmd);
+        println!(
+            "{:?}, {:?}, response={}: {:?}",
+            cmd.info.cmd(),
+            cmd.info.size(),
+            cmd.info.is_response(),
+            cmd
+        );
         match cmd.info.cmd() {
             Cmd::Read => ioregionfd.write(0xFF)?,
             Cmd::Write => ioregionfd.write(0)?,

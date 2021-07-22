@@ -19,15 +19,15 @@ use vm_device::{DeviceMmio, MutDeviceMmio};
 use vm_memory::GuestAddressSpace;
 use vmm_sys_util::eventfd::EventFd;
 
-use crate::devices::MaybeIoRegionFd;
 use crate::devices::virtio::block::{BLOCK_DEVICE_ID, VIRTIO_BLK_F_FLUSH, VIRTIO_BLK_F_RO};
 use crate::devices::virtio::features::{
     VIRTIO_F_IN_ORDER, VIRTIO_F_RING_EVENT_IDX, VIRTIO_F_VERSION_1,
 };
 use crate::devices::virtio::{IrqAckHandler, MmioConfig, SingleFdSignalQueue, QUEUE_MAX_SIZE};
-use crate::kvm::hypervisor::Hypervisor;
-use crate::kvm::hypervisor::{IoRegionFd, IoEvent, UserspaceIoEventFd};
+use crate::devices::MaybeIoRegionFd;
 use crate::devices::USE_IOREGIONFD;
+use crate::kvm::hypervisor::Hypervisor;
+use crate::kvm::hypervisor::{IoEvent, IoRegionFd, UserspaceIoEventFd};
 
 use super::inorder_handler::InOrderQueueHandler;
 use super::queue_handler::QueueHandler;
@@ -44,7 +44,8 @@ pub struct Block<M: GuestAddressSpace> {
     vmm: Arc<Hypervisor>,
     irqfd: Arc<EventFd>,
     pub ioregionfd: Option<IoRegionFd>,
-    pub uioefd: UserspaceIoEventFd, /// only used when ioregionfd != None
+    pub uioefd: UserspaceIoEventFd,
+    /// only used when ioregionfd != None
     file_path: PathBuf,
     read_only: bool,
     sub_id: Option<SubscriberId>,
@@ -105,7 +106,12 @@ where
 
         let mut ioregionfd = None;
         if USE_IOREGIONFD {
-            ioregionfd = Some(args.common.vmm.ioregionfd(mmio_cfg.range.base().0, mmio_cfg.range.size() as usize).map_err(Error::Simple)?);
+            ioregionfd = Some(
+                args.common
+                    .vmm
+                    .ioregionfd(mmio_cfg.range.base().0, mmio_cfg.range.size() as usize)
+                    .map_err(Error::Simple)?,
+            );
         }
 
         let block = Arc::new(Mutex::new(Block {
@@ -173,7 +179,8 @@ where
             disk,
         };
 
-        let ioeventfd = IoEvent::register(&self.vmm, &mut self.uioefd, &self.mmio_cfg, 0).map_err(Error::Simple)?;
+        let ioeventfd = IoEvent::register(&self.vmm, &mut self.uioefd, &self.mmio_cfg, 0)
+            .map_err(Error::Simple)?;
         let handler = Arc::new(Mutex::new(QueueHandler { inner, ioeventfd }));
 
         // Register the queue handler with the `EventManager`. We record the `sub_id`

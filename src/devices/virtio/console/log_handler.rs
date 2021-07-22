@@ -14,8 +14,8 @@ use virtio_queue::{DescriptorChain, Queue};
 use vm_memory::Bytes;
 use vm_memory::{self, GuestAddressSpace};
 
-use crate::kvm::hypervisor::IoEvent;
 use crate::devices::virtio::SignalUsedQueue;
+use crate::kvm::hypervisor::IoEvent;
 
 #[derive(Debug)]
 pub enum Error {

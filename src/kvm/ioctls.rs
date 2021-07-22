@@ -1,9 +1,9 @@
 // borrowed from vmm-sys-util
 
 use kvm_bindings as kvmb;
+use num_traits as num;
 use std::mem::size_of;
 use std::os::unix::prelude::RawFd;
-use num_traits as num;
 
 /// Expression that calculates an ioctl number.
 ///
@@ -289,7 +289,6 @@ impl kvm_ioregion {
     }
 }
 
-
 #[allow(non_camel_case_types)]
 enum kvm_ioregion_flag_nr {
     pio,
@@ -321,7 +320,7 @@ pub struct ioregionfd_cmd {
 
 impl ioregionfd_cmd {
     pub fn data(&self) -> &[u8] {
-        let data = unsafe { 
+        let data = unsafe {
             std::slice::from_raw_parts((&self.data as *const u64) as *const u8, size_of::<u64>())
         };
         match self.info.size() {
@@ -332,8 +331,11 @@ impl ioregionfd_cmd {
         }
     }
     pub fn data_mut(&mut self) -> &mut [u8] {
-        let data = unsafe { 
-            std::slice::from_raw_parts_mut((&mut self.data as *mut u64) as *mut u8, size_of::<u64>())
+        let data = unsafe {
+            std::slice::from_raw_parts_mut(
+                (&mut self.data as *mut u64) as *mut u8,
+                size_of::<u64>(),
+            )
         };
         match self.info.size() {
             Size::b8 => &mut data[0..1],
@@ -353,10 +355,7 @@ pub struct ioregionfd_resp {
 
 impl ioregionfd_resp {
     pub fn new(data: u64) -> Self {
-        ioregionfd_resp {
-            data,
-            pad: [0; 24],
-        }
+        ioregionfd_resp { data, pad: [0; 24] }
     }
 }
 
@@ -405,7 +404,7 @@ impl Info {
 
 // pub const IOREGIONFD_CMD_READ: usize = 0;
 // pub const IOREGIONFD_CMD_WRITE: usize = 1;
-#[derive(Debug,FromPrimitive)]
+#[derive(Debug, FromPrimitive)]
 pub enum Cmd {
     Read,
     Write,
@@ -416,7 +415,7 @@ pub enum Cmd {
 //pub const IOREGIONFD_SIZE_32BIT: usize = 2;
 //pub const IOREGIONFD_SIZE_64BIT: usize = 3;
 #[allow(non_camel_case_types)]
-#[derive(Debug,FromPrimitive)]
+#[derive(Debug, FromPrimitive)]
 pub enum Size {
     b8,
     b16,
