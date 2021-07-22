@@ -4,7 +4,7 @@ let
   inherit (pkgs.pkgsStatic) busybox;
 in
 buildDiskImage {
-  packages = [ busybox pkgs.bcc pkgs.just ];
+  packages = [ busybox ];
   extraFiles = {
     "etc/profile" = ''
       export PATH=/bin

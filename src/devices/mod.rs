@@ -10,6 +10,7 @@ use crate::devices::virtio::{CommonArgs, MmioConfig};
 use crate::kvm::hypervisor::Hypervisor;
 use crate::kvm::PhysMemAllocator;
 use crate::result::Result;
+use crate::kvm::hypervisor::IoRegionFd;
 use crate::tracer::proc::Mapping;
 use libc::pid_t;
 use simple_error::{bail, try_with};
@@ -63,7 +64,6 @@ fn convert(pid: pid_t, mappings: &[Mapping]) -> Result<GuestMemoryMmap> {
     ))
 }
 
-use crate::kvm::hypervisor::IoRegionFd;
 trait MaybeIoRegionFd {
     fn get_ioregionfd(&self) -> &Option<IoRegionFd>;
 }

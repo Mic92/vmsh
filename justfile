@@ -100,6 +100,7 @@ configure-linux: #clone-linux
        --enable KVM \
        --enable KVM_INTEL \
        --enable KVM_AMD \
+       --enable KVM_IOREGION \
        --enable BPF_SYSCALL \
        --enable IKHEADERS \
        --enable IKCONFIG_PROC \
