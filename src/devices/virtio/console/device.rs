@@ -142,7 +142,7 @@ where
         .map_err(Error::Simple)?;
 
         //let rx_fd = register_ioeventfd(&self.vmm, &self.mmio_cfg, 0).map_err(Error::Simple)?;
-        let tx_fd = IoEvent::register(&self.vmm, &mut self.uioefd, &self.mmio_cfg, 0).map_err(Error::Simple)?;
+        let tx_fd = IoEvent::register(&self.vmm, &mut self.uioefd, &self.mmio_cfg, 1).map_err(Error::Simple)?;
         //let tx_fd = register_ioeventfd(&self.vmm, &self.mmio_cfg, 1).map_err(Error::Simple)?;
 
         let handler = Arc::new(Mutex::new(LogQueueHandler {
