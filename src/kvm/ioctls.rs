@@ -1,6 +1,7 @@
 // borrowed from vmm-sys-util
 
 use kvm_bindings as kvmb;
+use num_derive::*;
 use num_traits as num;
 use std::mem::size_of;
 use std::os::unix::prelude::RawFd;
