@@ -1,3 +1,4 @@
+use std::ops::Range;
 use std::sync::Arc;
 
 use crate::kvm::hypervisor::PhysMem;
@@ -36,9 +37,6 @@ fn get_page_table_addr(sregs: &kvmb::kvm_sregs) -> usize {
         sregs.cr3
     }) as usize
 }
-
-pub const LINUX_KERNEL_KASLR_RANGE_START: usize = 0xFFFFFFFF80000000;
-pub const LINUX_KERNEL_KASLR_RANGE_END: usize = 0xFFFFFFFFC0000000;
 
 /// Contineous physical memory that is mapped virtual contineous
 #[derive(Clone, Debug)]
@@ -146,7 +144,11 @@ impl GuestMem {
         page_table::map_memory(hv, phys_mem, &mut self.pml4, map)
     }
 
-    pub fn find_kernel(&self, hv: &Hypervisor) -> Result<Vec<MappedMemory>> {
+    pub fn find_kernel_sections(
+        &self,
+        hv: &Hypervisor,
+        range: Range<usize>,
+    ) -> Result<Vec<MappedMemory>> {
         let cpl = self.regs.cs & 3;
         if cpl == 3 {
             bail!("program stopped in userspace. Linux kernel might be not mapped in thise mode");
@@ -159,16 +161,12 @@ impl GuestMem {
             bail!("kernel memory and page table (0x{:x}) is not in the same physical memory block: 0x{:x}-0x{:x} vs 0x{:x}-0x{:x}", pt_addr, kernel_mapping.phys_addr, kernel_mapping.phys_end(), pt_mapping.phys_addr, pt_mapping.phys_end());
         }
 
-        let mut iter = self.pml4.clone().iter(
-            hv,
-            LINUX_KERNEL_KASLR_RANGE_START,
-            LINUX_KERNEL_KASLR_RANGE_END,
-        );
+        let mut iter = self.pml4.clone().iter(hv, range.clone());
         let mut sections: Vec<_> = vec![];
         let host_offset = pt_mapping.phys_to_host_offset();
         for e in &mut iter {
             let entry = try_with!(e, "cannot read page table");
-            if entry.virt_addr as usize > LINUX_KERNEL_KASLR_RANGE_START {
+            if entry.virt_addr as usize > range.start {
                 //info!("0x{:x}/0x{:x}: {:?}", entry.entry.addr(), entry.virt_addr, &entry.entry.flags());
                 sections.push(mapped_memory(&entry, host_offset));
                 break;
@@ -180,7 +178,7 @@ impl GuestMem {
         for e in &mut iter {
             let entry = try_with!(e, "cannot read page table");
             //info!("0x{:x}/0x{:x}: {:?}", entry.entry.addr(), entry.virt_addr, &entry.entry.flags());
-            if entry.virt_addr as usize > LINUX_KERNEL_KASLR_RANGE_END {
+            if entry.virt_addr as usize >= range.end {
                 break;
             }
             let last = sections.last_mut().unwrap();
