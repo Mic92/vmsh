@@ -15,7 +15,7 @@ use vm_memory::Bytes;
 use vm_memory::{self, GuestAddressSpace};
 
 use crate::devices::virtio::SignalUsedQueue;
-use crate::kvm::hypervisor::IoEventFd;
+use crate::kvm::hypervisor::IoEvent;
 
 #[derive(Debug)]
 pub enum Error {
@@ -38,7 +38,7 @@ impl From<virtio_queue::Error> for Error {
 const TX_IOEVENT_DATA: u32 = 1;
 
 pub(crate) struct LogQueueHandler<M: GuestAddressSpace, S: SignalUsedQueue> {
-    pub tx_fd: IoEventFd,
+    pub tx_fd: IoEvent,
     pub driver_notify: S,
     #[allow(unused)]
     pub rxq: Queue<M>,

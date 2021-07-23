@@ -9,7 +9,7 @@ use vmm_sys_util::epoll::EventSet;
 
 use crate::devices::virtio::block::inorder_handler::InOrderQueueHandler;
 use crate::devices::virtio::SingleFdSignalQueue;
-use crate::kvm::hypervisor::IoEventFd;
+use crate::kvm::hypervisor::IoEvent;
 
 const IOEVENT_DATA: u32 = 0;
 
@@ -19,7 +19,7 @@ const IOEVENT_DATA: u32 = 0;
 // notifications coming from the driver.
 pub(crate) struct QueueHandler<M: GuestAddressSpace> {
     pub inner: InOrderQueueHandler<M, SingleFdSignalQueue>,
-    pub ioeventfd: IoEventFd,
+    pub ioeventfd: IoEvent,
 }
 
 impl<M: GuestAddressSpace> MutEventSubscriber for QueueHandler<M> {

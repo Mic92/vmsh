@@ -1,6 +1,8 @@
+use crate::devices::mmio::IoPirate;
 use event_manager::EventManager;
 use event_manager::MutEventSubscriber;
 use log::{debug, info, log_enabled, trace, Level};
+use simple_error::simple_error;
 use simple_error::{require_with, try_with};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -9,7 +11,9 @@ use std::sync::Arc;
 use std::sync::{Condvar, Mutex};
 use virtio_device::{VirtioDevice, WithDriverSelect};
 
+use crate::devices;
 use crate::devices::DeviceContext;
+use crate::devices::MaybeIoRegionFd;
 use crate::interrutable_thread::InterrutableThread;
 use crate::kvm::hypervisor::Hypervisor;
 use crate::kvm::PhysMemAllocator;
@@ -68,6 +72,7 @@ fn event_thread(
         let blkdev = try_with!(blkdev.lock(), "cannot unlock thread");
         blkdev.irq_ack_handler.clone()
     };
+    log::debug!("event thread started");
 
     let res = InterrutableThread::spawn(
         "event-manager",
@@ -154,7 +159,7 @@ fn blkdev_monitor_thread(
     Ok(try_with!(res, "failed to spawn blkdev-monitor"))
 }
 
-/// Traps KVM_MMIO_EXITs with ptrace and forward them as needed to out block and console device driver
+/// Traps KVM_MMIO_EXITs with ptrace and forward them as needed to our block and console device driver
 fn handle_mmio_exits(
     wrapper_mo: &Mutex<Option<KvmRunWrapper>>,
     should_stop: &Arc<AtomicBool>,
@@ -238,6 +243,70 @@ pub struct DeviceSet {
     event_manager: SubscriberEventManager,
 }
 
+fn ioregion_event_loop(
+    should_stop: &Arc<AtomicBool>,
+    device_ready: &Arc<DeviceReady>,
+    mmio_mgr: Arc<Mutex<IoPirate>>,
+    device: Arc<Mutex<dyn MaybeIoRegionFd + Send>>,
+) -> Result<()> {
+    let ioregionfd = {
+        let device = try_with!(device.lock(), "cannot lock device");
+        let ioregionfd = device.get_ioregionfd();
+        ioregionfd.ok_or(simple_error!(
+            "cannot start ioregion event loop when ioregion does not exist"
+        ))?
+    };
+    device_ready.notify()?;
+
+    loop {
+        let cmd = try_with!(
+            ioregionfd.read(),
+            "cannot read mmio command from ioregionfd (fd {:?})",
+            ioregionfd
+        );
+        {
+            let mut mmio_mgr = try_with!(
+                mmio_mgr.lock(),
+                "cannot lock mmio manager to handle mmio command"
+            );
+            mmio_mgr.handle_ioregion_rw(&ioregionfd, cmd)?;
+        }
+
+        if should_stop.load(Ordering::Relaxed) {
+            break;
+        }
+    }
+    Ok(())
+}
+
+/// see handle_mmio_exits
+fn ioregion_handler_thread(
+    device: Arc<Mutex<dyn MaybeIoRegionFd + Send>>,
+    mmio_mgr: Arc<Mutex<IoPirate>>,
+    err_sender: &SyncSender<()>,
+    device_ready: &Arc<DeviceReady>,
+) -> Result<InterrutableThread<()>> {
+    let device_ready = device_ready.clone();
+
+    let res = InterrutableThread::spawn(
+        "ioregion-handler",
+        err_sender,
+        move |should_stop: Arc<AtomicBool>| {
+            info!("ioregion mmio handler started");
+            try_with!(
+                ioregion_event_loop(&should_stop, &device_ready, mmio_mgr, device),
+                "foo"
+            );
+
+            // TODO drop remote resources like ioeventfd before disowning traced process?
+            //drop(device);
+            Ok(())
+        },
+    );
+
+    Ok(try_with!(res, "cannot spawn mmio exit handler thread"))
+}
+
 impl DeviceSet {
     pub fn mmio_addrs(&self) -> Result<Vec<u64>> {
         self.context.mmio_addrs()
@@ -272,12 +341,35 @@ impl DeviceSet {
         if log_enabled!(Level::Debug) {
             threads.push(blkdev_monitor_thread(&self.context, err_sender)?);
         }
-        threads.push(mmio_exit_handler_thread(
-            vm,
-            self.context,
-            err_sender,
-            &device_ready,
-        )?);
+
+        if devices::USE_IOREGIONFD {
+            vm.resume()?;
+            threads.push(try_with!(
+                ioregion_handler_thread(
+                    self.context.blkdev,
+                    self.context.mmio_mgr.clone(),
+                    err_sender,
+                    &device_ready,
+                ),
+                "cannot spawn block ioregion handler"
+            ));
+            threads.push(try_with!(
+                ioregion_handler_thread(
+                    self.context.console,
+                    self.context.mmio_mgr,
+                    err_sender,
+                    &device_ready,
+                ),
+                "cannot spawn console ioregion handler"
+            ));
+        } else {
+            threads.push(mmio_exit_handler_thread(
+                vm,
+                self.context,
+                err_sender,
+                &device_ready,
+            )?);
+        }
 
         device_ready.wait()?;
         Ok(threads)
