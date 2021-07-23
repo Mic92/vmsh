@@ -15,6 +15,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use crate::interrutable_thread::InterrutableThread;
+use crate::kernel::find_kernel;
 use crate::kvm;
 use crate::kvm::allocator::VirtAlloc;
 use crate::loader::Loader;
@@ -181,23 +182,15 @@ pub fn spawn_stage1(
 ) -> Result<InterrutableThread<Stage1>> {
     let ssh_args = ssh_args.to_string();
     let command = command.to_vec();
-    let kernel_sections = try_with!(
-        allocator.find_kernel(),
-        "could not find Linux kernel in VM memory"
-    );
-    let kernel_last = kernel_sections.last().unwrap();
-    let kernel_end = kernel_last.virt_start + kernel_last.len;
-    info!(
-        "found linux kernel at 0x{:x}-0x{:x}",
-        kernel_sections.first().unwrap().virt_start,
-        kernel_end
-    );
+
+    let kernel = find_kernel(&allocator.guest_mem, &allocator.hv)?;
+
     let alloc = [VirtAlloc {
         len: 0x2000,
         prot: ProtFlags::PROT_WRITE,
     }];
     let virt_mem = try_with!(
-        allocator.virt_alloc(kernel_end, &alloc),
+        allocator.virt_alloc(kernel.range.end, &alloc),
         "cannot map virtual memory"
     );
 

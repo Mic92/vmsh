@@ -1,5 +1,6 @@
 use std::cmp::max;
 use std::mem::{size_of, size_of_val};
+use std::ops::Range;
 use std::sync::Arc;
 
 use crate::guest_mem::MappedMemory;
@@ -130,8 +131,7 @@ pub struct PageTable {
 pub struct PageTableIterator<'a> {
     hv: &'a Hypervisor,
     page_table: PageTable,
-    start: usize,
-    end: usize,
+    range: Range<usize>,
     count: usize,
     inner: Option<Box<Self>>,
 }
@@ -166,11 +166,10 @@ impl PageTable {
         }
     }
 
-    pub fn iter(self, hv: &Hypervisor, start: usize, end: usize) -> PageTableIterator {
+    pub fn iter(self, hv: &Hypervisor, range: Range<usize>) -> PageTableIterator {
         PageTableIterator {
             hv,
-            start,
-            end,
+            range,
             page_table: self,
             count: 0,
             inner: None,
@@ -477,9 +476,9 @@ impl<'a> Iterator for PageTableIterator<'a> {
             }
         }
         let pt = &self.page_table;
-        let start = get_index(self.start as u64, pt.level) as usize;
+        let start = get_index(self.range.start as u64, pt.level) as usize;
         self.count = max(self.count, start);
-        let end = get_index(self.end as u64, pt.level) as usize + 1;
+        let end = get_index(self.range.end as u64, pt.level) as usize + 1;
         for entry in pt.entries[self.count..end].iter() {
             let idx = self.count as u64;
             self.count += 1;
@@ -502,14 +501,18 @@ impl<'a> Iterator for PageTableIterator<'a> {
             let next_pt =
                 PageTable::read(self.hv, &pt.phys_addr(*entry), virt_addr, pt.level + 1).ok()?;
 
-            let start = if idx as usize > start { 0 } else { self.start };
+            let start = if idx as usize > start {
+                0
+            } else {
+                self.range.start
+            };
             let end = if (idx as usize) < end - 1 {
                 usize::MAX
             } else {
-                self.end
+                self.range.end
             };
 
-            let mut inner = next_pt.iter(self.hv, start, end);
+            let mut inner = next_pt.iter(self.hv, start..end);
             if let Some(next) = &inner.next() {
                 self.inner = Some(Box::new(inner));
                 return Some(next.clone());

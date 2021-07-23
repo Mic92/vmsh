@@ -14,9 +14,9 @@ use crate::{page_math, result::Result};
 use super::hypervisor::{Hypervisor, PhysMem};
 
 pub struct PhysMemAllocator {
-    hv: Arc<Hypervisor>,
+    pub hv: Arc<Hypervisor>,
     /// Physical guest memory
-    guest_mem: GuestMem,
+    pub guest_mem: GuestMem,
     /// Physical address where we last allocated memory from.
     /// After an allocating we substract the allocation size from this value.
     next_allocation: usize,
@@ -166,10 +166,6 @@ impl PhysMemAllocator {
 
         self.guest_mem
             .map_memory(self.hv.clone(), phys_mem, &mapped_mem)
-    }
-
-    pub fn find_kernel(&self) -> Result<Vec<MappedMemory>> {
-        self.guest_mem.find_kernel(&self.hv)
     }
 
     pub fn alloc_mmio_range(&mut self, size: usize) -> Result<MmioRange> {

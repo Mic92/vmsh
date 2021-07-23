@@ -7,6 +7,7 @@ pub mod gdb_break;
 pub mod guest_mem;
 pub mod inspect;
 pub mod interrutable_thread;
+pub mod kernel;
 pub mod kvm;
 pub mod loader;
 pub mod page_math;
