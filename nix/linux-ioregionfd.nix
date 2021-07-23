@@ -1,6 +1,6 @@
 { buildLinux, fetchFromGitHub, linuxPackages_5_13, fetchurl, modDirVersionArg ? null, ... }@args:
 buildLinux (args // rec {
-  version = "5.12.15";
+  version = "5.12.14";
   modDirVersion = if (modDirVersionArg == null) then
     builtins.replaceStrings [ "-" ] [ ".0-" ] version
       else
@@ -9,7 +9,7 @@ buildLinux (args // rec {
     owner = "Mic92";
     repo = "linux";
     rev = "56b6b3611b3a57940a314673e1c7aecbc07976e1";
-    sha256 = "";
+    sha256 = "sha256-VKtKBIbUoRGp2xJA7VQvjRGPaTaNP04vrjMXDpmOje8=";
   };
 
   kernelPatches = [{
