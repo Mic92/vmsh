@@ -15,7 +15,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use crate::interrutable_thread::InterrutableThread;
-use crate::kernel::find_kernel;
+use crate::kernel::{find_kernel, Kernel};
 use crate::kvm;
 use crate::kvm::allocator::VirtAlloc;
 use crate::loader::Loader;
@@ -85,12 +85,18 @@ fn stage1_thread(
     command: &[String],
     mmio_addrs: Vec<u64>,
     virt_mem: VirtMem,
+    kernel: &Kernel,
     should_stop: Arc<AtomicBool>,
 ) -> Result<Stage1> {
     let mut loader = try_with!(Loader::new(STAGE1_LIB), "cannot load stage1");
     try_with!(loader.load_binary(), "cannot load stage1");
 
     let debug_stage1 = if log_enabled!(Level::Debug) { "x" } else { "" };
+
+    let printk_addr = *require_with!(
+        kernel.symbols.get("printk"),
+        "no printk function found in kernel symbols"
+    );
 
     debug!("load stage1 ({} kB) into vm", STAGE1_LIB.len() / 1024);
 
@@ -113,13 +119,14 @@ trap "rm -rf '$tmpdir'" EXIT
 dd if=/proc/self/fd/0 of="$tmpdir/stage1.ko" count={} bs=512
 # cleanup old driver if still loaded
 rmmod stage1 2>/dev/null || true
-insmod "$tmpdir/stage1.ko" devices="{}" stage2_argv="{}" virt_mem="{}"
+insmod "$tmpdir/stage1.ko" devices="{}" stage2_argv="{}" virt_mem="{}" printk_addr="{}"
 "#,
             debug_stage1,
             stage1_size / 512,
             mmio_addrs,
             command.join(","),
-            virt_addr
+            virt_addr,
+            printk_addr
         );
         cmd.stdin(Stdio::piped()).arg(script)
     })?;
@@ -199,7 +206,14 @@ pub fn spawn_stage1(
         result_sender,
         move |should_stop: Arc<AtomicBool>| {
             // wait until vmsh can process block device requests
-            stage1_thread(ssh_args, &command, mmio_ranges, virt_mem, should_stop)
+            stage1_thread(
+                ssh_args,
+                &command,
+                mmio_ranges,
+                virt_mem,
+                &kernel,
+                should_stop,
+            )
         },
     );
     Ok(try_with!(res, "failed to create stage1 thread"))
