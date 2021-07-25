@@ -302,9 +302,10 @@ def find_linux_kernel_memory(
         if entry.virt_addr > mem_range.end:
             break
         if last.phys_addr + last.size != entry.phys_addr:
-            raise Exception(
-                "Kernel is not in physical-continous memory. This is not implemented."
+            print(
+                "Kernel is not in physical-continous memory. Assuming vmsh memory allocation."
             )
+            break
         last = entry
     phys_mem = mem[first.phys_addr : last.phys_addr + last.size]
     return phys_mem.map(first.virt_addr)
