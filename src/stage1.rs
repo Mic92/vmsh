@@ -26,8 +26,75 @@ const STAGE1_EXE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/stage1.ko"))
 const STAGE1_LIB: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/libstage1_freestanding.so"));
 
 pub struct Stage1 {
-    ssh_args: String,
-    pub virt_mem: Option<VirtMem>,
+    virt_mem: VirtMem,
+    kernel: Kernel,
+}
+
+impl Stage1 {
+    pub fn new(mut allocator: kvm::PhysMemAllocator) -> Result<Stage1> {
+        let kernel = find_kernel(&allocator.guest_mem, &allocator.hv)?;
+
+        let alloc = [
+            VirtAlloc {
+                len: 256 * 0x1000,
+                prot: ProtFlags::PROT_WRITE,
+            },
+            VirtAlloc {
+                len: 512 * 0x1000,
+                prot: ProtFlags::PROT_WRITE,
+            },
+        ];
+        let virt_mem = try_with!(
+            allocator.virt_alloc(kernel.range.end, &alloc),
+            "cannot map virtual memory"
+        );
+        let base = kernel.range.end;
+        let mut loader = try_with!(
+            Loader::new(STAGE1_LIB, base as u64, &allocator),
+            "cannot load stage1"
+        );
+
+        try_with!(loader.load_binary(), "cannot load stage1");
+
+        debug!("load stage1 ({} kB) into vm", STAGE1_LIB.len() / 1024);
+
+        Ok(Stage1 { virt_mem, kernel })
+    }
+
+    pub fn spawn(
+        &self,
+        ssh_args: &str,
+        command: &[String],
+        mmio_ranges: Vec<u64>,
+        result_sender: &SyncSender<()>,
+    ) -> Result<InterrutableThread<Kmod>> {
+        let ssh_args = ssh_args.to_string();
+        let command = command.to_vec();
+
+        let printk_addr = *require_with!(
+            self.kernel.symbols.get("printk"),
+            "no printk function found in kernel symbols"
+        );
+
+        let virt_addr = self.virt_mem.mappings[1].virt_start;
+
+        let res = InterrutableThread::spawn(
+            "stage1",
+            result_sender,
+            move |should_stop: Arc<AtomicBool>| {
+                // wait until vmsh can process block device requests
+                stage1_thread(
+                    ssh_args,
+                    &command,
+                    mmio_ranges,
+                    virt_addr,
+                    printk_addr,
+                    should_stop,
+                )
+            },
+        );
+        Ok(try_with!(res, "failed to create stage1 thread"))
+    }
 }
 
 fn cleanup_stage1(ssh_args: &str) -> Result<()> {
@@ -40,16 +107,6 @@ fn cleanup_stage1(ssh_args: &str) -> Result<()> {
         }
     }
     Ok(())
-}
-
-impl Drop for Stage1 {
-    fn drop(&mut self) {
-        debug!("stage1 cleanup started");
-        if let Err(e) = cleanup_stage1(&self.ssh_args) {
-            warn!("could not cleanup stage1: {}", e);
-        }
-        debug!("stage1 cleanup finished");
-    }
 }
 
 fn ssh_command<F>(ssh_args: &str, mut configure: F) -> Result<std::process::Child>
@@ -80,27 +137,31 @@ fn write_padded(f: &mut dyn Write, bytes: &[u8], padded_size: usize) -> Result<(
     Ok(())
 }
 
+pub struct Kmod {
+    ssh_args: String,
+}
+
+impl Drop for Kmod {
+    fn drop(&mut self) {
+        debug!("stage1 cleanup started");
+        if let Err(e) = cleanup_stage1(&self.ssh_args) {
+            warn!("could not cleanup stage1: {}", e);
+        }
+        debug!("stage1 cleanup finished");
+    }
+}
+
 fn stage1_thread(
     ssh_args: String,
     command: &[String],
     mmio_addrs: Vec<u64>,
-    virt_mem: VirtMem,
-    kernel: &Kernel,
+    virt_addr: usize,
+    printk_addr: usize,
     should_stop: Arc<AtomicBool>,
-) -> Result<Stage1> {
-    let mut loader = try_with!(Loader::new(STAGE1_LIB), "cannot load stage1");
-    try_with!(loader.load_binary(), "cannot load stage1");
-
+) -> Result<Kmod> {
     let debug_stage1 = if log_enabled!(Level::Debug) { "x" } else { "" };
-
-    let printk_addr = *require_with!(
-        kernel.symbols.get("printk"),
-        "no printk function found in kernel symbols"
-    );
-
-    debug!("load stage1 ({} kB) into vm", STAGE1_LIB.len() / 1024);
-
     let stage1_size = padded_size(STAGE1_EXE.len());
+
     let mmio_addrs = mmio_addrs
         .iter()
         .cloned()
@@ -108,7 +169,6 @@ fn stage1_thread(
         .collect::<Vec<_>>()
         .join(",");
 
-    let virt_addr = virt_mem.mappings[0].virt_start;
     info!("virt: 0x{:x}", virt_addr);
     let mut child = ssh_command(&ssh_args, move |cmd| -> &mut Command {
         let script = format!(
@@ -173,50 +233,7 @@ insmod "$tmpdir/stage1.ko" devices="{}" stage2_argv="{}" virt_mem="{}" printk_ad
     }
 
     info!("block device driver started");
-
-    Ok(Stage1 {
-        ssh_args,
-        virt_mem: Some(virt_mem),
-    })
-}
-
-pub fn spawn_stage1(
-    ssh_args: &str,
-    command: &[String],
-    mmio_ranges: Vec<u64>,
-    mut allocator: kvm::PhysMemAllocator,
-    result_sender: &SyncSender<()>,
-) -> Result<InterrutableThread<Stage1>> {
-    let ssh_args = ssh_args.to_string();
-    let command = command.to_vec();
-
-    let kernel = find_kernel(&allocator.guest_mem, &allocator.hv)?;
-
-    let alloc = [VirtAlloc {
-        len: 0x2000,
-        prot: ProtFlags::PROT_WRITE,
-    }];
-    let virt_mem = try_with!(
-        allocator.virt_alloc(kernel.range.end, &alloc),
-        "cannot map virtual memory"
-    );
-
-    let res = InterrutableThread::spawn(
-        "stage1",
-        result_sender,
-        move |should_stop: Arc<AtomicBool>| {
-            // wait until vmsh can process block device requests
-            stage1_thread(
-                ssh_args,
-                &command,
-                mmio_ranges,
-                virt_mem,
-                &kernel,
-                should_stop,
-            )
-        },
-    );
-    Ok(try_with!(res, "failed to create stage1 thread"))
+    Ok(Kmod { ssh_args })
 }
 
 #[cfg(test)]

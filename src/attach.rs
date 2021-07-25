@@ -4,10 +4,11 @@ use simple_error::try_with;
 use std::path::PathBuf;
 use std::sync::mpsc::sync_channel;
 use std::sync::Arc;
+use std::time::Duration;
 
 use crate::devices::DeviceSet;
 use crate::result::Result;
-use crate::stage1::spawn_stage1;
+use crate::stage1::Stage1;
 use crate::{kvm, signal_handler};
 
 pub struct AttachOptions {
@@ -19,6 +20,10 @@ pub struct AttachOptions {
 
 pub fn attach(opts: &AttachOptions) -> Result<()> {
     info!("attaching");
+
+    let (sender, receiver) = sync_channel(1);
+
+    signal_handler::setup(&sender)?;
 
     let vm = Arc::new(try_with!(
         kvm::hypervisor::get_hypervisor(opts.pid),
@@ -32,25 +37,27 @@ pub fn attach(opts: &AttachOptions) -> Result<()> {
         "cannot create allocator"
     );
 
-    let (sender, receiver) = sync_channel(1);
-
-    signal_handler::setup(&sender)?;
-
     let devices = try_with!(
         DeviceSet::new(&vm, &mut allocator, &opts.backing),
         "cannot create devices"
     );
 
-    let stage1 = try_with!(
-        spawn_stage1(
+    if receiver.recv_timeout(Duration::from_millis(0)).is_ok() {
+        return Ok(());
+    }
+
+    let stage1 = try_with!(Stage1::new(allocator), "failed to initialize stage1");
+
+    let stage1_thread = try_with!(
+        stage1.spawn(
             opts.ssh_args.as_str(),
             &opts.command,
             devices.mmio_addrs()?,
-            allocator,
             &sender
         ),
-        "stage1 failed"
+        "failed to spawn stage1"
     );
+
     let threads = try_with!(devices.start(&vm, &sender), "failed to start devices");
 
     info!("blkdev queue ready.");
@@ -58,13 +65,9 @@ pub fn attach(opts: &AttachOptions) -> Result<()> {
 
     // termination wait or vmsh_stop()
     let _ = receiver.recv();
-    stage1.shutdown();
-    let virt_memory = match stage1.join() {
-        Ok(mut v) => v.virt_mem.take(),
-        Err(e) => {
-            error!("stage1 failed: {}", e);
-            None
-        }
+    stage1_thread.shutdown();
+    if let Err(e) = stage1_thread.join() {
+        error!("{}", e);
     };
     threads.iter().for_each(|t| t.shutdown());
     for t in threads {
@@ -77,7 +80,7 @@ pub fn attach(opts: &AttachOptions) -> Result<()> {
     // We need ptrace the process again before we can finish.
     vm.finish_thread_transfer()?;
     // now that we got the tracer back, we can cleanup pysical memory
-    drop(virt_memory);
+    drop(stage1);
     vm.resume()?;
 
     Ok(())
