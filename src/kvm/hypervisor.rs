@@ -49,6 +49,9 @@ pub struct HvMem<T: Copy> {
 
 impl<T: Copy> Drop for HvMem<T> {
     fn drop(&mut self) {
+        // Useful for debugging
+        //warn!("SKIP CLEANUP");
+        //return;
         let tracee = match self.tracee.write() {
             Err(e) => {
                 warn!("Could not aquire lock to drop HvMem: {}", e);
@@ -81,6 +84,10 @@ pub struct PhysMem<T: Copy> {
 
 impl<T: Copy> Drop for PhysMem<T> {
     fn drop(&mut self) {
+        // useful for debugging
+        //warn!("SKIP CLEANUP");
+        //return;
+
         let tracee = match self.mem.tracee.write() {
             Err(e) => {
                 warn!("Could not aquire lock to drop HvMem: {}", e);

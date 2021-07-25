@@ -215,6 +215,10 @@ pub struct VirtMem {
 
 impl Drop for VirtMem {
     fn drop(&mut self) {
+        // useful for debugging
+        //use log::warn;
+        //warn!("SKIP CLEANUP");
+        //return;
         if let Err(e) = commit_page_tables(&self.hv, &self.old_tables) {
             error!("cannot restore old page tables: {}", e);
         }
