@@ -169,7 +169,6 @@ fn stage1_thread(
         .collect::<Vec<_>>()
         .join(",");
 
-    info!("virt: 0x{:x}", virt_addr);
     let mut child = ssh_command(&ssh_args, move |cmd| -> &mut Command {
         let script = format!(
             r#"
@@ -179,6 +178,8 @@ trap "rm -rf '$tmpdir'" EXIT
 dd if=/proc/self/fd/0 of="$tmpdir/stage1.ko" count={} bs=512
 # cleanup old driver if still loaded
 rmmod stage1 2>/dev/null || true
+sleep 3
+set -x
 insmod "$tmpdir/stage1.ko" devices="{}" stage2_argv="{}" virt_mem="{}" printk_addr="{}"
 "#,
             debug_stage1,
@@ -232,7 +233,7 @@ insmod "$tmpdir/stage1.ko" devices="{}" stage2_argv="{}" virt_mem="{}" printk_ad
         };
     }
 
-    info!("block device driver started");
+    info!("stage1 driver started");
     Ok(Kmod { ssh_args })
 }
 
