@@ -67,7 +67,7 @@ impl Stage1 {
         command: &[String],
         mmio_ranges: Vec<u64>,
         result_sender: &SyncSender<()>,
-    ) -> Result<InterrutableThread<Kmod>> {
+    ) -> Result<InterrutableThread<Kmod, ()>> {
         let ssh_args = ssh_args.to_string();
         let command = command.to_vec();
 
@@ -81,7 +81,7 @@ impl Stage1 {
         let res = InterrutableThread::spawn(
             "stage1",
             result_sender,
-            move |should_stop: Arc<AtomicBool>| {
+            move |_ctx: &(), should_stop: Arc<AtomicBool>| {
                 // wait until vmsh can process block device requests
                 stage1_thread(
                     ssh_args,
@@ -92,6 +92,7 @@ impl Stage1 {
                     should_stop,
                 )
             },
+            (),
         );
         Ok(try_with!(res, "failed to create stage1 thread"))
     }

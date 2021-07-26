@@ -65,17 +65,26 @@ pub fn attach(opts: &AttachOptions) -> Result<()> {
         error!("{}", e);
     };
     threads.iter().for_each(|t| t.shutdown());
-    for t in threads {
-        if let Err(e) = t.join() {
-            error!("{}", e);
-        }
-    }
+    let contexts = threads
+        .into_iter()
+        .map(|t| {
+            let (res, ctx) = match t.join() {
+                Err(e) => (Err(e), None),
+                Ok((res, ctx)) => (res, ctx),
+            };
+            if let Err(e) = res {
+                error!("{}", e);
+            }
+            ctx
+        })
+        .collect::<Vec<_>>();
 
     // MMIO exit handler thread took over pthread control
     // We need ptrace the process again before we can finish.
     vm.finish_thread_transfer()?;
-    // now that we got the tracer back, we can cleanup pysical memory
+    // now that we got the tracer back, we can cleanup physical memory and file descriptors
     drop(stage1);
+    drop(contexts);
     vm.resume()?;
 
     Ok(())
