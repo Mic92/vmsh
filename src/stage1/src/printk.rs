@@ -1,5 +1,7 @@
+use chlorine::c_char;
+
 extern "C" {
-    pub fn printk(fmt: *const libc::c_char, ...);
+    pub fn printk(fmt: *const c_char, ...);
 }
 
 #[macro_export]
@@ -15,7 +17,7 @@ macro_rules! printk {
     ($fmt:expr) => ({
         // KERN_SOH + KERN_INFO + fmt + null byte
         let msg = concat!("\x016", c_str!($fmt));
-        let ptr = msg.as_ptr() as *const ::libc::c_char;
+        let ptr = msg.as_ptr() as *const ::chlorine::c_char;
         #[allow(unused_unsafe)]
         unsafe { crate::printk::printk(ptr) };
     });
@@ -24,7 +26,7 @@ macro_rules! printk {
     ($fmt:expr, $($arg:tt)*) => ({
         // KERN_SOH + KERN_INFO + fmt + null byte
         let msg = concat!("\x016", c_str!($fmt));
-        let ptr = msg.as_ptr() as *const ::libc::c_char;
+        let ptr = msg.as_ptr() as *const ::chlorine::c_char;
         #[allow(unused_unsafe)]
         unsafe { crate::printk::printk(ptr, $($arg)*) };
     });

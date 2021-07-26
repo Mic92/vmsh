@@ -3,6 +3,8 @@
 
 mod printk;
 
+use chlorine::{c_char, c_int, c_long, c_longlong, c_uint, c_ulong, c_ulonglong, c_ushort, size_t};
+use core::ffi::c_void;
 use core::include_bytes;
 use core::mem::size_of;
 use core::panic::PanicInfo;
@@ -15,24 +17,69 @@ const MMIO_IRQ: usize = 5;
 const MMIO_DEVICE_ID: i32 = 1863406883;
 
 // kernel constants and definition
-const IORESOURCE_MEM: libc::c_ulong = 0x00000200;
-const IORESOURCE_IRQ: libc::c_ulong = 0x00000400;
-const MAX_ERRNO: libc::c_ulong = 4095;
-const UMH_WAIT_EXEC: libc::c_int = 1;
+const IORESOURCE_MEM: c_ulong = 0x00000200;
+const IORESOURCE_IRQ: c_ulong = 0x00000400;
+const MAX_ERRNO: c_ulong = 4095;
+const UMH_WAIT_EXEC: c_int = 1;
+
+// errno.h
+pub const EPERM: c_int = 1;
+pub const ENOENT: c_int = 2;
+pub const ESRCH: c_int = 3;
+pub const EINTR: c_int = 4;
+pub const EIO: c_int = 5;
+pub const ENXIO: c_int = 6;
+pub const E2BIG: c_int = 7;
+pub const ENOEXEC: c_int = 8;
+pub const EBADF: c_int = 9;
+pub const ECHILD: c_int = 10;
+pub const EAGAIN: c_int = 11;
+pub const ENOMEM: c_int = 12;
+pub const EACCES: c_int = 13;
+pub const EFAULT: c_int = 14;
+pub const ENOTBLK: c_int = 15;
+pub const EBUSY: c_int = 16;
+pub const EEXIST: c_int = 17;
+pub const EXDEV: c_int = 18;
+pub const ENODEV: c_int = 19;
+pub const ENOTDIR: c_int = 20;
+pub const EISDIR: c_int = 21;
+pub const EINVAL: c_int = 22;
+pub const ENFILE: c_int = 23;
+pub const EMFILE: c_int = 24;
+pub const ENOTTY: c_int = 25;
+pub const ETXTBSY: c_int = 26;
+pub const EFBIG: c_int = 27;
+pub const ENOSPC: c_int = 28;
+pub const ESPIPE: c_int = 29;
+pub const EROFS: c_int = 30;
+pub const EMLINK: c_int = 31;
+pub const EPIPE: c_int = 32;
+pub const EDOM: c_int = 33;
+pub const ERANGE: c_int = 34;
+pub const EWOULDBLOCK: c_int = EAGAIN;
+
+// open flags
+pub const O_RDONLY: c_int = 0;
+pub const O_WRONLY: c_int = 1;
+pub const O_RDWR: c_int = 2;
+pub const O_CREAT: c_int = 64;
 
 // kernel structures
 type phys_addr_t = usize;
 type resource_size_t = phys_addr_t;
-type umode_t = libc::c_ushort;
+type umode_t = c_ushort;
+type loff_t = c_longlong;
+type ssize_t = isize;
 
 // We omit some kernel structs here, that we don't need
-type device = libc::c_void;
-type fwnode_handle = libc::c_void;
-type platform_device = libc::c_void;
-type property_entry = libc::c_void;
+type device = c_void;
+type fwnode_handle = c_void;
+type platform_device = c_void;
+type property_entry = c_void;
 /// same as struct file
-type file = libc::c_void;
-type task_struct = libc::c_void;
+type file = c_void;
+type task_struct = c_void;
 
 const STAGE2_EXE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/stage2"));
 
@@ -60,9 +107,9 @@ fn panic(_info: &PanicInfo) -> ! {
 pub struct resource {
     start: resource_size_t,
     end: resource_size_t,
-    name: *const libc::c_char,
-    flags: libc::c_ulong,
-    desc: libc::c_ulong,
+    name: *const c_char,
+    flags: c_ulong,
+    desc: c_ulong,
     parent: *mut resource,
     sibling: *mut resource,
     child: *mut resource,
@@ -75,14 +122,14 @@ pub struct platform_device_info {
     fwnode: *mut fwnode_handle,
     of_node_reused: bool,
 
-    name: *const libc::c_char,
-    id: libc::c_int,
+    name: *const c_char,
+    id: c_int,
 
     res: *const resource,
-    num_res: libc::c_uint,
+    num_res: c_uint,
 
-    data: *const libc::c_void,
-    size_data: libc::size_t,
+    data: *const c_void,
+    size_data: size_t,
     dma_mask: u64,
 
     properties: *const property_entry,
@@ -103,35 +150,31 @@ extern "C" {
         pdevinfo: *const platform_device_info,
     ) -> *mut platform_device;
     pub fn platform_device_unregister(pdev: *mut platform_device);
-    pub fn memcpy(dest: *mut libc::c_void, src: *const libc::c_void, count: libc::size_t);
-    pub fn filp_open(name: *const libc::c_char, flags: libc::c_int, mode: umode_t) -> *mut file;
-    pub fn filp_close(filp: *mut file, id: *mut libc::c_void) -> libc::c_int;
-    pub fn kernel_write(
-        file: *mut file,
-        buf: *const libc::c_void,
-        count: libc::size_t,
-        pos: libc::loff_t,
-    ) -> libc::ssize_t;
+    pub fn memcpy(dest: *mut c_void, src: *const c_void, count: size_t);
+    pub fn filp_open(name: *const c_char, flags: c_int, mode: umode_t) -> *mut file;
+    pub fn filp_close(filp: *mut file, id: *mut c_void) -> c_int;
+    pub fn kernel_write(file: *mut file, buf: *const c_void, count: size_t, pos: loff_t)
+        -> ssize_t;
 
     pub fn call_usermodehelper(
-        path: *const libc::c_char,
-        argv: *mut *mut libc::c_char,
-        envp: *mut *mut libc::c_char,
-        wait: libc::c_int,
-    ) -> libc::c_int;
+        path: *const c_char,
+        argv: *mut *mut c_char,
+        envp: *mut *mut c_char,
+        wait: c_int,
+    ) -> c_int;
 
     pub fn flush_delayed_fput();
     pub fn kthread_create_on_node(
-        threadfn: unsafe extern "C" fn(data: *mut libc::c_void) -> libc::c_int,
-        data: *mut libc::c_void,
-        node: libc::c_int,
-        namefmt: *const libc::c_char,
+        threadfn: unsafe extern "C" fn(data: *mut c_void) -> c_int,
+        data: *mut c_void,
+        node: c_int,
+        namefmt: *const c_char,
         ...
     ) -> *mut task_struct;
 
     pub fn wake_up_process(p: *mut task_struct);
-    pub fn kthread_stop(k: *mut task_struct) -> libc::c_int;
-    pub fn printk(fmt: *const libc::c_char, ...);
+    pub fn kthread_stop(k: *mut task_struct) -> c_int;
+    pub fn printk(fmt: *const c_char, ...);
 }
 
 static mut RESOURCES: [resource; 2] = [
@@ -174,11 +217,11 @@ static mut INFO: platform_device_info = platform_device_info {
 };
 
 unsafe fn register_virtio_mmio(
-    id: libc::c_int,
+    id: c_int,
     base: usize,
     size: usize,
     irq: usize,
-) -> Result<PlatformDevice, libc::c_int> {
+) -> Result<PlatformDevice, c_int> {
     // we need to use static here to no got out of stack memory
     RESOURCES[0].start = base;
     RESOURCES[0].end = base + size - 1;
@@ -188,7 +231,7 @@ unsafe fn register_virtio_mmio(
 
     let dev = platform_device_register_full(&INFO);
     if is_err_value(dev) {
-        return Err(err_value(dev) as libc::c_int);
+        return Err(err_value(dev) as c_int);
     }
     Ok(PlatformDevice { dev })
 }
@@ -196,17 +239,17 @@ unsafe fn register_virtio_mmio(
 /// Holds the device we create by this code, so we can unregister it later
 const MAX_DEVICES: usize = 3;
 static mut DEVICES: [Option<PlatformDevice>; MAX_DEVICES] = [None, None, None];
-static mut DEVICE_ADDRS: [libc::c_ulonglong; MAX_DEVICES] = [0; MAX_DEVICES];
+static mut DEVICE_ADDRS: [c_ulonglong; MAX_DEVICES] = [0; MAX_DEVICES];
 static mut STAGE2_SPAWNER: Option<*mut task_struct> = None;
 
 /// re-implementation of IS_ERR_VALUE
-fn is_err_value(x: *const libc::c_void) -> bool {
-    x as libc::c_long >= -(MAX_ERRNO as libc::c_long)
+fn is_err_value(x: *const c_void) -> bool {
+    x as c_long >= -(MAX_ERRNO as c_long)
 }
 
 /// Retrieves error value from pointer
-fn err_value(ptr: *const libc::c_void) -> libc::c_long {
-    ptr as libc::c_long
+fn err_value(ptr: *const c_void) -> c_long {
+    ptr as c_long
 }
 
 struct KFile {
@@ -214,41 +257,27 @@ struct KFile {
 }
 
 impl KFile {
-    fn open(
-        name: &str,
-        flags: libc::c_int,
-        mode: umode_t,
-    ) -> core::result::Result<KFile, libc::c_int> {
-        let file = unsafe { filp_open(name.as_ptr() as *const libc::c_char, flags, mode) };
+    fn open(name: &str, flags: c_int, mode: umode_t) -> core::result::Result<KFile, c_int> {
+        let file = unsafe { filp_open(name.as_ptr() as *const c_char, flags, mode) };
         if is_err_value(file) {
-            return Err(err_value(file) as libc::c_int);
+            return Err(err_value(file) as c_int);
         }
         Ok(KFile { file })
     }
 
-    fn write_all(
-        &mut self,
-        data: &[u8],
-        pos: libc::loff_t,
-    ) -> core::result::Result<libc::size_t, libc::c_int> {
-        let mut out: libc::size_t = 0;
+    fn write_all(&mut self, data: &[u8], pos: loff_t) -> core::result::Result<size_t, c_int> {
+        let mut out: size_t = 0;
         let mut count = data.len();
         let mut p = data.as_ptr();
 
         /* sys_write only can write MAX_RW_COUNT aka 2G-4K bytes at most */
         while count != 0 {
-            let rv = unsafe { kernel_write(self.file, p as *const libc::c_void, count, pos) };
+            let rv = unsafe { kernel_write(self.file, p as *const c_void, count, pos) };
 
-            match -rv as libc::c_int {
+            match -rv as c_int {
                 0 => break,
-                libc::EINTR | libc::EAGAIN => continue,
-                1..=libc::c_int::MAX => {
-                    return if out == 0 {
-                        Err(-rv as libc::c_int)
-                    } else {
-                        Ok(out)
-                    }
-                }
+                EINTR | EAGAIN => continue,
+                1..=c_int::MAX => return if out == 0 { Err(-rv as c_int) } else { Ok(out) },
                 _ => {}
             }
 
@@ -271,9 +300,9 @@ impl Drop for KFile {
 }
 
 static STAGE2_PATH: &str = c_str!("/dev/.vmsh");
-static mut STAGE2_ARGV: [*mut libc::c_char; 256] = [ptr::null_mut(); 256];
+static mut STAGE2_ARGV: [*mut c_char; 256] = [ptr::null_mut(); 256];
 
-unsafe extern "C" fn spawn_stage2(_arg: *mut libc::c_void) -> libc::c_int {
+unsafe extern "C" fn spawn_stage2(_arg: *mut c_void) -> c_int {
     for (i, addr) in DEVICE_ADDRS.iter().enumerate() {
         if *addr == 0 {
             continue;
@@ -290,7 +319,7 @@ unsafe extern "C" fn spawn_stage2(_arg: *mut libc::c_void) -> libc::c_int {
                     *elem = Some(v);
                 } else {
                     printkln!("stage1: out-of-bound write to devs");
-                    return -libc::EFAULT;
+                    return -EFAULT;
                 }
             }
             Err(res) => {
@@ -302,7 +331,7 @@ unsafe extern "C" fn spawn_stage2(_arg: *mut libc::c_void) -> libc::c_int {
 
     // we never delete this file, however deleting files is complex and requires accessing
     // internal structs that might change.
-    let mut file = match KFile::open(STAGE2_PATH, libc::O_WRONLY | libc::O_CREAT, 0o755) {
+    let mut file = match KFile::open(STAGE2_PATH, O_WRONLY | O_CREAT, 0o755) {
         Ok(f) => f,
         Err(e) => {
             printkln!("stage1: cannot open /dev/.vmsh: %d", e);
@@ -317,7 +346,7 @@ unsafe extern "C" fn spawn_stage2(_arg: *mut libc::c_void) -> libc::c_int {
                     n,
                     STAGE2_EXE.len()
                 );
-                return -libc::EIO;
+                return -EIO;
             }
         }
         Err(res) => {
@@ -328,10 +357,10 @@ unsafe extern "C" fn spawn_stage2(_arg: *mut libc::c_void) -> libc::c_int {
     drop(file);
     flush_delayed_fput();
 
-    let mut envp: [*mut libc::c_char; 1] = [ptr::null_mut()];
+    let mut envp: [*mut c_char; 1] = [ptr::null_mut()];
 
     let res = call_usermodehelper(
-        STAGE2_PATH.as_ptr() as *mut libc::c_char,
+        STAGE2_PATH.as_ptr() as *mut c_char,
         STAGE2_ARGV.as_mut_ptr(),
         envp.as_mut_ptr(),
         UMH_WAIT_EXEC,
@@ -347,11 +376,11 @@ unsafe extern "C" fn spawn_stage2(_arg: *mut libc::c_void) -> libc::c_int {
 /// this code is not thread-safe as it uses static globals
 #[no_mangle]
 unsafe fn init_vmsh_stage1(
-    devices_num: libc::c_int,
-    devices: *mut libc::c_ulonglong,
-    argc: libc::c_int,
-    argv: *mut *mut libc::c_char,
-) -> libc::c_int {
+    devices_num: c_int,
+    devices: *mut c_ulonglong,
+    argc: c_int,
+    argv: *mut *mut c_char,
+) -> c_int {
     printkln!("stage1: init with %d arguments", argc);
     for i in 0..(devices_num as usize) {
         if let Some(addr) = DEVICE_ADDRS.get_mut(i) {
@@ -361,22 +390,22 @@ unsafe fn init_vmsh_stage1(
                 "stage1: received too many devices, expect 1-3, got: %d",
                 devices_num
             );
-            return -libc::EINVAL;
+            return -EINVAL;
         }
     }
 
-    STAGE2_ARGV[0] = STAGE2_PATH.as_ptr() as *mut libc::c_char;
+    STAGE2_ARGV[0] = STAGE2_PATH.as_ptr() as *mut c_char;
 
     // argv = [ STAGE_PATH, args..., NULL ];
     if (argc + 2) as usize > STAGE2_ARGV.len() {
         printkln!("stage1: too many arguments passed to stage2");
-        return -libc::E2BIG;
+        return -E2BIG;
     }
 
     memcpy(
-        STAGE2_ARGV.as_ptr().add(1) as *mut libc::c_void,
-        argv as *mut libc::c_void,
-        (argc as usize) * size_of::<*mut libc::c_char>(),
+        STAGE2_ARGV.as_ptr().add(1) as *mut c_void,
+        argv as *mut c_void,
+        (argc as usize) * size_of::<*mut c_char>(),
     );
 
     // We cannot close a file synchronusly outside of a kthread
@@ -385,14 +414,14 @@ unsafe fn init_vmsh_stage1(
         spawn_stage2,
         ptr::null_mut(),
         0,
-        c_str!("vmsh-stage1").as_ptr() as *const libc::c_char,
+        c_str!("vmsh-stage1").as_ptr() as *const c_char,
     );
     if is_err_value(thread) {
         printkln!(
             "stage1: failed to spawn kernel thread: %d",
             err_value(thread)
         );
-        return err_value(thread) as libc::c_int;
+        return err_value(thread) as c_int;
     }
     wake_up_process(thread);
     STAGE2_SPAWNER = Some(thread);

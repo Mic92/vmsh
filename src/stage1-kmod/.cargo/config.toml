@@ -1,2 +1,0 @@
-[build]
-rustflags = ["-Crelocation-model=static", "-Ccode-model=kernel", "-Zplt=y"]

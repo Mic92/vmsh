@@ -10,4 +10,4 @@ license = "MIT"
 build-utils = { path = "../build-utils" }
 
 [dependencies]
-libc = { version = "0.2.*" }
+chlorine = { version = "1.0.*", features = ["int_extras"] }
