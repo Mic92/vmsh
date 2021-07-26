@@ -13,24 +13,28 @@ use crate::result::Result;
 /// We don't need deep stacks for our threads so let's safe a bit memory by having
 pub const DEFAULT_THREAD_STACKSIZE: usize = 128 * 1024;
 
-pub struct InterrutableThread<T>
+/// T: return value from the thread in the successful case
+/// C: resources shared with the threads that are returned to the the caller of join
+pub struct InterrutableThread<T, C>
 where
     T: Send + 'static,
+    C: Send + 'static,
 {
-    handle: JoinHandle<Result<T>>,
+    handle: JoinHandle<(Result<T>, C)>,
     should_stop: Arc<AtomicBool>,
 }
 
-impl<T> InterrutableThread<T>
+impl<T, C> InterrutableThread<T, C>
 where
     T: Send + 'static,
+    C: Send + 'static,
 {
     /// Creates and runs a threads with the given name.
     /// The thread function will receive an atomic boolean as its first argument
     /// and should stop it's work once it becomes true.
-    pub fn spawn<F>(name: &str, err_sender: &SyncSender<()>, func: F) -> io::Result<Self>
+    pub fn spawn<F>(name: &str, err_sender: &SyncSender<()>, func: F, ctx: C) -> io::Result<Self>
     where
-        F: FnOnce(Arc<AtomicBool>) -> Result<T>,
+        F: FnOnce(&C, Arc<AtomicBool>) -> Result<T>,
         F: Send + 'static,
     {
         let builder = Builder::new()
@@ -41,13 +45,13 @@ where
         let err_sender = err_sender.clone();
 
         let handle = builder.spawn(move || {
-            let res = func(should_stop2);
+            let res = func(&ctx, should_stop2);
             if res.is_err() {
                 err_sender
                     .send(())
                     .expect("Could not send result back. Parent died");
             }
-            res
+            (res, ctx)
         })?;
 
         Ok(Self {
@@ -62,7 +66,7 @@ where
     }
 
     /// Join the underlying thread
-    pub fn join(self) -> Result<T> {
+    pub fn join(self) -> Result<(Result<T>, C)> {
         assert!(
             self.should_stop.load(Ordering::Acquire),
             "shutdown() needs to be called before join()"
@@ -71,7 +75,7 @@ where
         info!("join {} thread...", name);
         match self.handle.join() {
             Err(e) => bail!("could not join thread ({}): {:?}", name, e),
-            Ok(v) => v,
+            Ok((v, ctx)) => Ok((v, ctx)),
         }
     }
 

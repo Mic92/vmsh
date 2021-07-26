@@ -2,8 +2,7 @@ use crate::devices::mmio::IoPirate;
 use event_manager::EventManager;
 use event_manager::MutEventSubscriber;
 use log::{debug, info, log_enabled, trace, Level};
-use simple_error::simple_error;
-use simple_error::{require_with, try_with};
+use simple_error::{bail, require_with, simple_error, try_with};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::SyncSender;
@@ -66,7 +65,7 @@ fn event_thread(
     mut event_mgr: SubscriberEventManager,
     device_space: &DeviceContext,
     err_sender: &SyncSender<()>,
-) -> Result<InterrutableThread<()>> {
+) -> Result<InterrutableThread<(), Option<DeviceContext>>> {
     let blkdev = device_space.blkdev.clone();
     let ack_handler = {
         let blkdev = try_with!(blkdev.lock(), "cannot unlock thread");
@@ -77,7 +76,7 @@ fn event_thread(
     let res = InterrutableThread::spawn(
         "event-manager",
         err_sender,
-        move |should_stop: Arc<AtomicBool>| {
+        move |_ctx: &Option<DeviceContext>, should_stop: Arc<AtomicBool>| {
             loop {
                 match event_mgr.run_with_timeout(EVENT_LOOP_TIMEOUT_MS) {
                     Ok(nr) => {
@@ -97,6 +96,7 @@ fn event_thread(
             }
             Ok(())
         },
+        None,
     );
     Ok(try_with!(res, "failed to spawn event-manager thread"))
 }
@@ -105,12 +105,12 @@ fn event_thread(
 fn blkdev_monitor_thread(
     device: &DeviceContext,
     err_sender: &SyncSender<()>,
-) -> Result<InterrutableThread<()>> {
+) -> Result<InterrutableThread<(), Option<DeviceContext>>> {
     let blkdev = device.blkdev.clone();
     let res = InterrutableThread::spawn(
         "blkdev-monitor",
         err_sender,
-        move |should_stop: Arc<AtomicBool>| {
+        move |_ctx: &Option<DeviceContext>, should_stop: Arc<AtomicBool>| {
             //std::thread::sleep(std::time::Duration::from_millis(10000));
             loop {
                 {
@@ -154,6 +154,7 @@ fn blkdev_monitor_thread(
                 std::thread::sleep(std::time::Duration::from_millis(10000));
             }
         },
+        None,
     );
 
     Ok(try_with!(res, "failed to spawn blkdev-monitor"))
@@ -177,7 +178,7 @@ fn handle_mmio_exits(
             kvm_exit = try_with!(
                 wrapper_g.wait_for_ioctl(),
                 "failed to wait for vmm exit_mmio"
-            )
+            );
         };
 
         if let Some(mmio_rw) = &mut kvm_exit {
@@ -204,35 +205,36 @@ fn mmio_exit_handler_thread(
     device: DeviceContext,
     err_sender: &SyncSender<()>,
     device_ready: &Arc<DeviceReady>,
-) -> Result<InterrutableThread<()>> {
+) -> Result<InterrutableThread<(), Option<DeviceContext>>> {
     let device_ready = Arc::clone(device_ready);
     let vm = Arc::clone(vm);
-    info!("mmio dev attached");
-
     vm.prepare_thread_transfer()?;
 
     let res = InterrutableThread::spawn(
         "mmio-exit-handler",
         err_sender,
-        move |should_stop: Arc<AtomicBool>| {
-            vm.finish_thread_transfer()?;
+        move |dev: &Option<DeviceContext>, should_stop: Arc<AtomicBool>| {
+            let dev = dev.as_ref().unwrap();
+            if let Err(e) = vm.finish_thread_transfer() {
+                bail!("failed transfer ptrace to mmio exit handler: {}", e);
+            };
 
             info!("mmio dev attached");
 
             let res = vm.kvmrun_wrapped(|wrapper_mo: &Mutex<Option<KvmRunWrapper>>| {
                 // Signal that our blockdevice driver is ready now
-                handle_mmio_exits(wrapper_mo, &should_stop, &device, &device_ready)?;
+                handle_mmio_exits(wrapper_mo, &should_stop, dev, &device_ready)?;
 
                 Ok(())
             });
 
             // drop remote resources like ioeventfd before disowning traced process.
-            drop(device);
 
             // we need to return ptrace control before returning to the main thread
             vm.prepare_thread_transfer()?;
             res
         },
+        Some(device),
     );
 
     Ok(try_with!(res, "cannot spawn mmio exit handler thread"))
@@ -285,13 +287,13 @@ fn ioregion_handler_thread(
     mmio_mgr: Arc<Mutex<IoPirate>>,
     err_sender: &SyncSender<()>,
     device_ready: &Arc<DeviceReady>,
-) -> Result<InterrutableThread<()>> {
+) -> Result<InterrutableThread<(), Option<DeviceContext>>> {
     let device_ready = device_ready.clone();
 
     let res = InterrutableThread::spawn(
         "ioregion-handler",
         err_sender,
-        move |should_stop: Arc<AtomicBool>| {
+        move |_ctx: &Option<DeviceContext>, should_stop: Arc<AtomicBool>| {
             info!("ioregion mmio handler started");
             try_with!(
                 ioregion_event_loop(&should_stop, &device_ready, mmio_mgr, device),
@@ -302,6 +304,7 @@ fn ioregion_handler_thread(
             //drop(device);
             Ok(())
         },
+        None,
     );
 
     Ok(try_with!(res, "cannot spawn mmio exit handler thread"))
@@ -334,7 +337,7 @@ impl DeviceSet {
         self,
         vm: &Arc<Hypervisor>,
         err_sender: &SyncSender<()>,
-    ) -> Result<Vec<InterrutableThread<()>>> {
+    ) -> Result<Vec<InterrutableThread<(), Option<DeviceContext>>>> {
         let device_ready = Arc::new(DeviceReady::new());
         let mut threads = vec![event_thread(self.event_manager, &self.context, err_sender)?];
 

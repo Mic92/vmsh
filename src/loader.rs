@@ -1,24 +1,30 @@
 use elfloader::{
     ElfBinary, ElfLoader, ElfLoaderErr, Entry, Flags, LoadableHeaders, Rela, TypeRela64, VAddr, P64,
 };
-use log::{debug, warn};
+use log::{debug, error, warn};
 use simple_error::bail;
-use xmas_elf::{
-    sections::SectionData,
-    symbol_table::{Binding, DynEntry64},
-};
+use xmas_elf::sections::SectionData;
+use xmas_elf::symbol_table::{Binding, DynEntry64};
 
+use crate::kvm::allocator::VirtAlloc;
+use crate::kvm::PhysMemAllocator;
 use crate::result::Result;
 
 pub struct Loader<'a> {
     vbase: u64,
+    allocator: &'a mut PhysMemAllocator,
+    allocations: Vec<VirtAlloc>,
     binary: &'a [u8],
     elf: ElfBinary<'a>,
     dyn_syms: &'a [DynEntry64],
 }
 
 impl<'a> Loader<'a> {
-    pub fn new(binary: &[u8]) -> Result<Loader> {
+    pub fn new(
+        binary: &'a [u8],
+        vbase: u64,
+        allocator: &'a mut PhysMemAllocator,
+    ) -> Result<Loader<'a>> {
         let elf = match ElfBinary::new(binary) {
             Err(e) => bail!("cannot parse elf binary: {}", e),
             Ok(v) => v,
@@ -34,12 +40,19 @@ impl<'a> Loader<'a> {
         };
 
         Ok(Loader {
-            vbase: 0,
+            vbase,
+            allocator,
+            allocations: vec![],
             binary,
             elf,
             dyn_syms,
         })
     }
+
+    fn commit_relocation(&self) -> Result<()> {
+        Ok(())
+    }
+
     pub fn load_binary(&mut self) -> Result<()> {
         let binary = match ElfBinary::new(self.binary) {
             Err(e) => bail!("cannot parse elf binary: {}", e),
@@ -49,6 +62,7 @@ impl<'a> Loader<'a> {
         if let Err(e) = binary.load(self) {
             bail!("cannot load elf binary: {}", e);
         };
+        self.commit_relocation()?;
         Ok(())
     }
 }
@@ -65,10 +79,18 @@ impl<'a> ElfLoader for Loader<'a> {
                 header.flags()
             );
         }
+
         Ok(())
     }
 
     fn load(&mut self, flags: Flags, base: VAddr, region: &[u8]) -> ElfResult {
+        if !self.allocations.is_empty() {
+            if let Err(e) = self.allocator.virt_alloc(0, &self.allocations) {
+                error!("cannot allocate memory for elf file: {}", e);
+                return Err(ElfLoaderErr::UnsupportedElfFormat);
+            }
+        }
+
         let start = self.vbase + base;
         let end = self.vbase + base + region.len() as u64;
         debug!(

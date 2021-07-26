@@ -145,7 +145,7 @@ impl PhysMemAllocator {
     }
     pub fn virt_alloc(&mut self, mut virt_start: usize, alloc: &[VirtAlloc]) -> Result<VirtMem> {
         let len = alloc.iter().map(|a| a.len).sum();
-        let phys_mem = self.phys_alloc(estimate_page_table_size(len), false)?;
+        let phys_mem = self.phys_alloc(len + estimate_page_table_size(len), false)?;
 
         let mut next_addr = phys_mem.guest_phys_addr.clone();
 

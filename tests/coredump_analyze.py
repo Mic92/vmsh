@@ -80,12 +80,34 @@ PAGE_TABLE_SIZE = 512
 PageTableEntries = ct.c_uint64 * PAGE_TABLE_SIZE
 
 
+class Segments:
+    def __init__(self, core: ElfCore) -> None:
+        self.core = core
+        self.mapped_segments: Dict[int, Memory] = {}
+
+    def find_by_addr(self, addr: int) -> Optional[Memory]:
+        segment = self.core.find_segment_by_addr(addr)
+        if not segment:
+            return None
+        cached = self.mapped_segments.get(segment.header.p_paddr)
+        if cached:
+            return cached
+
+        mapped = self.core.map_segment(segment)
+        if not mapped:
+            return None
+        self.mapped_segments[segment.header.p_paddr] = mapped
+        return mapped
+
+
 def page_table(
-    mem: Memory, addr: int, virt_addr: int = 0, level: int = 0
+    segments: Segments, addr: int, virt_addr: int = 0, level: int = 0
 ) -> "PageTable":
     end = addr + ct.sizeof(PageTableEntries)
+    mem = segments.find_by_addr(addr)
+    assert mem is not None, f"no physical memory found for page table at 0x{addr:x}"
     entries = PageTableEntries.from_buffer_copy(mem[addr:end].data)
-    return PageTable(mem, entries, virt_addr, level)
+    return PageTable(segments, entries, virt_addr, level)
 
 
 @dataclass
@@ -97,12 +119,12 @@ class PageTableEntry:
     # Page directory level
     level: int
 
-    def page_table(self, mem: Memory) -> "PageTable":
+    def page_table(self, segments: Segments) -> "PageTable":
         """
         Page table of the next page directory level
         """
         assert self.level >= 0 and self.level < 3 and self.value & _PAGE_PRESENT
-        return page_table(mem, self.phys_addr, self.virt_addr, self.level + 1)
+        return page_table(segments, self.phys_addr, self.virt_addr, self.level + 1)
 
     @property
     def phys_addr(self) -> int:
@@ -145,12 +167,12 @@ def get_index(virt: int, level: int) -> int:
 class PageTable:
     def __init__(
         self,
-        mem: Memory,
+        segments: Segments,
         entries: "ct.Array[ct.c_uint64]",
         virt_addr_prefix: int,
         level: int,
     ) -> None:
-        self.mem = mem
+        self.segments = segments
         self.entries = entries
         self.level = level
         self.virt_addr_prefix = virt_addr_prefix
@@ -174,8 +196,13 @@ class PageTable:
             if self.level == 3 or e.value & _PAGE_PSE:
                 yield e
                 continue
-            for e in e.page_table(self.mem):
-                yield e
+            try:
+                for e in e.page_table(self.segments):
+                    yield e
+            except AssertionError as err:
+                print(
+                    f"invalid page table at virtual address 0x{self.virt_addr_prefix:x}: {err}"
+                )
 
 
 PHYS_ADDR_MASK = 0xFFFFFFFFFF000
@@ -275,9 +302,10 @@ def find_linux_kernel_memory(
         if entry.virt_addr > mem_range.end:
             break
         if last.phys_addr + last.size != entry.phys_addr:
-            raise Exception(
-                "Kernel is not in physical-continous memory. This is not implemented."
+            print(
+                "Kernel is not in physical-continous memory. Assuming vmsh memory allocation."
             )
+            break
         last = entry
     phys_mem = mem[first.phys_addr : last.phys_addr + last.size]
     return phys_mem.map(first.virt_addr)
@@ -392,24 +420,24 @@ def get_kernel_symbols(
 
 def inspect_coredump(fd: IO[bytes]) -> None:
     core = ElfCore(fd)
-    vm_segment = core.find_segment_by_addr(PHYS_LOAD_ADDR)
-    assert vm_segment is not None, "cannot find physical memory of VM in coredump"
-    mem = core.map_segment(vm_segment)
-
     pt_addr = get_page_table_addr(core.special_regs[0])
-    pt_segment = core.find_segment_by_addr(pt_addr)
-    assert pt_segment is not None
-    # for simplicity we assume that the page table is also in this main vm allocation
-    assert vm_segment.header == pt_segment.header
+    segments = Segments(core)
+    pt_mem = segments.find_by_addr(pt_addr)
+    assert pt_mem is not None
+    kernel_mem = segments.find_by_addr(PHYS_LOAD_ADDR)
+    assert kernel_mem is not None
+
     cpl = core.regs[0].cs & 3
     if cpl == 0 or cpl == 1:
         print("program run in privileged mode")
     else:  # cpl == 3:
         print("program runs userspace")
     print(f"rip=0x{core.regs[0].rip:x}")
-    pml4 = page_table(mem, pt_addr)
+    pml4 = page_table(segments, pt_addr)
     print("look for kernel in...")
-    kernel_memory = find_linux_kernel_memory(pml4, mem, LINUX_KERNEL_KASLR_RANGE)
+    for entry in pml4:
+        print(entry)
+    kernel_memory = find_linux_kernel_memory(pml4, kernel_mem, LINUX_KERNEL_KASLR_RANGE)
     if kernel_memory:
         print(f"Found at {kernel_memory.start:x}:{kernel_memory.end:x}")
     else:

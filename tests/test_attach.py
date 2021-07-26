@@ -29,8 +29,8 @@ def test_attach(helpers: conftest.Helpers) -> None:
         with vmsh:
             try:
                 vmsh.wait_until_line(
-                    "block device driver started",
-                    lambda l: "block device driver started" in l,
+                    "stage1 driver started",
+                    lambda l: "stage1 driver started" in l,
                 )
             finally:
                 res = vm.ssh_cmd(["dmesg"], check=False)

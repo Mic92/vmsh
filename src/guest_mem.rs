@@ -20,7 +20,7 @@ pub struct GuestMem {
     regs: Regs,
     sregs: kvmb::kvm_sregs,
     page_table_mapping_idx: usize,
-    pml4: PageTable,
+    pml4: PhysAddr,
 }
 
 // x86_64 & linux address to load the Linux kernel too
@@ -99,25 +99,15 @@ impl GuestMem {
 
         let host_offset = pt_mapping.phys_to_host_offset();
 
-        let pt = try_with!(
-            PageTable::read(
-                hv,
-                &PhysAddr {
-                    value: pt_addr,
-                    host_offset
-                },
-                0,
-                0
-            ),
-            "cannot load page table"
-        );
-
         Ok(GuestMem {
             maps,
             regs,
             sregs,
             page_table_mapping_idx: idx,
-            pml4: pt,
+            pml4: PhysAddr {
+                value: pt_addr,
+                host_offset,
+            },
         })
     }
 
@@ -161,7 +151,13 @@ impl GuestMem {
             bail!("kernel memory and page table (0x{:x}) is not in the same physical memory block: 0x{:x}-0x{:x} vs 0x{:x}-0x{:x}", pt_addr, kernel_mapping.phys_addr, kernel_mapping.phys_end(), pt_mapping.phys_addr, pt_mapping.phys_end());
         }
 
-        let mut iter = self.pml4.clone().iter(hv, range.clone());
+        // level/virt_addr is wrong, but does not matter
+        let pml4 = try_with!(
+            PageTable::read(hv, &self.pml4, 0, 0),
+            "cannot read pml4 page table"
+        );
+
+        let mut iter = pml4.iter(hv, range.clone());
         let mut sections: Vec<_> = vec![];
         let host_offset = pt_mapping.phys_to_host_offset();
         for e in &mut iter {

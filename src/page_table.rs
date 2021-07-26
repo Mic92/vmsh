@@ -1,6 +1,10 @@
+use std::borrow::Borrow;
+use std::cell::RefCell;
 use std::cmp::max;
+use std::collections::HashMap;
 use std::mem::{size_of, size_of_val};
 use std::ops::Range;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use crate::guest_mem::MappedMemory;
@@ -8,7 +12,7 @@ use crate::kvm::hypervisor::{process_read, Hypervisor, PhysMem};
 use crate::page_math::{is_page_aligned, page_align, page_size};
 use crate::result::Result;
 use bitflags::bitflags;
-use log::error;
+use log::{error, info};
 use nix::sys::mman::ProtFlags;
 use nix::sys::uio::{process_vm_writev, IoVec, RemoteIoVec};
 use simple_error::{bail, try_with};
@@ -215,6 +219,10 @@ pub struct VirtMem {
 
 impl Drop for VirtMem {
     fn drop(&mut self) {
+        // useful for debugging
+        //use log::warn;
+        //warn!("SKIP CLEANUP");
+        //return;
         if let Err(e) = commit_page_tables(&self.hv, &self.old_tables) {
             error!("cannot restore old page tables: {}", e);
         }
@@ -247,38 +255,48 @@ impl PhysAddr {
     }
 }
 
-fn allocate_page_table(entry: &mut PageTableEntry, phys_addr: &mut PhysAddr) -> PageTable {
-    let table = PageTable::empty(phys_addr.clone());
+type UpsertTable = HashMap<usize, Rc<RefCell<PageTable>>>;
+type PageTableRef = Rc<RefCell<PageTable>>;
+
+fn allocate_page_table(
+    entry: &mut PageTableEntry,
+    phys_addr: &mut PhysAddr,
+    upsert_tables: &mut UpsertTable,
+) -> PageTableRef {
+    let table = Rc::new(RefCell::new(PageTable::empty(phys_addr.clone())));
     // we just use the same flags the linux kernel expects for page tables
     entry.set_addr(
-        &table.phys_addr,
+        phys_addr,
         PageTableFlags::PRESENT
             | PageTableFlags::ACCESSED
             | PageTableFlags::DIRTY
             | PageTableFlags::WRITABLE,
     );
-    phys_addr.value += size_of_val(&table.entries);
+    upsert_tables.insert(phys_addr.value, Rc::clone(&table));
+    phys_addr.value += size_of_val(&RefCell::borrow(&table).entries);
     table
 }
 
 fn read_page_table(
     hv: &Hypervisor,
-    entry: &mut PageTableEntry,
+    phys_addr: usize,
     host_offset: isize,
     old_tables: &mut Vec<PageTable>,
-) -> Result<PageTable> {
+    upsert_tables: &mut UpsertTable,
+) -> Result<PageTableRef> {
     let addr = PhysAddr {
-        value: entry.addr() as usize,
+        value: phys_addr,
         host_offset,
     };
     // level/virt_addr is wrong, but does not matter
-    let pt = try_with!(
+    let pt = Rc::new(RefCell::new(try_with!(
         PageTable::read(hv, &addr, 0, 0),
         "cannot read page table at 0x{:x} (host_addr: 0x{:x})",
         addr.value,
         addr.host_addr()
-    );
-    old_tables.push(pt.clone());
+    )));
+    old_tables.push(RefCell::borrow(&pt).clone());
+    upsert_tables.insert(phys_addr, Rc::clone(&pt));
     Ok(pt)
 }
 
@@ -288,7 +306,8 @@ fn get_page_table(
     entry: &mut PageTableEntry,
     phys_addr: &mut PhysAddr,
     old_tables: &mut Vec<PageTable>,
-) -> Result<PageTable> {
+    upsert_tables: &mut UpsertTable,
+) -> Result<PageTableRef> {
     // should be empty
     if entry
         .flags()
@@ -298,9 +317,15 @@ fn get_page_table(
     }
 
     if entry.flags().contains(PageTableFlags::PRESENT) {
-        read_page_table(hv, entry, pt_host_offset, old_tables)
+        let addr = entry.addr() as usize;
+        if let Some(t) = upsert_tables.get(&addr) {
+            Ok(Rc::clone(t))
+        } else {
+            read_page_table(hv, addr, pt_host_offset, old_tables, upsert_tables)
+        }
     } else {
-        Ok(allocate_page_table(entry, phys_addr))
+        info!("allocate page table at 0x{:x}", phys_addr.value);
+        Ok(allocate_page_table(entry, phys_addr, upsert_tables))
     }
 }
 
@@ -313,21 +338,17 @@ fn get_start_idx(virt_addr: usize, start: usize, idx: usize, level: u8) -> usize
 }
 
 fn commit_page_tables(hv: &Hypervisor, tables: &[PageTable]) -> Result<()> {
-    let local_iovec = tables
-        .iter()
-        .map(|table| {
-            let bytes = unsafe { any_as_bytes(&table.entries) };
-            IoVec::from_slice(bytes)
-        })
-        .collect::<Vec<_>>();
-    let remote_iovec = tables
-        .iter()
-        .map(|table| RemoteIoVec {
-            base: table.phys_addr.host_addr(),
+    let mut local_iovec = vec![];
+    let mut remote_iovec = vec![];
+    for t in tables {
+        let t = t.borrow();
+        let bytes = unsafe { any_as_bytes(&t.entries) };
+        local_iovec.push(IoVec::from_slice(bytes));
+        remote_iovec.push(RemoteIoVec {
+            base: t.phys_addr.host_addr(),
             len: page_size(),
-        })
-        .collect::<Vec<_>>();
-
+        });
+    }
     let written = try_with!(
         process_vm_writev(hv.pid, local_iovec.as_slice(), remote_iovec.as_slice()),
         "cannot write to process"
@@ -355,7 +376,7 @@ fn map_memory_single(
     hv: &Hypervisor,
     pml4: &mut PageTable,
     m: &MappedMemory,
-    upsert_tables: &mut Vec<PageTable>,
+    upsert_tables: &mut UpsertTable,
     old_tables: &mut Vec<PageTable>,
     pt_addr: &mut PhysAddr,
 ) -> Result<()> {
@@ -363,17 +384,41 @@ fn map_memory_single(
     let mut len = m.len;
     let pt_host_offset = pml4.phys_addr.host_offset;
     let start0 = get_index(m.virt_start as u64, 0) as usize;
-    for (i0, entry0) in pml4.entries[start0..].iter_mut().enumerate() {
+    'outer: for (i0, entry0) in pml4.entries[start0..].iter_mut().enumerate() {
         let start1 = get_start_idx(m.virt_start, start0, i0, 1);
-        let mut pt1 = get_page_table(hv, pt_host_offset, entry0, pt_addr, old_tables)?;
+        let pt1 = get_page_table(
+            hv,
+            pt_host_offset,
+            entry0,
+            pt_addr,
+            old_tables,
+            upsert_tables,
+        )?;
+        let mut pt1 = pt1.borrow_mut();
 
         for (i1, entry1) in pt1.entries[start1..].iter_mut().enumerate() {
             let start2 = get_start_idx(m.virt_start, start1, i1, 2);
-            let mut pt2 = get_page_table(hv, pt_host_offset, entry1, pt_addr, old_tables)?;
+            let pt2 = get_page_table(
+                hv,
+                pt_host_offset,
+                entry1,
+                pt_addr,
+                old_tables,
+                upsert_tables,
+            )?;
+            let mut pt2 = pt2.borrow_mut();
 
             for (i2, entry2) in pt2.entries[start2..].iter_mut().enumerate() {
                 let start3 = get_start_idx(m.virt_start, start2, i2, 3);
-                let mut pt3 = get_page_table(hv, pt_host_offset, entry2, pt_addr, old_tables)?;
+                let pt3 = get_page_table(
+                    hv,
+                    pt_host_offset,
+                    entry2,
+                    pt_addr,
+                    old_tables,
+                    upsert_tables,
+                )?;
+                let mut pt3 = pt3.borrow_mut();
 
                 for entry3 in pt3.entries[start3..].iter_mut() {
                     if entry3.flags().contains(PageTableFlags::PRESENT) {
@@ -383,25 +428,12 @@ fn map_memory_single(
                     phys_addr.value += page_size();
                     len -= page_size();
                     if len == 0 {
-                        break;
+                        break 'outer;
                     }
                 }
-                upsert_tables.push(pt3.clone());
-                if len == 0 {
-                    break;
-                }
             }
-            upsert_tables.push(pt2.clone());
-            if len == 0 {
-                break;
-            }
-        }
-        upsert_tables.push(pt1.clone());
-        if len == 0 {
-            break;
         }
     }
-    upsert_tables.push(pml4.clone());
     Ok(())
 }
 
@@ -412,15 +444,24 @@ fn map_memory_single(
 pub fn map_memory(
     hv: Arc<Hypervisor>,
     phys_mem: PhysMem<u8>,
-    pml4: &mut PageTable,
+    pml4_addr: &mut PhysAddr,
     mappings: &[MappedMemory],
 ) -> Result<VirtMem> {
     // New/modified tables to be written to guest
-    let mut upsert_tables: Vec<PageTable> = vec![];
+    let mut upsert_tables: UpsertTable = HashMap::new();
     // Tables that we need to revert to their old content
-    let mut old_tables: Vec<PageTable> = vec![pml4.clone()];
+    let mut old_tables: Vec<PageTable> = vec![];
+    let pml4 = try_with!(
+        read_page_table(
+            &hv,
+            pml4_addr.value,
+            pml4_addr.host_offset,
+            &mut old_tables,
+            &mut upsert_tables
+        ),
+        "cannot read pml4 page table"
+    );
 
-    assert!(pml4.level == 0);
     for (i, m) in mappings.iter().enumerate() {
         assert!(is_page_aligned(m.len as usize));
         assert!(is_page_aligned(m.virt_start as usize));
@@ -435,7 +476,7 @@ pub fn map_memory(
     for mapping in mappings {
         map_memory_single(
             &hv,
-            pml4,
+            &mut pml4.borrow_mut(),
             mapping,
             &mut upsert_tables,
             &mut old_tables,
@@ -443,11 +484,12 @@ pub fn map_memory(
         )?
     }
 
-    // TODO: invalidate TLB cache
-    try_with!(
-        commit_page_tables(&hv, &upsert_tables),
-        "cannot write page tables"
-    );
+    // this is expensive but avoids duplicating code
+    let tables = &upsert_tables
+        .values()
+        .map(|c| RefCell::borrow(c).clone())
+        .collect::<Vec<_>>();
+    try_with!(commit_page_tables(&hv, tables), "cannot write page tables");
 
     Ok(VirtMem {
         hv,
