@@ -2,8 +2,7 @@ use crate::devices::mmio::IoPirate;
 use event_manager::EventManager;
 use event_manager::MutEventSubscriber;
 use log::{debug, info, log_enabled, trace, Level};
-use simple_error::simple_error;
-use simple_error::{require_with, try_with};
+use simple_error::{bail, require_with, simple_error, try_with};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::SyncSender;
@@ -177,7 +176,7 @@ fn handle_mmio_exits(
             kvm_exit = try_with!(
                 wrapper_g.wait_for_ioctl(),
                 "failed to wait for vmm exit_mmio"
-            )
+            );
         };
 
         if let Some(mmio_rw) = &mut kvm_exit {
@@ -207,15 +206,15 @@ fn mmio_exit_handler_thread(
 ) -> Result<InterrutableThread<()>> {
     let device_ready = Arc::clone(device_ready);
     let vm = Arc::clone(vm);
-    info!("mmio dev attached");
-
     vm.prepare_thread_transfer()?;
 
     let res = InterrutableThread::spawn(
         "mmio-exit-handler",
         err_sender,
         move |should_stop: Arc<AtomicBool>| {
-            vm.finish_thread_transfer()?;
+            if let Err(e) = vm.finish_thread_transfer() {
+                bail!("failed transfer ptrace to mmio exit handler: {}", e);
+            };
 
             info!("mmio dev attached");
 
