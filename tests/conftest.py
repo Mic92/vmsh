@@ -21,10 +21,11 @@ sys.path.append(str(TEST_ROOT.parent))
 def cargo_build() -> Path:
     env = os.environ.copy()
     env["KERNELDIR"] = str(notos_image().kerneldir)
-    subprocess.run(["cargo", "build"], cwd=PROJECT_ROOT, env=env, check=True)
-    subprocess.run(
-        ["cargo", "build", "--examples"], cwd=PROJECT_ROOT, env=env, check=True
-    )
+    if not os.environ.get("TEST_NO_REBUILD"):
+        subprocess.run(["cargo", "build"], cwd=PROJECT_ROOT, env=env, check=True)
+        subprocess.run(
+            ["cargo", "build", "--examples"], cwd=PROJECT_ROOT, env=env, check=True
+        )
     return PROJECT_ROOT.joinpath("target", "debug")
 
 

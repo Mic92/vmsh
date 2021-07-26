@@ -19,13 +19,16 @@ clone:
 steps:
 - name: run tests
   commands:
-  - nix develop ".#ci-shell" --command pytest -n $(nproc --ignore=2) -s ./tests
+  # this also compiles vmsh against notos,
+  # disable faulthandler so we do not run into timeouts
+  - nix develop ".#ci-shell" --command pytest -p no:faulthandler -s ./tests/test_help.py
+  - TEST_NO_REBUILD=1 nix develop ".#ci-shell" --command pytest -n $(nproc --ignore=2) -s ./tests
 trigger:
   event:
   - push
 
 ---
 kind: signature
-hmac: f75604e0bc7a3d7d1f7a10fa8e4fdf83a6ab4d1ae0e6aa73b2780a80b350973b
+hmac: baa543cc6c22c8851c0f71f880b0119da7aa3ccf52958836ed3e49e941f4a2e9
 
 ...
