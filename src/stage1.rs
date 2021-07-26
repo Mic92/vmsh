@@ -178,7 +178,6 @@ trap "rm -rf '$tmpdir'" EXIT
 dd if=/proc/self/fd/0 of="$tmpdir/stage1.ko" count={} bs=512
 # cleanup old driver if still loaded
 rmmod stage1 2>/dev/null || true
-sleep 3
 set -x
 insmod "$tmpdir/stage1.ko" devices="{}" stage2_argv="{}" virt_mem="{}" printk_addr="{}"
 "#,
