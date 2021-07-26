@@ -167,7 +167,7 @@ impl HvSocket {
         // socket
         let server_fd = proc.socket(libc::AF_UNIX, libc::SOCK_DGRAM, 0)?;
         if server_fd <= 0 {
-            bail!("cannot create socket: {}", server_fd);
+            bail!("cannot create socket: {}", nix::errno::from_i32(-server_fd));
         }
 
         // bind
