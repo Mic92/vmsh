@@ -46,11 +46,14 @@ fn build_stage1_kmod() {
         command
             .arg("build")
             .arg("--release")
+            .arg("--target=x86_64-unknown-none-linuxkernel")
+            .arg("-Zbuild-std=core")
             .current_dir(&stage1_kmod_dir)
     });
 
     let libstage1_object = stage1_kmod_dir
         .join("target")
+        .join("x86_64-unknown-none-linuxkernel")
         .join("release")
         .join("libstage1_kmod.a");
     let libstage1_symlink = stage1_dir.join("libstage1_kmod.o");

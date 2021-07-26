@@ -7,17 +7,17 @@ name = "build-utils"
 version = "0.0.1"
 
 [[package]]
-name = "libc"
-version = "0.2.98"
+name = "chlorine"
+version = "1.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "320cfe77175da3a483efed4bc0adc1968ca050b098ce4f2f1c13a56626128790"
+checksum = "bd650552110e39b7c5058986cf177decd3365841836578ac50a286094eac0be6"
 
 [[package]]
 name = "stage1"
 version = "0.1.0"
 dependencies = [
  "build-utils",
- "libc",
+ "chlorine",
 ]
 
 [[package]]
