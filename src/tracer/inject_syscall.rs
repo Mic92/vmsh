@@ -183,11 +183,11 @@ impl Process {
                 "thread cannot be adopted by current thread. Call `disown()` in the previous thread first"
             );
         }
-        let threads = self.threads.as_ref().unwrap();
-        for t in threads {
-            attach_seize(t.tid)?;
+        if let Some(mut threads) = self.threads.take() {
+            threads.retain(|t| attach_seize(t.tid).is_ok());
+            self.threads = Some(threads);
         }
-        let (saved_regs, saved_text) = init(threads, self.process_idx)?;
+        let (saved_regs, saved_text) = init(self.threads.as_ref().unwrap(), self.process_idx)?;
         self.saved_regs = saved_regs;
         self.saved_text = saved_text;
         self.owner = Some(current().id());

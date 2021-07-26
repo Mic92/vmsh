@@ -162,21 +162,21 @@ pub fn attach_all_threads(pid: Pid) -> Result<(Vec<Thread>, usize)> {
     );
     let mut process_idx = 0;
 
-    let threads = threads_dir
-        .enumerate()
-        .map(|(i, thread_name)| {
-            let entry = try_with!(thread_name, "failed to read directory {}", dir.display());
-            let _file_name = entry.file_name();
-            let file_name = _file_name.to_str().unwrap();
-            let raw_tid = try_with!(file_name.parse::<pid_t>(), "invalid tid {}", file_name);
-            let tid = Pid::from_raw(raw_tid);
-            if tid == pid {
-                process_idx = i;
-            }
-            attach_seize(tid).map(|_| Thread { tid })
-        })
-        .collect::<Result<Vec<_>>>()?;
+    let mut threads = vec![];
 
+    for (i, thread_name) in threads_dir.enumerate() {
+        let entry = try_with!(thread_name, "failed to read directory {}", dir.display());
+        let _file_name = entry.file_name();
+        let file_name = _file_name.to_str().unwrap();
+        let raw_tid = try_with!(file_name.parse::<pid_t>(), "invalid tid {}", file_name);
+        let tid = Pid::from_raw(raw_tid);
+        if tid == pid {
+            process_idx = i;
+        }
+        if let Ok(t) = attach_seize(tid).map(|_| Thread { tid }) {
+            threads.push(t)
+        }
+    }
     Ok((threads, process_idx))
 }
 
