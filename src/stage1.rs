@@ -36,21 +36,19 @@ impl Stage1 {
 
         let alloc = [
             VirtAlloc {
+                virt_start: kernel.range.end,
                 len: 256 * 0x1000,
                 prot: ProtFlags::PROT_WRITE,
             },
             VirtAlloc {
+                virt_start: kernel.range.end + 256 * 0x1000,
                 len: 512 * 0x1000,
                 prot: ProtFlags::PROT_WRITE,
             },
         ];
-        let virt_mem = try_with!(
-            allocator.virt_alloc(kernel.range.end, &alloc),
-            "cannot map virtual memory"
-        );
-        let base = kernel.range.end;
+        let virt_mem = try_with!(allocator.virt_alloc(&alloc), "cannot map virtual memory");
         let mut loader = try_with!(
-            Loader::new(STAGE1_LIB, base as u64, &mut allocator),
+            Loader::new(STAGE1_LIB, &kernel, &mut allocator),
             "cannot load stage1"
         );
 

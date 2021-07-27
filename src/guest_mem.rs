@@ -47,6 +47,12 @@ pub struct MappedMemory {
     pub prot: ProtFlags,
 }
 
+impl MappedMemory {
+    pub fn contains(&self, addr: usize) -> bool {
+        self.virt_start < addr && addr < self.virt_start + self.len
+    }
+}
+
 fn prot_flags(ptflags: PageTableFlags) -> ProtFlags {
     let mut f = ProtFlags::PROT_READ;
     if ptflags.contains(PageTableFlags::WRITABLE) {
