@@ -122,5 +122,6 @@
         nixosModules.linux-ioregionfd = { pkgs, ... }: {
           boot.kernelPackages = self.packages.${pkgs.system}.linuxPackages_ioregionfd;
         };
+        lib.nixpkgsRev = nixpkgs.shortRev;
       };
 }
