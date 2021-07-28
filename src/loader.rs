@@ -8,7 +8,7 @@ use nix::sys::mman::ProtFlags;
 use nix::sys::uio::{process_vm_writev, IoVec, RemoteIoVec};
 use simple_error::{bail, try_with};
 use xmas_elf::sections::SectionData;
-use xmas_elf::symbol_table::{Binding, DynEntry64};
+use xmas_elf::symbol_table::{Binding, DynEntry64, Type};
 
 use crate::guest_mem::MappedMemory;
 use crate::kernel::Kernel;
@@ -28,6 +28,45 @@ pub struct Loader<'a> {
     binary: &'a [u8],
     elf: ElfBinary<'a>,
     dyn_syms: &'a [DynEntry64],
+    pub init_func: usize,
+    pub exit_func: usize,
+}
+
+fn find_entry_and_exit_function(
+    elf: &ElfBinary,
+    dyn_syms: &[DynEntry64],
+) -> Result<(usize, usize)> {
+    let mut init_func = None;
+    let mut exit_func = None;
+    for sym in dyn_syms {
+        let typ = try_core_res!(sym.get_type(), "cannot get function type");
+        if typ != Type::Func {
+            continue;
+        }
+        let name = try_core_res!(sym.get_name(&elf.file), "cannot get name of function");
+        let value = sym.value();
+        match name {
+            "init_vmsh_stage1" => {
+                init_func = Some(value);
+            }
+            "cleanup_vmsh_stage1" => {
+                exit_func = Some(value);
+            }
+            _ => continue,
+        }
+        if init_func.is_some() && exit_func.is_some() {
+            break;
+        }
+    }
+    if let Some(init_func) = init_func {
+        if let Some(exit_func) = exit_func {
+            Ok((init_func as usize, exit_func as usize))
+        } else {
+            bail!("no cleanup_vmsh_stage1 symbol found")
+        }
+    } else {
+        bail!("no init_vmsh_stage1 symbol found")
+    }
 }
 
 impl<'a> Loader<'a> {
@@ -47,15 +86,24 @@ impl<'a> Loader<'a> {
             ),
         };
 
+        let (init_func, exit_func) = try_with!(
+            find_entry_and_exit_function(&elf, dyn_syms),
+            "cannot load stage1 entry point functions"
+        );
+
+        let vbase = kernel.range.end;
+
         Ok(Loader {
             kernel,
             virt_mem: None,
             load_offsets: vec![],
-            loadables: vec![],
             allocator,
+            loadables: vec![],
             binary,
             elf,
             dyn_syms,
+            init_func: vbase + init_func,
+            exit_func: vbase + exit_func,
         })
     }
 
@@ -67,7 +115,7 @@ impl<'a> Loader<'a> {
             local_iovec.push(IoVec::from_slice(&l.content));
             len += l.content.len();
             remote_iovec.push(RemoteIoVec {
-                base: l.mapping.phys_start.host_addr() + dbg!(l.virt_offset),
+                base: l.mapping.phys_start.host_addr() + l.virt_offset,
                 len: l.content.len(),
             });
         }
@@ -84,6 +132,7 @@ impl<'a> Loader<'a> {
         }
         Ok(())
     }
+
     fn vbase(&self) -> usize {
         self.kernel.range.end
     }
@@ -91,6 +140,7 @@ impl<'a> Loader<'a> {
     pub fn load_binary(&mut self) -> Result<VirtMem> {
         let binary = try_core_res!(ElfBinary::new(self.binary), "cannot parse elf binary");
         try_core_res!(binary.load(self), "cannot load elf binary");
+
         try_with!(self.upload_binary(), "failed to upload binary to vm");
         Ok(self.virt_mem.take().unwrap())
     }
