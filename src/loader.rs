@@ -67,10 +67,10 @@ impl<'a> Loader<'a> {
         let mut len = 0;
         for l in self.loadables.iter() {
             local_iovec.push(IoVec::from_slice(&l.content));
-            len += l.mapping.len;
+            len += l.content.len();
             remote_iovec.push(RemoteIoVec {
-                base: l.mapping.phys_start.host_addr(),
-                len: l.mapping.len,
+                base: l.mapping.phys_start.host_addr() + dbg!(l.virt_offset),
+                len: l.content.len(),
             });
         }
         let written = try_with!(
@@ -109,7 +109,7 @@ type ElfResult = std::result::Result<(), ElfLoaderErr>;
 struct Loadable {
     content: Vec<u8>,
     mapping: MappedMemory,
-    load_offset: usize,
+    virt_offset: usize,
 }
 
 macro_rules! try_elf {
@@ -163,7 +163,7 @@ impl<'a> ElfLoader for Loader<'a> {
         let mut allocs = allocs.collect::<Vec<_>>();
         allocs.sort_by_key(|k| k.virt_start);
         //allocs.iter().for_each(|a| {
-        //    info!("{:#x}", a.virt_start);
+        //    info!("{:#x}-{:#x}", a.virt_start, a.virt_start + a.len);
         //});
 
         if allocs.is_empty() {
@@ -198,8 +198,8 @@ impl<'a> ElfLoader for Loader<'a> {
                 .find(|(_, mapping)| mapping.virt_start == page_start(start)),
             {
                 error!(
-                    "received loadable that was not allocated before at {:#x}",
-                    start
+                    "received loadable that was not allocated before at {:#x} ({:#x})",
+                    start, base
                 );
                 "BUG: received loadable that was not allocated before"
             }
@@ -207,7 +207,7 @@ impl<'a> ElfLoader for Loader<'a> {
         self.loadables.push(Loadable {
             content: region.to_vec(),
             mapping: mapping.clone(),
-            load_offset: self.load_offsets[idx],
+            virt_offset: self.load_offsets[idx],
         });
         Ok(())
     }
@@ -222,10 +222,14 @@ impl<'a> ElfLoader for Loader<'a> {
             .iter_mut()
             .find(|loadable| loadable.mapping.contains(addr));
         let loadable = require_elf!(loadable, {
-            error!("no loadable found for relocation address: {}", addr);
-            "no loadable found for relocation address: {}"
+            error!(
+                "no loadable found for relocation address: {:#x} ({:#x})",
+                addr,
+                entry.get_offset() as usize
+            );
+            "no loadable found for relocation address"
         });
-        let start = addr - (loadable.mapping.virt_start + loadable.load_offset);
+        let start = addr - (loadable.mapping.virt_start + loadable.virt_offset);
 
         match typ {
             TypeRela64::R_RELATIVE => {
