@@ -13,6 +13,7 @@ virtio_blk_img := justfile_directory() + "/../linux/nixos.ext4"
 
 qemu_pid := `pgrep -u $(id -u) qemu-system | awk '{print $1}'`
 qemu_ssh_port := "2222"
+qemu_ssh_remote := "root@localhost"
 
 # Interactively select a task from just file
 default:
@@ -163,6 +164,15 @@ vmsh-image: nixos-image
       touch -r "{{linux_dir}}/nixos.ext4" "{{linux_dir}}/vmsh-image.ext4"
   fi
 
+mkramdisk MOUNTPOINT="/tmp/ramdisk":
+  #!/usr/bin/env bash
+  mkdir -p {{MOUNTPOINT}}
+  if [[ ! -e {{MOUNTPOINT}}/raw ]]; then 
+    sudo mount -t tmpfs -o size=2G vmshramdisk {{MOUNTPOINT}}
+    sudo touch {{MOUNTPOINT}}/raw
+    sudo dd if=/dev/zero of={{MOUNTPOINT}}/raw bs=1024 count=2M
+  fi
+
 # run qemu with kernel build by `build-linux` and filesystem image build by `nixos-image`
 qemu EXTRA_CMDLINE="nokalsr": build-linux nixos-image
   qemu-system-x86_64 \
@@ -207,8 +217,16 @@ ssh-qemu $COMMAND="":
   ssh -i {{justfile_directory()}}/nix/ssh_key \
       -o StrictHostKeyChecking=no \
       -o UserKnownHostsFile=/dev/null \
-      root@localhost \
+      {{qemu_ssh_remote}} \
       -p {{qemu_ssh_port}} "$COMMAND"
+
+# SCP to/from vm started by `just qemu`. Use {{qemu_ssh_remote}} as remote name.
+scp-qemu $SRC="" $DST="":
+  scp -i {{invocation_directory()}}/nix/ssh_key \
+      -o StrictHostKeyChecking=no \
+      -o UserKnownHostsFile=/dev/null \
+      -P {{qemu_ssh_port}} \
+      {{SRC}} {{DST}}
 
 # Start qemu in qemu based on nixos image
 nested-qemu: nested-nixos-image
@@ -240,6 +258,42 @@ attach-qemu-img: nixos-image
 # Attach block device to first qemu vm found by pidof and owned by our own user
 attach-qemu: vmsh-image
   cargo run -- attach -f "{{linux_dir}}/vmsh-image.ext4" "{{qemu_pid}}" --ssh-args " -i {{justfile_directory()}}/nix/ssh_key -p {{qemu_ssh_port}} root@localhost" -- /nix/var/nix/profiles/system/sw/bin/ls -la
+
+# mom says we already have a benchmark at home
+benchmark-qemu-at-home DISK="/dev/vda": 
+  just ssh-qemu "yes | wc -l & hdparm -t {{DISK}} && pkill yes"
+
+benchmark-qemu DISK="/dev/vda":
+  just ssh-qemu 'sysbench cpu --cpu-max-prime=10000 run & hdparm -t {{DISK}}; wait'
+
+perf COMMAND="top" PGREP="":
+  sudo perf kvm --host {{COMMAND}} -p $(pgrep {{PGREP}})
+
+perf-record PGREP="":
+  sudo perf kvm --host record -g -p $(pgrep {{PGREP}})
+
+perf-report ARGS="":
+  sudo perf kvm --host report {{ARGS}}
+
+profile PGREP="" SEC="15" OUTFILE="some.profile":
+  sudo profile --stack-storage-size 65536 -df -p $(pgrep {{PGREP}}) {{SEC}} > {{OUTFILE}}
+
+# no worky
+perf-kvm-guest:
+  rm -f {{linux_dir}}/kallsyms
+  rm -f {{linux_dir}}/modules
+  just ssh-qemu "cat /proc/kallsyms" > {{linux_dir}}/kallsyms
+  just ssh-qemu "cat /proc/modules" > {{linux_dir}}/modules
+  perf kvm --guest --guestvmlinux=~/linux_stable/vmlinux --guestkallsyms {{linux_dir}}/kallsyms  --guestmodules {{linux_dir}}/modules top -a
+
+shortread DISK="/dev/vda":
+  just ssh-qemu "hdparm -t {{DISK}}"
+
+longread DISK="/dev/vda" BS="64M":
+  just ssh-qemu "dd if={{DISK}} of=/dev/null bs={{BS}} count=1000000"
+
+attach-qemu-ramdisk: mkramdisk
+  cargo run -- attach -f "/tmp/ramdisk/raw" "{{qemu_pid}}" --ssh-args " -i {{invocation_directory()}}/nix/ssh_key -p {{qemu_ssh_port}} root@localhost" -- /nix/var/nix/profiles/system/sw/bin/ls -la
 
 attach-nested-qemu: vmsh-image
   cargo build
