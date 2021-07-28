@@ -197,6 +197,7 @@ impl Process {
     /// Disown traced process from current thread.
     /// This will continue the execution of the traced process.
     /// This method is needed before tracer can be used by a new thread.
+    #[allow(clippy::missing_panics_doc)]
     pub fn disown(&mut self) -> Result<()> {
         if self.owner.is_none() {
             bail!("thread is already disowned");
@@ -356,6 +357,9 @@ impl Process {
         Ok(result_regs.syscall_ret() as isize)
     }
 
+    /// # Panics
+    /// if no threads are associated with tracer
+    #[must_use]
     pub fn main_thread(&self) -> &ptrace::Thread {
         &(self.threads.as_ref().unwrap()[self.process_idx])
     }
@@ -364,7 +368,7 @@ impl Process {
 impl Drop for Process {
     fn drop(&mut self) {
         debug!("tracer cleanup started");
-        let _ = deinit(self); // its ok if it was already deinited
+        deinit(self);
         debug!("tracer cleanup finished");
     }
 }

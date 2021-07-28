@@ -4,7 +4,7 @@ use nix::sys::ptrace::{self, AddressType, Request, RequestType};
 use nix::sys::wait::waitpid;
 use nix::sys::wait::WaitPidFlag;
 use nix::unistd::Pid;
-use simple_error::try_with;
+use simple_error::{require_with, try_with};
 use std::fs;
 use std::{mem, ptr};
 
@@ -166,15 +166,15 @@ pub fn attach_all_threads(pid: Pid) -> Result<(Vec<Thread>, usize)> {
 
     for (i, thread_name) in threads_dir.enumerate() {
         let entry = try_with!(thread_name, "failed to read directory {}", dir.display());
-        let _file_name = entry.file_name();
-        let file_name = _file_name.to_str().unwrap();
+        let file_name = entry.file_name();
+        let file_name = require_with!(file_name.to_str(), "cannot convert filename to string");
         let raw_tid = try_with!(file_name.parse::<pid_t>(), "invalid tid {}", file_name);
         let tid = Pid::from_raw(raw_tid);
         if tid == pid {
             process_idx = i;
         }
         if let Ok(t) = attach_seize(tid).map(|_| Thread { tid }) {
-            threads.push(t)
+            threads.push(t);
         }
     }
     Ok((threads, process_idx))

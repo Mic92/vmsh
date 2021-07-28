@@ -53,7 +53,7 @@ union RawData {
     seccomp: Seccomp,
 }
 
-/// equivalent to ptrace_syscall_info
+/// equivalent to `ptrace_syscall_info`
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct RawInfo {
@@ -108,7 +108,7 @@ fn parse_raw_data(info: RawInfo) -> Result<SyscallOp> {
                 args: info.data.seccomp.args,
                 ret_data: info.data.seccomp.ret_data,
             },
-            _ => bail!("unknown ptrace_syscall_info.op: {:?}", info.op),
+            OpType::unknown => bail!("unknown ptrace_syscall_info.op: {:?}", info.op),
         }
     };
 
