@@ -99,6 +99,7 @@ fn get_first_allocation(hv: &Arc<Hypervisor>) -> Result<usize> {
 
 pub struct VirtAlloc {
     pub virt_start: usize,
+    pub file_offset: usize,
     pub len: usize,
     pub prot: ProtFlags,
 }

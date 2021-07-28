@@ -3,7 +3,7 @@ use std::mem::size_of_val;
 use elfloader::{
     ElfBinary, ElfLoader, ElfLoaderErr, Entry, Flags, LoadableHeaders, Rela, TypeRela64, VAddr, P64,
 };
-use log::{debug, error, warn};
+use log::{debug, error, info, warn};
 use nix::sys::mman::ProtFlags;
 use nix::sys::uio::{process_vm_writev, IoVec, RemoteIoVec};
 use simple_error::{bail, try_with};
@@ -14,13 +14,14 @@ use crate::guest_mem::MappedMemory;
 use crate::kernel::Kernel;
 use crate::kvm::allocator::VirtAlloc;
 use crate::kvm::PhysMemAllocator;
-use crate::page_math::page_size;
+use crate::page_math::{page_align, page_size, page_start};
 use crate::page_table::VirtMem;
 use crate::result::Result;
 
 pub struct Loader<'a> {
     kernel: &'a Kernel,
     virt_mem: Option<VirtMem>,
+    load_offsets: Vec<usize>,
     allocator: &'a mut PhysMemAllocator,
     loadables: Vec<Loadable>,
     binary: &'a [u8],
@@ -51,6 +52,7 @@ impl<'a> Loader<'a> {
         Ok(Loader {
             kernel,
             virt_mem: None,
+            load_offsets: vec![],
             loadables: vec![],
             allocator,
             binary,
@@ -87,7 +89,7 @@ impl<'a> Loader<'a> {
         self.kernel.range.end
     }
 
-    pub fn load_binary(&mut self) -> Result<()> {
+    pub fn load_binary(&mut self) -> Result<VirtMem> {
         let binary = match ElfBinary::new(self.binary) {
             Err(e) => bail!("cannot parse elf binary: {}", e),
             Ok(v) => v,
@@ -97,7 +99,7 @@ impl<'a> Loader<'a> {
             bail!("cannot load elf binary: {}", e);
         };
         try_with!(self.upload_binary(), "failed to upload binary to vm");
-        Ok(())
+        Ok(self.virt_mem.take().unwrap())
     }
 }
 
@@ -131,38 +133,44 @@ macro_rules! require_elf {
 }
 
 impl<'a> ElfLoader for Loader<'a> {
-    fn allocate(&mut self, load_headers: LoadableHeaders) -> ElfResult {
-        let mut allocations = vec![];
-        for header in load_headers {
+    fn allocate(&mut self, headers: LoadableHeaders) -> ElfResult {
+        let allocs = headers.map(|h| {
             debug!(
                 "allocate base = {:#x} size = {:#x} flags = {}",
-                header.virtual_addr(),
-                header.mem_size(),
-                header.flags()
+                h.virtual_addr(),
+                h.mem_size(),
+                h.flags()
             );
             let mut prot = ProtFlags::PROT_READ;
-            if header.flags().is_execute() {
+            if h.flags().is_execute() {
                 prot |= ProtFlags::PROT_EXEC;
             }
-            if header.flags().is_write() {
+            if h.flags().is_write() {
                 prot |= ProtFlags::PROT_WRITE;
             }
-            allocations.push(VirtAlloc {
-                virt_start: self.vbase() + header.virtual_addr() as usize,
-                len: header.mem_size() as usize,
+            let virtual_addr = h.virtual_addr() as usize;
+            let start = page_start(virtual_addr);
+
+            VirtAlloc {
+                virt_start: self.vbase() + start,
+                file_offset: virtual_addr - start,
+                len: page_align(virtual_addr + h.mem_size() as usize) - start,
                 prot,
-            })
-        }
-        if allocations.is_empty() {
+            }
+        });
+        let mut allocs = allocs.collect::<Vec<_>>();
+        allocs.sort_by_key(|k| k.virt_start);
+
+        if allocs.is_empty() {
             return Err(ElfLoaderErr::ElfParser {
                 source: "no loadable sections found in elf file",
             });
         }
-        allocations.sort_by_key(|k| k.virt_start);
         self.virt_mem = Some(try_elf!(
-            self.allocator.virt_alloc(&allocations),
+            self.allocator.virt_alloc(&allocs),
             "cannot allocate memory"
         ));
+        self.load_offsets = allocs.iter().map(|v| v.file_offset).collect::<Vec<_>>();
 
         Ok(())
     }
@@ -211,7 +219,7 @@ impl<'a> ElfLoader for Loader<'a> {
                 // This is a relative relocation, add the offset (where we put our
                 // binary in the vspace) to the addend and we're done.
                 let dest_addr = vbase + entry.get_addend() as usize;
-                debug!("R_RELATIVE *{:#x} = {:#x}", addr, dest_addr);
+                info!("R_RELATIVE *{:#x} = {:#x}", addr, dest_addr);
                 let range = start..(start + size_of_val(&dest_addr));
                 loadable.content[range].clone_from_slice(&dest_addr.to_ne_bytes());
                 Ok(())
@@ -226,7 +234,7 @@ impl<'a> ElfLoader for Loader<'a> {
                 }
 
                 let sym_name = sym.get_name(&self.elf.file)?;
-                debug!("R_GLOB_DAT *{:#x} = @ {}", addr, sym_name);
+                info!("R_GLOB_DAT *{:#x} = @ {}", addr, sym_name);
 
                 let symbol = require_elf!(syms.get(sym_name), {
                     error!("binary contains unknown symbol: {}", sym_name);

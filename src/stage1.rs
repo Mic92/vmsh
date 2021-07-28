@@ -1,6 +1,5 @@
 use log::{debug, warn};
 use log::{info, log_enabled, Level};
-use nix::sys::mman::ProtFlags;
 use nix::sys::signal::{kill, SIGTERM};
 use nix::sys::wait::{waitpid, WaitPidFlag, WaitStatus};
 /// This module loads kernel code into the VM that we want to attach to.
@@ -17,7 +16,6 @@ use std::time::Duration;
 use crate::interrutable_thread::InterrutableThread;
 use crate::kernel::{find_kernel, Kernel};
 use crate::kvm;
-use crate::kvm::allocator::VirtAlloc;
 use crate::loader::Loader;
 use crate::page_table::VirtMem;
 use crate::result::Result;
@@ -34,25 +32,12 @@ impl Stage1 {
     pub fn new(mut allocator: kvm::PhysMemAllocator) -> Result<Stage1> {
         let kernel = find_kernel(&allocator.guest_mem, &allocator.hv)?;
 
-        let alloc = [
-            VirtAlloc {
-                virt_start: kernel.range.end,
-                len: 256 * 0x1000,
-                prot: ProtFlags::PROT_WRITE,
-            },
-            VirtAlloc {
-                virt_start: kernel.range.end + 256 * 0x1000,
-                len: 512 * 0x1000,
-                prot: ProtFlags::PROT_WRITE,
-            },
-        ];
-        let virt_mem = try_with!(allocator.virt_alloc(&alloc), "cannot map virtual memory");
         let mut loader = try_with!(
             Loader::new(STAGE1_LIB, &kernel, &mut allocator),
             "cannot load stage1"
         );
 
-        try_with!(loader.load_binary(), "cannot load stage1");
+        let virt_mem = try_with!(loader.load_binary(), "cannot load stage1");
 
         debug!("load stage1 ({} kB) into vm", STAGE1_LIB.len() / 1024);
 
