@@ -17,6 +17,7 @@ use crate::kvm::PhysMemAllocator;
 use crate::page_math::{page_align, page_start};
 use crate::page_table::VirtMem;
 use crate::result::Result;
+use crate::try_core_res;
 
 pub struct Loader<'a> {
     kernel: &'a Kernel,
@@ -35,10 +36,7 @@ impl<'a> Loader<'a> {
         kernel: &'a Kernel,
         allocator: &'a mut PhysMemAllocator,
     ) -> Result<Loader<'a>> {
-        let elf = match ElfBinary::new(binary) {
-            Err(e) => bail!("cannot parse elf binary: {}", e),
-            Ok(v) => v,
-        };
+        let elf = try_core_res!(ElfBinary::new(binary), "cannot parse elf binary");
         let dyn_symbol_section = elf.file.find_section_by_name(".dynsym").unwrap();
         let dyn_symbol_table = dyn_symbol_section.get_data(&elf.file)?;
         let dyn_syms = match dyn_symbol_table {
@@ -91,14 +89,8 @@ impl<'a> Loader<'a> {
     }
 
     pub fn load_binary(&mut self) -> Result<VirtMem> {
-        let binary = match ElfBinary::new(self.binary) {
-            Err(e) => bail!("cannot parse elf binary: {}", e),
-            Ok(v) => v,
-        };
-
-        if let Err(e) = binary.load(self) {
-            bail!("cannot load elf binary: {}", e);
-        };
+        let binary = try_core_res!(ElfBinary::new(self.binary), "cannot parse elf binary");
+        try_core_res!(binary.load(self), "cannot load elf binary");
         try_with!(self.upload_binary(), "failed to upload binary to vm");
         Ok(self.virt_mem.take().unwrap())
     }
