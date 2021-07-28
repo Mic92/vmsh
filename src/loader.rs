@@ -160,6 +160,9 @@ impl<'a> ElfLoader for Loader<'a> {
         });
         let mut allocs = allocs.collect::<Vec<_>>();
         allocs.sort_by_key(|k| k.virt_start);
+        //allocs.iter().for_each(|a| {
+        //    info!("{:#x}", a.virt_start);
+        //});
 
         if allocs.is_empty() {
             return Err(ElfLoaderErr::ElfParser {
@@ -189,8 +192,14 @@ impl<'a> ElfLoader for Loader<'a> {
         let mapping = require_elf!(
             mem.mappings
                 .iter()
-                .find(|mapping| mapping.virt_start == start),
-            "BUG: loadable found that was not allocated before"
+                .find(|mapping| mapping.virt_start == page_start(start)),
+            {
+                error!(
+                    "received loadable that was not allocated before at {:#x}",
+                    start
+                );
+                "BUG: received loadable that was not allocated before"
+            }
         );
         self.loadables.push(Loadable {
             content: region.to_vec(),
