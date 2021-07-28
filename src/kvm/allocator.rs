@@ -97,6 +97,7 @@ fn get_first_allocation(hv: &Arc<Hypervisor>) -> Result<usize> {
     Ok(std::cmp::min(1 << vm_phys_bits, 1 << host_phys_bits))
 }
 
+#[derive(Debug)]
 pub struct VirtAlloc {
     pub virt_start: usize,
     pub file_offset: usize,
