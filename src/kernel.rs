@@ -64,9 +64,9 @@ fn find_ksymtab_strings_section(mem: &[u8]) -> Option<Range<usize>> {
 #[repr(C)]
 #[derive(Debug)]
 pub struct kernel_symbol {
-    pub value_offset: libc::c_uint,
-    pub name_offset: libc::c_uint,
-    pub namespace_offset: libc::c_uint,
+    pub value_offset: libc::c_int,
+    pub name_offset: libc::c_int,
+    pub namespace_offset: libc::c_int,
 }
 
 unsafe fn cast_kernel_sym(mem: &[u8]) -> &kernel_symbol {
@@ -84,7 +84,7 @@ fn get_ksymtab_start(mem: &[u8], strings_range: &Range<usize>) -> Option<usize> 
         //let sym = unsafe { cast_ref::<kernel_symbol>(&mem[ii - sym_size..ii]) };
         let sym = unsafe { cast_kernel_sym(&mem[ii - sym_size..ii]) };
         let field_offset =
-            &sym.name_offset as *const u32 as usize - sym as *const kernel_symbol as usize;
+            &sym.name_offset as *const i32 as usize - sym as *const kernel_symbol as usize;
         let name_idx = ii + (sym.name_offset as usize) + field_offset;
         if strings_range.contains(&name_idx) && ii > size_of::<kernel_symbol>() {
             let name_idx_2 = ii + (sym.name_offset as usize) + field_offset - sym_size;
@@ -119,6 +119,15 @@ fn get_ksymtab_start(mem: &[u8], strings_range: &Range<usize>) -> Option<usize> 
 /// Layout of __ksymtab,  __ksymtab_gpl
 /// __ksymtab_strings
 /// null terminated, strings
+
+fn apply_offset(addr: usize, offset: libc::c_int) -> usize {
+    if offset < 0 {
+        addr - (-offset as usize)
+    } else {
+        addr - offset as usize
+    }
+}
+
 fn get_kernel_symbols(
     mem: &[u8],
     mem_base: usize,
@@ -137,11 +146,11 @@ fn get_kernel_symbols(
         let sym_start = ii - sym_size;
         let sym = unsafe { cast_kernel_sym(&mem[sym_start..ii]) };
         let name_offset =
-            &sym.name_offset as *const u32 as usize - sym as *const kernel_symbol as usize;
+            &sym.name_offset as *const i32 as usize - sym as *const kernel_symbol as usize;
         let value_offset =
-            &sym.value_offset as *const u32 as usize - sym as *const kernel_symbol as usize;
-        let name_idx = sym_start + (sym.name_offset as usize) + name_offset;
-        let value_idx = sym_start + (sym.value_offset as usize) + value_offset;
+            &sym.value_offset as *const i32 as usize - sym as *const kernel_symbol as usize;
+        let name_idx = sym_start + name_offset + sym.name_offset as usize;
+        let value_ptr = apply_offset(mem_base + sym_start + value_offset, sym.value_offset);
         if !ksymtab_strings.contains(&name_idx) {
             break;
         }
@@ -154,8 +163,8 @@ fn get_kernel_symbols(
             "invalid symbol name"
         );
         let name = try_with!(name.to_str(), "invalid encoding for symbol name");
-        trace!("{} @ {:x}", name, mem_base + value_idx);
-        syms.insert(name.to_owned(), mem_base + value_idx);
+        trace!("{} @ {:x}", name, value_ptr);
+        syms.insert(name.to_owned(), value_ptr);
     }
     Ok(syms)
 }
@@ -211,7 +220,7 @@ pub fn find_kernel(guest_mem: &GuestMem, hv: &Hypervisor) -> Result<Kernel> {
             "found ksymtab_string at physical {:#x}:{:#x} with {} strings",
             from_addr.value, to_addr.value, string_num
         );
-        match get_kernel_symbols(&mem, mem_base as usize, strings_range) {
+        match get_kernel_symbols(&mem, s.virt_start, strings_range) {
             Err(e) => Some(Err(SimpleError::new(format!(
                 "failed to parse kernel symbols: {}",
                 e

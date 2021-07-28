@@ -27,6 +27,8 @@ pub struct Stage1 {
     #[allow(unused)]
     virt_mem: VirtMem,
     kernel: Kernel,
+    init_func: usize,
+    exit_func: usize,
 }
 
 impl Stage1 {
@@ -38,6 +40,9 @@ impl Stage1 {
             "cannot load stage1"
         );
 
+        let init_func = loader.init_func;
+        let exit_func = loader.exit_func;
+
         let virt_mem = try_with!(loader.load_binary(), "cannot load stage1");
 
         debug!(
@@ -46,7 +51,12 @@ impl Stage1 {
             virt_mem.mappings[0].virt_start
         );
 
-        Ok(Stage1 { virt_mem, kernel })
+        Ok(Stage1 {
+            virt_mem,
+            kernel,
+            init_func,
+            exit_func,
+        })
     }
 
     pub fn spawn(
@@ -64,12 +74,23 @@ impl Stage1 {
             "no printk function found in kernel symbols"
         );
 
+        let init_func = self.init_func;
+        let exit_func = self.exit_func;
+
         let res = InterrutableThread::spawn(
             "stage1",
             result_sender,
             move |_ctx: &(), should_stop: Arc<AtomicBool>| {
                 // wait until vmsh can process block device requests
-                stage1_thread(ssh_args, &command, mmio_ranges, printk_addr, should_stop)
+                stage1_thread(
+                    ssh_args,
+                    &command,
+                    mmio_ranges,
+                    init_func,
+                    exit_func,
+                    printk_addr,
+                    should_stop,
+                )
             },
             (),
         );
@@ -135,6 +156,8 @@ fn stage1_thread(
     ssh_args: String,
     command: &[String],
     mmio_addrs: Vec<u64>,
+    init_func: usize,
+    exit_func: usize,
     printk_addr: usize,
     should_stop: Arc<AtomicBool>,
 ) -> Result<Kmod> {
@@ -158,13 +181,15 @@ dd if=/proc/self/fd/0 of="$tmpdir/stage1.ko" count={} bs=512
 # cleanup old driver if still loaded
 rmmod stage1 2>/dev/null || true
 set -x
-insmod "$tmpdir/stage1.ko" devices="{}" stage2_argv="{}" printk_addr="{}"
+insmod "$tmpdir/stage1.ko" devices="{}" stage2_argv="{}" printk_addr="{}" init_func="{}" exit_func="{}"
 "#,
             debug_stage1,
             stage1_size / 512,
             mmio_addrs,
             command.join(","),
-            printk_addr
+            printk_addr,
+            init_func,
+            exit_func
         );
         cmd.stdin(Stdio::piped()).arg(script)
     })?;
