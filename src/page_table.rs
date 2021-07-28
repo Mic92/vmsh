@@ -467,11 +467,18 @@ pub fn map_memory(
     );
 
     for (i, m) in mappings.iter().enumerate() {
-        assert!(is_page_aligned(m.len as usize));
-        assert!(is_page_aligned(m.virt_start as usize));
-        assert!(m.phys_start.is_page_aligned());
-        if i > 0 {
-            assert!(mappings[i - 1].phys_start.add(mappings[i - 1].len) == m.phys_start)
+        if !(is_page_aligned(m.len as usize)
+            && is_page_aligned(m.virt_start as usize)
+            && m.phys_start.is_page_aligned())
+        {
+            bail!("{:?} is not page aligned", m)
+        }
+        if i > 0 && mappings[i - 1].phys_start.add(mappings[i - 1].len) != m.phys_start {
+            bail!(
+                "{:#x} is not after {:#x}",
+                m.phys_start.value,
+                mappings[i - 1].phys_start.value
+            )
         }
     }
     let last_mapping = &mappings[mappings.len() - 1];
@@ -485,7 +492,7 @@ pub fn map_memory(
             &mut upsert_tables,
             &mut old_tables,
             &mut pt_addr,
-        )?
+        )?;
     }
 
     // this is expensive but avoids duplicating code
