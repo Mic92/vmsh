@@ -1,6 +1,6 @@
 use crate::tracer::Tracer;
 use kvm_bindings as kvmb;
-use log::*;
+use log::{debug, trace, warn};
 use nix::unistd::getpgid;
 use nix::unistd::Pid;
 use nix::{
@@ -36,6 +36,7 @@ pub struct MmioRw {
 }
 
 impl MmioRw {
+    #[must_use]
     pub fn new(raw: &MmioRwRaw, pid: Pid, vcpu_map: Mapping) -> MmioRw {
         // should we sanity check len here in order to not crash on out of bounds?
         // should we check that vcpu_map is big enough for kvm_run?
@@ -49,6 +50,7 @@ impl MmioRw {
         }
     }
 
+    #[must_use]
     pub fn from(kvm_run: &kvmb::kvm_run, pid: Pid, vcpu_map: Mapping) -> Option<MmioRw> {
         match kvm_run.exit_reason {
             kvmb::KVM_EXIT_MMIO => {
@@ -61,6 +63,7 @@ impl MmioRw {
         }
     }
 
+    #[must_use]
     pub fn data(&self) -> &[u8] {
         &self.data[..self.len]
     }
@@ -72,8 +75,8 @@ impl MmioRw {
     /// # Safety of the tracee
     ///
     /// Do not run this function when the traced process has continued since
-    /// the last KvmRunWrapper.wait_for_ioctl()! Additionally it assumes that the last
-    /// wait_for_ioctl() has returned with Some(_)!
+    /// the last `KvmRunWrapper.wait_for_ioctl()`! Additionally it assumes that the last
+    /// `wait_for_ioctl()` has returned with Some(_)!
     ///
     /// TODO refactor api to reflect those preconditions better.
     pub fn answer_read(&mut self, data: &[u8]) -> Result<()> {
@@ -94,14 +97,14 @@ impl MmioRw {
         // may or may not perform vcpu_map size assertions.
         let mmio_ptr: *mut MmioRwRaw = unsafe { &mut ((*kvm_run_ptr).__bindgen_anon_1.mmio) };
         let data_ptr: *mut [u8; MMIO_RW_DATA_MAX] = unsafe { &mut ((*mmio_ptr).data) };
-        hypervisor::process_write(self.pid, data_ptr as *mut libc::c_void, &self.data)?;
+        hypervisor::process_write(self.pid, data_ptr.cast::<libc::c_void>(), &self.data)?;
 
         // guess who will never know that this was a mmio read
         let is_totally_write = 1u8;
         let is_write_ptr: *mut u8 = unsafe { &mut ((*mmio_ptr).is_write) };
         hypervisor::process_write(
             self.pid,
-            is_write_ptr as *mut libc::c_void,
+            is_write_ptr.cast::<libc::c_void>(),
             &is_totally_write,
         )?;
 
@@ -228,7 +231,7 @@ impl KvmRunWrapper {
         })
     }
 
-    /// Should be called before or during dropping a KvmRunWrapper
+    /// Should be called before or during dropping a `KvmRunWrapper`
     fn prepare_detach(&mut self) -> Result<()> {
         for thread in &self.threads {
             try_with!(
@@ -420,13 +423,13 @@ impl KvmRunWrapper {
         // fulfilled precondition: ioctl(KVM_RUN) just returned
         let map_ptr = thread.vcpu_map.start as *const kvm_bindings::kvm_run;
         let kvm_run: kvm_bindings::kvm_run =
-            hypervisor::process_read(pid, map_ptr as *const libc::c_void)?;
+            hypervisor::process_read(pid, map_ptr.cast::<libc::c_void>())?;
         let mmio = MmioRw::from(&kvm_run, thread.ptthread.tid, thread.vcpu_map.clone());
 
         Ok(mmio)
     }
 
-    fn _check_siginfo(&self, thread: &Thread) -> Result<()> {
+    fn _check_siginfo(thread: &Thread) -> Result<()> {
         let siginfo = try_with!(
             nix::sys::ptrace::getsiginfo(thread.ptthread.tid),
             "cannot getsiginfo"

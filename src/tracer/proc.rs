@@ -3,7 +3,7 @@ use nix::fcntl::{self, OFlag};
 use nix::sys::mman::{MapFlags, ProtFlags};
 use nix::sys::stat;
 use nix::unistd::{getpid, Pid};
-use simple_error::try_with;
+use simple_error::{require_with, try_with};
 use std::fs::{read_dir, read_link, File};
 use std::io::{BufRead, BufReader};
 use std::os::unix::io::{AsRawFd, FromRawFd};
@@ -30,17 +30,21 @@ pub struct Mapping {
 }
 
 impl Mapping {
+    #[must_use]
     pub fn size(&self) -> usize {
         self.end - self.start
     }
+    #[must_use]
     pub fn phys_end(&self) -> usize {
         self.phys_addr + self.size()
     }
+    #[must_use]
     pub fn phys_to_host_offset(&self) -> isize {
         compute_host_offset(self.start, self.phys_addr)
     }
 }
 
+#[must_use]
 pub fn find_mapping(mappings: &[Mapping], ip: usize) -> Option<Mapping> {
     mappings
         .iter()
@@ -53,6 +57,7 @@ pub struct PidHandle {
     file: File,
 }
 
+#[must_use]
 pub fn pid_path(pid: Pid) -> PathBuf {
     PathBuf::from("/proc").join(pid.as_raw().to_string())
 }
@@ -156,6 +161,7 @@ pub struct ProcFd {
 }
 
 impl PidHandle {
+    #[must_use]
     pub fn entry(&self, name: &str) -> PathBuf {
         pid_path(getpid())
             .join("fd")
@@ -177,7 +183,7 @@ impl PidHandle {
                 continue;
             };
             let fd_num = try_with!(
-                file_name.to_str().unwrap().parse::<c_int>(),
+                require_with!(file_name.to_str(), "invalid filename encoding").parse::<c_int>(),
                 "not a valid number: {}",
                 PathBuf::from(file_name).display()
             );

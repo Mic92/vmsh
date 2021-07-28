@@ -1,3 +1,15 @@
+// TODO: more checks
+//#![warn(
+//    clippy::pedantic,
+//)]
+//#![allow(
+//    clippy::similar_names,
+//    cast_sign_loss,
+//    missing_errors_doc,
+//    cast_possible_truncation,
+//    cast_possible_wrap
+//)]
+
 pub mod attach;
 pub mod coredump;
 pub mod cpu;

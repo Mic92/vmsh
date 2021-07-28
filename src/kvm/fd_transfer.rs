@@ -101,7 +101,7 @@ impl Socket {
                         for cmsg in msg.cmsgs() {
                             if let ControlMessageOwned::ScmRights(fds) = cmsg {
                                 for fd in fds {
-                                    files.push(fd)
+                                    files.push(fd);
                                 }
                             }
                         }
