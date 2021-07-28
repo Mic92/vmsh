@@ -97,7 +97,10 @@ fn get_first_allocation(hv: &Arc<Hypervisor>) -> Result<usize> {
     Ok(std::cmp::min(1 << vm_phys_bits, 1 << host_phys_bits))
 }
 
+#[derive(Debug)]
 pub struct VirtAlloc {
+    pub virt_start: usize,
+    pub virt_offset: usize,
     pub len: usize,
     pub prot: ProtFlags,
 }
@@ -143,7 +146,7 @@ impl PhysMemAllocator {
         }
         res
     }
-    pub fn virt_alloc(&mut self, mut virt_start: usize, alloc: &[VirtAlloc]) -> Result<VirtMem> {
+    pub fn virt_alloc(&mut self, alloc: &[VirtAlloc]) -> Result<VirtMem> {
         let len = alloc.iter().map(|a| a.len).sum();
         let phys_mem = self.phys_alloc(len + estimate_page_table_size(len), false)?;
 
@@ -154,11 +157,10 @@ impl PhysMemAllocator {
             .map(|a| {
                 let m = MappedMemory {
                     phys_start: next_addr.clone(),
-                    virt_start,
+                    virt_start: a.virt_start,
                     len: a.len,
                     prot: a.prot,
                 };
-                virt_start += a.len;
                 next_addr.value += a.len;
                 m
             })

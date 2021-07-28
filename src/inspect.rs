@@ -23,7 +23,7 @@ pub fn inspect(opts: &InspectOptions) -> Result<()> {
 
     for map in vm.get_maps()? {
         info!(
-            "vm mem: 0x{:x} -> 0x{:x} (physical: 0x{:x}, flags: {:?} | {:?}) @@ {}",
+            "vm mem: {:#x} -> {:#x} (physical: {:#x}, flags: {:?} | {:?}) @@ {}",
             map.start, map.end, map.phys_addr, map.prot_flags, map.map_flags, map.pathname
         )
     }
@@ -31,7 +31,7 @@ pub fn inspect(opts: &InspectOptions) -> Result<()> {
     info!("vcpu maps");
     for map in vm.get_vcpu_maps()? {
         info!(
-            "vm cpu mem: 0x{:x} -> 0x{:x} (physical: 0x{:x}, flags: {:?} | {:?}) @@ {}",
+            "vm cpu mem: {:#x} -> {:#x} (physical: {:#x}, flags: {:?} | {:?}) @@ {}",
             map.start, map.end, map.phys_addr, map.prot_flags, map.map_flags, map.pathname
         );
 
@@ -53,7 +53,7 @@ pub fn inspect(opts: &InspectOptions) -> Result<()> {
         Ok(kernel) => {
             let sections = &kernel.memory_sections;
             info!(
-                "found kernel at 0x{:x}-0x{:x} (free space before: {} kib, free space after: {} kib)",
+                "found kernel at {:#x}-{:#x} (free space before: {} kib, free space after: {} kib)",
                 kernel.range.start,
                 kernel.range.end,
                 kernel.space_before() / 1024,
@@ -61,7 +61,7 @@ pub fn inspect(opts: &InspectOptions) -> Result<()> {
             );
             info!("kernel sections:");
             for m in sections {
-                info!("0x{:x} ({}kb, {:?})", m.virt_start, m.len / 1024, m.prot)
+                info!("{:#x} ({}kb, {:?})", m.virt_start, m.len / 1024, m.prot)
             }
             info!("{} found kernel symbols", kernel.symbols.len());
         }

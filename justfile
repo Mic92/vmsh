@@ -3,12 +3,13 @@
 # End:
 # vim: set ft=make :
 
-linux_dir := invocation_directory() + "/../linux"
+rev := `nix eval --raw .#lib.nixpkgsRev`
+linux_dir := justfile_directory() + "/../linux"
 linux_repo := "https://github.com/Mic92/linux"
-nix_results := invocation_directory() + "/.git/nix-results"
+nix_results := justfile_directory() + "/.git/nix-results/" + rev
 kernel_fhs := "$(nix build --out-link " + nix_results + "/kernel-fhs --json '.#kernel-fhs' | jq -r '.[] | .outputs | .out')/bin/linux-kernel-build"
 
-virtio_blk_img := invocation_directory() + "/../linux/nixos.ext4"
+virtio_blk_img := justfile_directory() + "/../linux/nixos.ext4"
 
 qemu_pid := `pgrep -u $(id -u) qemu-system | awk '{print $1}'`
 qemu_ssh_port := "2222"
@@ -172,7 +173,7 @@ qemu EXTRA_CMDLINE="nokalsr": build-linux nixos-image
     -m 512M \
     -netdev user,id=user.0,hostfwd=tcp:127.0.0.1:{{qemu_ssh_port}}-:22 \
     -cpu host \
-    -virtfs local,path={{invocation_directory()}}/..,security_model=none,mount_tag=home \
+    -virtfs local,path={{justfile_directory()}}/..,security_model=none,mount_tag=home \
     -virtfs local,path={{linux_dir}},security_model=none,mount_tag=linux \
     -nographic -serial null -enable-kvm \
     -device virtio-serial \
@@ -184,7 +185,7 @@ qemu EXTRA_CMDLINE="nokalsr": build-linux nixos-image
 qemu-notos:
   #!/usr/bin/env python3
   import sys, os, subprocess
-  sys.path.insert(0, os.path.join("{{invocation_directory()}}", "tests"))
+  sys.path.insert(0, os.path.join("{{justfile_directory()}}", "tests"))
   from nix import notos_image, notos_image_custom_kernel
   from qemu import qemu_command
   #image = notos_image()
@@ -203,7 +204,7 @@ strace:
 
 # SSH into vm started by `just qemu`
 ssh-qemu $COMMAND="":
-  ssh -i {{invocation_directory()}}/nix/ssh_key \
+  ssh -i {{justfile_directory()}}/nix/ssh_key \
       -o StrictHostKeyChecking=no \
       -o UserKnownHostsFile=/dev/null \
       root@localhost \
@@ -216,15 +217,15 @@ nested-qemu: nested-nixos-image
 # Copy programs from the host store to the guest nix store
 qemu-copy STORE_PATH:
   mkdir -p target/mnt
-  sudo mount {{virtio_blk_img}} {{invocation_directory()}}/target/mnt
-  sudo nix copy {{STORE_PATH}} --to {{invocation_directory()}}/target/mnt
-  sudo umount {{invocation_directory()}}/target/mnt
+  sudo mount {{virtio_blk_img}} {{justfile_directory()}}/target/mnt
+  sudo nix copy {{STORE_PATH}} --to {{justfile_directory()}}/target/mnt
+  sudo umount {{justfile_directory()}}/target/mnt
 
 # Build debug kernel module for VM using kernel build by `just build-linux`
 build-debug-kernel-mod:
   # don't invoke linux kernel build every time because it is a bit slow...
   if [[ ! -d {{linux_dir}} ]]; then just build-linux; fi
-  cd {{invocation_directory()}}/tests/debug-kernel-mod && make KERNELDIR={{linux_dir}}
+  cd {{justfile_directory()}}/tests/debug-kernel-mod && make KERNELDIR={{linux_dir}}
 
 # Load debug kernel module into VM started by `just qemu` using ssh
 load-debug-kernel-mod: build-debug-kernel-mod
@@ -234,11 +235,11 @@ attach-qemu-img: nixos-image
   cargo run -- \
   -l info,vmsh::device::virtio::block::inorder_handler=warn,vm_memory::mmap=warn,vm_memory::remote_mem=warn,vmsh::device::threads=debug attach \
   "{{qemu_pid}}" -f {{virtio_blk_img}} \
-  -- --ssh-args " -i {{invocation_directory()}}/nix/ssh_key -p {{qemu_ssh_port}} root@localhost"
+  -- --ssh-args " -i {{justfile_directory()}}/nix/ssh_key -p {{qemu_ssh_port}} root@localhost"
 
 # Attach block device to first qemu vm found by pidof and owned by our own user
 attach-qemu: vmsh-image
-  cargo run -- attach -f "{{linux_dir}}/vmsh-image.ext4" "{{qemu_pid}}" --ssh-args " -i {{invocation_directory()}}/nix/ssh_key -p {{qemu_ssh_port}} root@localhost" -- /nix/var/nix/profiles/system/sw/bin/ls -la
+  cargo run -- attach -f "{{linux_dir}}/vmsh-image.ext4" "{{qemu_pid}}" --ssh-args " -i {{justfile_directory()}}/nix/ssh_key -p {{qemu_ssh_port}} root@localhost" -- /nix/var/nix/profiles/system/sw/bin/ls -la
 
 attach-nested-qemu: vmsh-image
   cargo build

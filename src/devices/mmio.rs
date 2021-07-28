@@ -43,7 +43,7 @@ impl IoPirate {
         if mmio_rw.is_write {
             map_err_with!(
                 self.mmio_write(MmioAddress(mmio_rw.addr), mmio_rw.data()),
-                "write to mmio device (0x{:x}) failed",
+                "write to mmio device ({:#x}) failed",
                 mmio_rw.addr
             )?;
         } else {
@@ -52,7 +52,7 @@ impl IoPirate {
             let slice = &mut data[0..len];
             map_err_with!(
                 self.mmio_read(MmioAddress(mmio_rw.addr), slice),
-                "read from mmio device (0x{:x}) failed",
+                "read from mmio device ({:#x}) failed",
                 mmio_rw.addr
             )?;
             mmio_rw.answer_read(slice)?;
@@ -72,7 +72,7 @@ impl IoPirate {
                 let data = rw.data();
                 map_err_with!(
                     self.mmio_write(MmioAddress(addr), data),
-                    "write to mmio device (0x{:x}) failed",
+                    "write to mmio device ({:#x}) failed",
                     addr
                 )?;
                 // must be acknowledged with an arbitrary response
@@ -82,7 +82,7 @@ impl IoPirate {
                 let data = rw.data_mut();
                 map_err_with!(
                     self.mmio_read(MmioAddress(addr), data),
-                    "read from mmio device (0x{:x}) failed",
+                    "read from mmio device ({:#x}) failed",
                     addr
                 )?;
                 ioregionfd.write_slice(data)

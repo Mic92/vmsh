@@ -47,7 +47,7 @@ impl fmt::Display for MemSlot {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
-            "Mapping {{ start=0x{:x}, end=0x{:x}, size=0x{:x}, physical_start=0x{:x} }}",
+            "Mapping {{ start={:#x}, end={:#x}, size={:#x}, physical_start={:#x} }}",
             self.start(),
             self.end(),
             self.size(),

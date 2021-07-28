@@ -291,7 +291,7 @@ fn read_page_table(
     // level/virt_addr is wrong, but does not matter
     let pt = Rc::new(RefCell::new(try_with!(
         PageTable::read(hv, &addr, 0, 0),
-        "cannot read page table at 0x{:x} (host_addr: 0x{:x})",
+        "cannot read page table at {:#x} (host_addr: {:#x})",
         addr.value,
         addr.host_addr()
     )));
@@ -324,13 +324,13 @@ fn get_page_table(
             read_page_table(hv, addr, pt_host_offset, old_tables, upsert_tables)
         }
     } else {
-        info!("allocate page table at 0x{:x}", phys_addr.value);
+        info!("allocate page table at {:#x}", phys_addr.value);
         Ok(allocate_page_table(entry, phys_addr, upsert_tables))
     }
 }
 
-fn get_start_idx(virt_addr: usize, start: usize, idx: usize, level: u8) -> usize {
-    if idx > start {
+fn get_start_idx(virt_addr: usize, idx: usize, level: u8) -> usize {
+    if idx != 0 {
         0
     } else {
         get_index(virt_addr as u64, level) as usize
@@ -375,6 +375,7 @@ fn page_table_flags(p: ProtFlags) -> PageTableFlags {
 fn map_memory_single(
     hv: &Hypervisor,
     pml4: &mut PageTable,
+
     m: &MappedMemory,
     upsert_tables: &mut UpsertTable,
     old_tables: &mut Vec<PageTable>,
@@ -385,7 +386,7 @@ fn map_memory_single(
     let pt_host_offset = pml4.phys_addr.host_offset;
     let start0 = get_index(m.virt_start as u64, 0) as usize;
     'outer: for (i0, entry0) in pml4.entries[start0..].iter_mut().enumerate() {
-        let start1 = get_start_idx(m.virt_start, start0, i0, 1);
+        let start1 = get_start_idx(m.virt_start, i0, 1);
         let pt1 = get_page_table(
             hv,
             pt_host_offset,
@@ -397,7 +398,7 @@ fn map_memory_single(
         let mut pt1 = pt1.borrow_mut();
 
         for (i1, entry1) in pt1.entries[start1..].iter_mut().enumerate() {
-            let start2 = get_start_idx(m.virt_start, start1, i1, 2);
+            let start2 = get_start_idx(m.virt_start, i1, 2);
             let pt2 = get_page_table(
                 hv,
                 pt_host_offset,
@@ -409,7 +410,7 @@ fn map_memory_single(
             let mut pt2 = pt2.borrow_mut();
 
             for (i2, entry2) in pt2.entries[start2..].iter_mut().enumerate() {
-                let start3 = get_start_idx(m.virt_start, start2, i2, 3);
+                let start3 = get_start_idx(m.virt_start, i2, 3);
                 let pt3 = get_page_table(
                     hv,
                     pt_host_offset,
@@ -420,9 +421,12 @@ fn map_memory_single(
                 )?;
                 let mut pt3 = pt3.borrow_mut();
 
-                for entry3 in pt3.entries[start3..].iter_mut() {
+                for (i, entry3) in pt3.entries[start3..].iter_mut().enumerate() {
                     if entry3.flags().contains(PageTableFlags::PRESENT) {
-                        bail!("found already mapped page in page table");
+                        bail!(
+                            "found already mapped page in page table at {:#x}",
+                            entry2.addr() as usize + i + start3
+                        );
                     }
                     entry3.set_addr(&phys_addr, page_table_flags(m.prot));
                     phys_addr.value += page_size();
@@ -463,11 +467,18 @@ pub fn map_memory(
     );
 
     for (i, m) in mappings.iter().enumerate() {
-        assert!(is_page_aligned(m.len as usize));
-        assert!(is_page_aligned(m.virt_start as usize));
-        assert!(m.phys_start.is_page_aligned());
-        if i > 0 {
-            assert!(mappings[i - 1].phys_start.add(mappings[i - 1].len) == m.phys_start)
+        if !(is_page_aligned(m.len as usize)
+            && is_page_aligned(m.virt_start as usize)
+            && m.phys_start.is_page_aligned())
+        {
+            bail!("{:?} is not page aligned", m)
+        }
+        if i > 0 && mappings[i - 1].phys_start.add(mappings[i - 1].len) != m.phys_start {
+            bail!(
+                "{:#x} is not after {:#x}",
+                m.phys_start.value,
+                mappings[i - 1].phys_start.value
+            )
         }
     }
     let last_mapping = &mappings[mappings.len() - 1];
@@ -481,7 +492,7 @@ pub fn map_memory(
             &mut upsert_tables,
             &mut old_tables,
             &mut pt_addr,
-        )?
+        )?;
     }
 
     // this is expensive but avoids duplicating code

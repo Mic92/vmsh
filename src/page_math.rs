@@ -8,6 +8,10 @@ pub fn huge_page_size(level: u8) -> usize {
     page_size() << (9 * (3 - level))
 }
 
+pub fn page_start(v: usize) -> usize {
+    v & !(page_size() - 1)
+}
+
 pub fn page_align(v: usize) -> usize {
     (v + page_size() - 1) & !(page_size() - 1)
 }

@@ -237,7 +237,7 @@ impl IoEventFd {
     ) -> Result<IoEventFd> {
         let eventfd = try_with!(EventFd::new(EFD_NONBLOCK), "cannot create event fd");
         info!(
-            "ioeventfd {}, guest phys addr 0x{:x}",
+            "ioeventfd {}, guest phys addr {:#x}",
             eventfd.as_raw_fd(),
             guest_addr
         );

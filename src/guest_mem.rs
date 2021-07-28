@@ -47,6 +47,12 @@ pub struct MappedMemory {
     pub prot: ProtFlags,
 }
 
+impl MappedMemory {
+    pub fn contains(&self, addr: usize) -> bool {
+        self.virt_start < addr && addr < self.virt_start + self.len
+    }
+}
+
 fn prot_flags(ptflags: PageTableFlags) -> ProtFlags {
     let mut f = ProtFlags::PROT_READ;
     if ptflags.contains(PageTableFlags::WRITABLE) {
@@ -88,7 +94,7 @@ impl GuestMem {
 
         let pt_addr = get_page_table_addr(&sregs);
 
-        debug!("pml4: 0x{:x}\n", pt_addr);
+        debug!("pml4: {:#x}\n", pt_addr);
 
         let (idx, pt_mapping) = require_with!(
             maps.iter()
@@ -148,7 +154,7 @@ impl GuestMem {
         let pt_mapping = self.page_table_mapping();
         let pt_addr = get_page_table_addr(&self.sregs);
         if kernel_mapping != pt_mapping {
-            bail!("kernel memory and page table (0x{:x}) is not in the same physical memory block: 0x{:x}-0x{:x} vs 0x{:x}-0x{:x}", pt_addr, kernel_mapping.phys_addr, kernel_mapping.phys_end(), pt_mapping.phys_addr, pt_mapping.phys_end());
+            bail!("kernel memory and page table ({:#x}) is not in the same physical memory block: {:#x}-{:#x} vs {:#x}-{:#x}", pt_addr, kernel_mapping.phys_addr, kernel_mapping.phys_end(), pt_mapping.phys_addr, pt_mapping.phys_end());
         }
 
         // level/virt_addr is wrong, but does not matter
@@ -163,7 +169,7 @@ impl GuestMem {
         for e in &mut iter {
             let entry = try_with!(e, "cannot read page table");
             if entry.virt_addr as usize > range.start {
-                //info!("0x{:x}/0x{:x}: {:?}", entry.entry.addr(), entry.virt_addr, &entry.entry.flags());
+                //info!("{:#x}/{:#x}: {:?}", entry.entry.addr(), entry.virt_addr, &entry.entry.flags());
                 sections.push(mapped_memory(&entry, host_offset));
                 break;
             }
@@ -173,7 +179,7 @@ impl GuestMem {
         }
         for e in &mut iter {
             let entry = try_with!(e, "cannot read page table");
-            //info!("0x{:x}/0x{:x}: {:?}", entry.entry.addr(), entry.virt_addr, &entry.entry.flags());
+            //info!("{:#x}/{:#x}: {:?}", entry.entry.addr(), entry.virt_addr, &entry.entry.flags());
             if entry.virt_addr as usize >= range.end {
                 break;
             }

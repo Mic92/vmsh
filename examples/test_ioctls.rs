@@ -67,7 +67,7 @@ fn guest_add_mem(pid: Pid, re_get_slots: bool) -> Result<()> {
         memslots_a_len = memslots_a.len();
         memslots_a.iter().for_each(|map| {
             println!(
-                "vm mem: 0x{:x} -> 0x{:x} (physical: 0x{:x}, flags: {:?} | {:?})",
+                "vm mem: {:#x} -> {:#x} (physical: {:#x}, flags: {:?} | {:?})",
                 map.start, map.end, map.phys_addr, map.prot_flags, map.map_flags,
             )
         });
@@ -81,7 +81,7 @@ fn guest_add_mem(pid: Pid, re_get_slots: bool) -> Result<()> {
             let memslots_b = vm.get_maps()?;
             memslots_b.iter().for_each(|map| {
                 println!(
-                    "vm mem: 0x{:x} -> 0x{:x} (physical: 0x{:x}, flags: {:?} | {:?})",
+                    "vm mem: {:#x} -> {:#x} (physical: {:#x}, flags: {:?} | {:?})",
                     map.start, map.end, map.phys_addr, map.prot_flags, map.map_flags,
                 )
             });
@@ -100,7 +100,7 @@ fn guest_add_mem(pid: Pid, re_get_slots: bool) -> Result<()> {
         let memslots_c = vm.get_maps()?;
         memslots_c.iter().for_each(|map| {
             println!(
-                "vm mem: 0x{:x} -> 0x{:x} (physical: 0x{:x}, flags: {:?} | {:?})",
+                "vm mem: {:#x} -> {:#x} (physical: {:#x}, flags: {:?} | {:?})",
                 map.start, map.end, map.phys_addr, map.prot_flags, map.map_flags,
             )
         });
@@ -290,7 +290,7 @@ fn vcpu_maps(pid: Pid) -> Result<()> {
     assert!(!vcpus.is_empty());
     for map in vcpus {
         println!(
-            "vm cpu mem: 0x{:x} -> 0x{:x} (physical: 0x{:x}, flags: {:?} | {:?}) @@ {}",
+            "vm cpu mem: {:#x} -> {:#x} (physical: {:#x}, flags: {:?} | {:?}) @@ {}",
             map.start, map.end, map.phys_addr, map.prot_flags, map.map_flags, map.pathname
         );
         assert!(map.end - map.start >= kvm_run_len);
