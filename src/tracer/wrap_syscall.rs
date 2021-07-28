@@ -114,14 +114,14 @@ impl fmt::Display for MmioRw {
         if self.is_write {
             write!(
                 f,
-                "MmioRw{{ write {:?} to guest phys @ 0x{:x} }}",
+                "MmioRw{{ write {:?} to guest phys @ {:#x} }}",
                 self.data(),
                 self.addr
             )
         } else {
             write!(
                 f,
-                "MmioRw{{ read {}b from guest phys @ 0x{:x} }}",
+                "MmioRw{{ read {}b from guest phys @ {:#x} }}",
                 self.len, self.addr
             )
         }
@@ -432,10 +432,10 @@ impl KvmRunWrapper {
             "cannot getsiginfo"
         );
         if (siginfo.si_code == libc::SIGTRAP) || (siginfo.si_code == (libc::SIGTRAP | 0x80)) {
-            trace!("siginfo.si_code true: 0x{:x}", siginfo.si_code);
+            trace!("siginfo.si_code true: {:#x}", siginfo.si_code);
             return Ok(());
         } else {
-            trace!("siginfo.si_code false: 0x{:x}", siginfo.si_code);
+            trace!("siginfo.si_code false: {:#x}", siginfo.si_code);
         }
         Ok(())
     }

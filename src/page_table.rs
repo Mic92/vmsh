@@ -291,7 +291,7 @@ fn read_page_table(
     // level/virt_addr is wrong, but does not matter
     let pt = Rc::new(RefCell::new(try_with!(
         PageTable::read(hv, &addr, 0, 0),
-        "cannot read page table at 0x{:x} (host_addr: 0x{:x})",
+        "cannot read page table at {:#x} (host_addr: {:#x})",
         addr.value,
         addr.host_addr()
     )));
@@ -324,7 +324,7 @@ fn get_page_table(
             read_page_table(hv, addr, pt_host_offset, old_tables, upsert_tables)
         }
     } else {
-        info!("allocate page table at 0x{:x}", phys_addr.value);
+        info!("allocate page table at {:#x}", phys_addr.value);
         Ok(allocate_page_table(entry, phys_addr, upsert_tables))
     }
 }

@@ -184,7 +184,7 @@ pub fn find_kernel(guest_mem: &GuestMem, hv: &Hypervisor) -> Result<Kernel> {
     let kernel_start = memory_sections.first().unwrap().virt_start;
     let kernel_end = kernel_last.virt_start + kernel_last.len;
     info!(
-        "found linux kernel at 0x{:x}-0x{:x}",
+        "found linux kernel at {:#x}-{:#x}",
         kernel_start, kernel_end
     );
     let symbols = memory_sections.iter().find_map(|s| {
@@ -208,7 +208,7 @@ pub fn find_kernel(guest_mem: &GuestMem, hv: &Hypervisor) -> Result<Kernel> {
             .filter(|c| **c == 0)
             .count();
         info!(
-            "found ksymtab_string at physical 0x{:x}:0x{:x} with {} strings",
+            "found ksymtab_string at physical {:#x}:{:#x} with {} strings",
             from_addr.value, to_addr.value, string_num
         );
         match get_kernel_symbols(&mem, mem_base as usize, strings_range) {
