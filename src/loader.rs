@@ -3,7 +3,7 @@ use std::mem::size_of_val;
 use elfloader::{
     ElfBinary, ElfLoader, ElfLoaderErr, Entry, Flags, LoadableHeaders, Rela, TypeRela64, VAddr, P64,
 };
-use log::{debug, error, info, warn};
+use log::{debug, error, warn};
 use nix::sys::mman::ProtFlags;
 use nix::sys::uio::{process_vm_writev, IoVec, RemoteIoVec};
 use simple_error::{bail, try_with};
@@ -14,7 +14,7 @@ use crate::guest_mem::MappedMemory;
 use crate::kernel::Kernel;
 use crate::kvm::allocator::VirtAlloc;
 use crate::kvm::PhysMemAllocator;
-use crate::page_math::{page_align, page_size, page_start};
+use crate::page_math::{page_align, page_start};
 use crate::page_table::VirtMem;
 use crate::result::Result;
 
@@ -64,8 +64,10 @@ impl<'a> Loader<'a> {
     fn upload_binary(&self) -> Result<()> {
         let mut local_iovec = vec![];
         let mut remote_iovec = vec![];
+        let mut len = 0;
         for l in self.loadables.iter() {
             local_iovec.push(IoVec::from_slice(&l.content));
+            len += l.mapping.len;
             remote_iovec.push(RemoteIoVec {
                 base: l.mapping.phys_start.host_addr(),
                 len: l.mapping.len,
@@ -79,9 +81,8 @@ impl<'a> Loader<'a> {
             ),
             "cannot write to process"
         );
-        let expected = remote_iovec.len() * page_size();
-        if written != expected {
-            bail!("short write, expected {}, written: {}", expected, written);
+        if written != len {
+            bail!("short write, expected {}, written: {}", len, written);
         }
         Ok(())
     }
@@ -108,6 +109,7 @@ type ElfResult = std::result::Result<(), ElfLoaderErr>;
 struct Loadable {
     content: Vec<u8>,
     mapping: MappedMemory,
+    load_offset: usize,
 }
 
 macro_rules! try_elf {
@@ -153,7 +155,7 @@ impl<'a> ElfLoader for Loader<'a> {
 
             VirtAlloc {
                 virt_start: self.vbase() + start,
-                file_offset: virtual_addr - start,
+                virt_offset: virtual_addr - start,
                 len: page_align(virtual_addr + h.mem_size() as usize) - start,
                 prot,
             }
@@ -173,7 +175,7 @@ impl<'a> ElfLoader for Loader<'a> {
             self.allocator.virt_alloc(&allocs),
             "cannot allocate memory"
         ));
-        self.load_offsets = allocs.iter().map(|v| v.file_offset).collect::<Vec<_>>();
+        self.load_offsets = allocs.iter().map(|v| v.virt_offset).collect::<Vec<_>>();
 
         Ok(())
     }
@@ -189,10 +191,11 @@ impl<'a> ElfLoader for Loader<'a> {
             self.virt_mem.as_ref(),
             "BUG: no virtual memory was allocated"
         );
-        let mapping = require_elf!(
+        let (idx, mapping) = require_elf!(
             mem.mappings
                 .iter()
-                .find(|mapping| mapping.virt_start == page_start(start)),
+                .enumerate()
+                .find(|(_, mapping)| mapping.virt_start == page_start(start)),
             {
                 error!(
                     "received loadable that was not allocated before at {:#x}",
@@ -204,6 +207,7 @@ impl<'a> ElfLoader for Loader<'a> {
         self.loadables.push(Loadable {
             content: region.to_vec(),
             mapping: mapping.clone(),
+            load_offset: self.load_offsets[idx],
         });
         Ok(())
     }
@@ -221,14 +225,14 @@ impl<'a> ElfLoader for Loader<'a> {
             error!("no loadable found for relocation address: {}", addr);
             "no loadable found for relocation address: {}"
         });
-        let start = addr - loadable.mapping.virt_start;
+        let start = addr - (loadable.mapping.virt_start + loadable.load_offset);
 
         match typ {
             TypeRela64::R_RELATIVE => {
                 // This is a relative relocation, add the offset (where we put our
                 // binary in the vspace) to the addend and we're done.
                 let dest_addr = vbase + entry.get_addend() as usize;
-                info!("R_RELATIVE *{:#x} = {:#x}", addr, dest_addr);
+                debug!("R_RELATIVE *{:#x} = {:#x}", addr, dest_addr);
                 let range = start..(start + size_of_val(&dest_addr));
                 loadable.content[range].clone_from_slice(&dest_addr.to_ne_bytes());
                 Ok(())
@@ -243,7 +247,7 @@ impl<'a> ElfLoader for Loader<'a> {
                 }
 
                 let sym_name = sym.get_name(&self.elf.file)?;
-                info!("R_GLOB_DAT *{:#x} = @ {}", addr, sym_name);
+                debug!("R_GLOB_DAT *{:#x} = @ {}", addr, sym_name);
 
                 let symbol = require_elf!(syms.get(sym_name), {
                     error!("binary contains unknown symbol: {}", sym_name);
