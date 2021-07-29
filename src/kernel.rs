@@ -124,6 +124,8 @@ fn apply_offset(addr: usize, offset: libc::c_int) -> usize {
     if offset < 0 {
         addr - (-offset as usize)
     } else {
+        // Why do we substract this?
+        // All symbols seems to be in data section
         addr - offset as usize
     }
 }
