@@ -296,7 +296,7 @@ impl<'a> ElfLoader for Loader<'a> {
                 debug!("R_GLOB_DAT *{:#x} = @ {}", addr, sym_name);
 
                 let symbol = require_elf!(syms.get(sym_name), {
-                    error!("binary contains unknown symbol: {}", sym_name);
+                    error!("binary requires unknown symbol: {}", sym_name);
                     "cannot find symbol"
                 });
                 let dest_addr = (symbol + entry.get_addend() as usize).to_ne_bytes();
