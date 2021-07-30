@@ -38,7 +38,7 @@
           inherit rustPlatform;
         };
 
-        kernel-fhs = pkgs.callPackage ./nix/kernel-fhs.nix {};
+        kernel-deps = pkgs.callPackage ./nix/kernel-deps.nix {};
 
         ciDeps = [
           rustToolchain
@@ -75,8 +75,7 @@
           };
 
           # see justfile/build-linux-shell
-          kernel-fhs-shell = (kernel-fhs.override { runScript = "bash"; }).env;
-          inherit kernel-fhs;
+          inherit kernel-deps;
           linux_ioregionfd = pkgs.callPackage ./nix/linux-ioregionfd.nix { };
           linuxPackages_ioregionfd = pkgs.recurseIntoAttrs (pkgs.linuxPackagesFor linux_ioregionfd);
 

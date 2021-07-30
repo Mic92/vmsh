@@ -1,9 +1,23 @@
-{ buildFHSUserEnv
-, runScript ? "bash -c"
+{ mkShell
+, lib
+, getopt
+, elfutils
+, ncurses
+, openssl
+, zlib
+, flex
+, bison
+, binutils
+, gcc
+, gnumake
+, bc
+, perl
+, hostname
+, cpio
 }:
-buildFHSUserEnv {
+mkShell {
   name = "linux-kernel-build";
-  targetPkgs = pkgs: with pkgs; [
+  buildInputs = [
     getopt
     flex
     bison
@@ -20,5 +34,4 @@ buildFHSUserEnv {
     openssl
     zlib
   ];
-  inherit runScript;
 }
