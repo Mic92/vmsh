@@ -4,11 +4,12 @@
 
 #include "stage1.h"
 
-#define MAX_STAGE2_ARGS 254
+#define MAX_STAGE2_ARGS 256
+#define RESERVED_STAGE2_ARGS 2
 static int stage2_argc;
-static char *stage2_argv[MAX_STAGE2_ARGS];
 
-#define MAX_DEVICES 254
+static char *stage2_argv[MAX_STAGE2_ARGS - RESERVED_STAGE2_ARGS];
+
 static int devices_num;
 static char *devices[3];
 static char *phys_mem, *virt_mem;
@@ -19,20 +20,24 @@ static char* exit_func;
 // FIXME: Right now this is a kernel module in future, this should be replaced
 // something to be injectable into VMs.
 int init_module(void) {
-  unsigned long long devs[3];
   size_t i;
   unsigned long mem = 0;
   void __iomem *baseptr;
   int (*printk_addr_func)(const char format, ...);
-  int (*init_vmsh_stage1p)(int devices_num, unsigned long long* devices, int stage2_argc, char** stage2_argv);
+  int (*init_vmsh_stage1p)(void);
+
+  BUG_ON(devices_num > MAX_DEVICES);
+  BUG_ON(stage2_argc > MAX_STAGE2_ARGS - RESERVED_STAGE2_ARGS);
 
   for (i = 0; i < devices_num; i++) {
-    if (kstrtoull(devices[i], 10, &devs[i])) {
+    if (kstrtoull(devices[i], 10, &VMSH_STAGE1_ARGS.device_addrs[i])) {
       printk(KERN_ERR "stage1: invalid mmio address: %s\n", devices[i]);
       return -EINVAL;
     }
-    printk(KERN_INFO "stage1: device address: 0x%llx\n", devs[i]);
+    printk(KERN_INFO "stage1: device address: 0x%llx\n", VMSH_STAGE1_ARGS.device_addrs[i]);
   }
+  printk(KERN_ERR "stage1: %d stage2 arguments passed\n", stage2_argc);
+  memcpy(&VMSH_STAGE1_ARGS.argv[1], stage2_argv, stage2_argc);
 
   if (phys_mem) {
     if (kstrtoul(phys_mem, 10, &mem)) {
@@ -67,27 +72,27 @@ int init_module(void) {
     printk(KERN_ERR "stage1: printk: 0x%lx vs 0x%lx!\n", (unsigned long) printk, (unsigned long) printk_addr_func);
   }
 
-  if (init_func) {
-    if (kstrtoul(init_func, 10, (unsigned long*)&init_vmsh_stage1p)) {
-      printk(KERN_ERR "stage1: invalid init_func: %s\n", virt_mem);
-      return -EINVAL;
-    }
-    return init_vmsh_stage1p(devices_num, devs, stage2_argc, stage2_argv);
-  } else {
-    return init_vmsh_stage1(devices_num, devs, stage2_argc, stage2_argv);
-  }
+  //if (init_func) {
+  //  if (kstrtoul(init_func, 10, (unsigned long*)&init_vmsh_stage1p)) {
+  //    printk(KERN_ERR "stage1: invalid init_func: %s\n", virt_mem);
+  //    return -EINVAL;
+  //  }
+  //  return init_vmsh_stage1p();
+  //} else {
+    return init_vmsh_stage1();
+  //}
 }
 
 void cleanup_module(void) {
   void (*cleanup_vmsh_stage1p)(void);
-  if (exit_func) {
-    if (kstrtoul(exit_func, 10, (unsigned long*)&cleanup_vmsh_stage1p)) {
-      printk(KERN_ERR "stage1: invalid exit_func: %s\n", virt_mem);
-    }
-    cleanup_vmsh_stage1p();
-  } else {
+  //if (exit_func) {
+  //  if (kstrtoul(exit_func, 10, (unsigned long*)&cleanup_vmsh_stage1p)) {
+  //    printk(KERN_ERR "stage1: invalid exit_func: %s\n", virt_mem);
+  //  }
+  //  cleanup_vmsh_stage1p();
+  //} else {
     cleanup_vmsh_stage1();
-  }
+  //}
 }
 
 // those parameter are used for testing
