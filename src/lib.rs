@@ -13,9 +13,9 @@
 pub mod attach;
 pub mod coredump;
 pub mod cpu;
+pub mod debug;
 pub mod devices;
 pub mod elf;
-pub mod gdb_break;
 pub mod guest_mem;
 pub mod inspect;
 pub mod interrutable_thread;
