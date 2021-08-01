@@ -98,7 +98,6 @@
             pkgs.cargo-deny
             pkgs.pre-commit
             pkgs.rls
-            pkgs.rustracer
             pkgs.git # needed for pre-commit install
             fenixPkgs.rust-analyzer
             pkgs.gdb
