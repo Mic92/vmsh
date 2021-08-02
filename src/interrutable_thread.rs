@@ -1,5 +1,5 @@
 use log::info;
-use simple_error::bail;
+use simple_error::{map_err_with, bail};
 use std::io;
 use std::ops::FnOnce;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -65,6 +65,16 @@ where
         self.should_stop.store(true, Ordering::Release);
     }
 
+    /// Can be used after shutdown to kick threads out of blocking actions.
+    pub fn sigusr1(&self) -> Result<()> {
+        let tid = self.handle.as_pthread_t();
+        let ret = unsafe { libc::pthread_kill(tid, libc::SIGUSR1) };
+        if ret != 0 {
+            bail!("pthread_kill failed {}", ret);
+        }
+        Ok(())
+    }
+
     /// Join the underlying thread
     pub fn join(self) -> Result<(Result<T>, C)> {
         assert!(
@@ -87,3 +97,4 @@ where
         }
     }
 }
+use std::os::unix::thread::JoinHandleExt;

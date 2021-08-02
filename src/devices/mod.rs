@@ -24,7 +24,7 @@ use vm_memory::{GuestMemoryMmap, GuestRegionMmap};
 
 pub use self::threads::DeviceSet;
 
-pub const USE_IOREGIONFD: bool = false;
+pub const USE_IOREGIONFD: bool = true;
 
 pub type Block = block::Block<Arc<GuestMemoryMmap>>;
 pub type Console = console::Console<Arc<GuestMemoryMmap>>;
@@ -65,7 +65,7 @@ fn convert(pid: pid_t, mappings: &[Mapping]) -> Result<GuestMemoryMmap> {
 }
 
 trait MaybeIoRegionFd {
-    fn get_ioregionfd(&self) -> &Option<IoRegionFd>;
+    fn get_ioregionfd(&mut self) -> &mut Option<IoRegionFd>;
 }
 
 pub struct DeviceContext {

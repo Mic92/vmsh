@@ -294,11 +294,12 @@ fn ioregion_event_loop(
     device: Arc<Mutex<dyn MaybeIoRegionFd + Send>>,
 ) -> Result<()> {
     let ioregionfd = {
-        let device = try_with!(device.lock(), "cannot lock device");
-        let ioregionfd = device.get_ioregionfd();
-        ioregionfd.ok_or(simple_error!(
+        let mut device = try_with!(device.lock(), "cannot lock device");
+        let ioregion = device.get_ioregionfd();
+        let ioregion = ioregion.as_mut().ok_or(simple_error!(
             "cannot start ioregion event loop when ioregion does not exist"
-        ))?
+        ))?;
+        ioregion.fdclone()
     };
 
     loop {

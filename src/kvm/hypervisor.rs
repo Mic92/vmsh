@@ -5,7 +5,7 @@ use libc::{c_int, c_void};
 use log::*;
 use nix::sys::socket::{socketpair, AddressFamily, SockFlag, SockType};
 use nix::unistd::Pid;
-use nix::unistd::{read, write};
+use nix::unistd::{read, write, close};
 use simple_error::{bail, simple_error, try_with};
 use std::ffi::OsStr;
 use std::marker::PhantomData;
@@ -335,6 +335,7 @@ impl Default for UserspaceIoEventFd {
     }
 }
 
+
 impl UserspaceIoEventFd {
     pub fn userpace_ioeventfd(&mut self, datamatch: Option<u32>) -> Result<EventFd> {
         if datamatch.is_none() && !self.ioeventfds.is_empty() {
@@ -348,6 +349,7 @@ impl UserspaceIoEventFd {
         log::info!("eventfd {:?} for ioregionfd", fd.as_raw_fd(),);
         let uioefd = UIoEFd {
             datamatch,
+            // TODO destructor for both io
             fd: try_with!(fd.try_clone(), "cannot clone uioefd"),
         };
         self.ioeventfds.push(uioefd);
@@ -377,13 +379,18 @@ impl UserspaceIoEventFd {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+/// Implements the KVM IoRegionFd feature. 
+#[derive(Debug)]
 pub struct IoRegionFd {
-    pub ioregion: kvm_ioregion,
+    tracee: Arc<RwLock<Tracee>>,
+    hv_mem: HvMem<kvm_ioregion>,
+    ioregion: kvm_ioregion,
     rfile: RawFd, // our end: we write responses here
     wfile: RawFd, // we read commands from here
-    rf_hv: RawFd, // their end: transferred to hyperisor
+    rf_hv: RawFd, // their end: will be transferred to hyperisor
     wf_hv: RawFd,
+    hv_rf_hv: RawFd, // rf_hv, but in hypervisor process
+    hv_wf_hv: RawFd, 
 }
 
 impl IoRegionFd {
@@ -431,12 +438,25 @@ impl IoRegionFd {
         }
 
         Ok(IoRegionFd {
+            tracee: hv.tracee.clone(),
+            hv_mem: mem,
             ioregion,
             rfile: rf_dev,
             wfile: wf_dev,
             rf_hv,
             wf_hv,
+            hv_rf_hv,
+            hv_wf_hv,
         })
+    }
+
+    pub fn fdclone(&mut self) -> RawIoRegionFd {
+        // for safety one could add a reference counter
+        RawIoRegionFd {
+            rfile: self.rfile,
+            wfile: self.wfile,
+            ioregion: self.ioregion,
+        }
     }
 
     pub fn capability_present(hv: &Hypervisor) -> Result<bool> {
@@ -446,7 +466,80 @@ impl IoRegionFd {
         );
         Ok(has_cap == 0)
     }
+}
 
+impl Drop for IoRegionFd {
+    fn drop(&mut self) {
+        warn!("IoRegionFd dropping...");
+        let tracee = match self.tracee.read() {
+            Err(e) => {
+                warn!("IoEventfd: Could not aquire lock: {}", e);
+                return;
+            }
+            Ok(t) => t,
+        };
+
+        let mut ioregion = self.ioregion;
+        ioregion.rfd = -1;
+        ioregion.wfd = -1;
+
+        if let Err(e) = self.hv_mem.write(&ioregion) {
+            warn!(
+                "IoRegionFd: Could not write to HvMem while dropping IoRegionFd: {}",
+                e
+            );
+            return;
+        }
+
+        match tracee.vm_ioctl_with_ref(ioctls::KVM_SET_IOREGION(), &self.hv_mem) {
+            Err(e) => warn!("IoRegionFd: kvm ioregionfd ioctl injection failed: {}", e),
+            Ok(ret) => if ret != 0 {
+                warn!("IoRegionFd: kvm ioregionfd remove syscall failed: {}", ret);
+            },
+        }
+
+        match tracee.close(self.hv_rf_hv) {
+            Err(e) => warn!("IoRegionFd: close injection failed: {}", e),
+            Ok(ret) => if ret != 0 {
+                warn!("IoRegionFd: failed to close hv_rf_hv in hypervisor: {}", ret)
+            },
+        }
+
+        // TODO match
+        if let Err(e) = tracee.close(self.hv_wf_hv) {
+            warn!("IoRegionFd: failed to close hv_wf_hv in hypervisor: {}", e)
+        }
+
+        if let Err(e) = close(self.rf_hv) {
+            warn!("IoRegionFd: failed to close rf_hv: {}", e)
+        }
+
+        if let Err(e) = close(self.wf_hv) {
+            warn!("IoRegionFd: failed to close wf_hv: {}", e)
+        }
+
+        if let Err(e) = close(self.rfile) {
+            warn!("IoRegionFd: failed to close rfile: {}", e)
+        }
+
+        if let Err(e) = close(self.wfile) {
+            warn!("IoRegionFd: failed to close wfile: {}", e)
+        }
+        warn!("IoRegionFd destroyed");
+    }
+}
+
+/// A handle representing clonable fds.
+/// TODO rename RawIoRegionFd
+#[derive(Debug, Clone, Copy)]
+pub struct RawIoRegionFd {
+    rfile: RawFd, // our end: we write responses here
+    wfile: RawFd, // we read commands from here
+
+    pub ioregion: kvm_ioregion,
+}
+
+impl RawIoRegionFd {
     /// receive read and write events/commands
     pub fn read(&self) -> Result<ioregionfd_cmd> {
         let len = size_of::<ioregionfd_cmd>();
@@ -505,8 +598,6 @@ impl IoRegionFd {
         Ok(())
     }
 }
-
-// TODO impl Drop for IoRegionFd
 
 impl Hypervisor {
     fn attach(pid: Pid, vm_fd: RawFd) -> Tracee {
