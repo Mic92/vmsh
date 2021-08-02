@@ -43,10 +43,14 @@ fn inspect(args: &ArgMatches) {
 }
 
 fn attach(args: &ArgMatches) {
+    let mut command = values_t!(args, "command", String).unwrap_or_else(|_| vec![]);
+    let stage2_path = value_t_or_exit!(args, "stage2-path", String);
+    command.insert(0, stage2_path);
+
     let opts = AttachOptions {
         pid: parse_pid_arg(args),
         ssh_args: value_t_or_exit!(args, "ssh-args", String),
-        command: values_t!(args, "command", String).unwrap_or_else(|_| vec![]),
+        command,
         backing: PathBuf::from(value_t!(args, "backing-file", String).unwrap_or_else(|e| e.exit())),
     };
 
@@ -102,6 +106,13 @@ fn main() {
                 .long("ssh-args")
                 .help("Arguments passed to ssh")
                 .takes_value(true),
+        )
+        .arg(
+            Arg::with_name("stage2-path")
+                .long("stage2-path")
+                .takes_value(true)
+                .default_value("/dev/.vmsh")
+                .help("Path where Stage2 is written to in the VM"),
         )
         .arg(command_args(2))
         .arg(

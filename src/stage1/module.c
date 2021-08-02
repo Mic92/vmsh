@@ -4,35 +4,22 @@
 
 #include "stage1.h"
 
-#define MAX_STAGE2_ARGS 254
-static int stage2_argc;
-static char *stage2_argv[MAX_STAGE2_ARGS];
+#define MAX_STAGE2_ARGS 256
+#define RESERVED_STAGE2_ARGS 2
 
-#define MAX_DEVICES 254
-static int devices_num;
-static char *devices[3];
 static char *phys_mem, *virt_mem;
 static char* printk_addr;
 static char* init_func;
 static char* exit_func;
+void (*cleanup_vmsh_stage1p)(void);
 
 // FIXME: Right now this is a kernel module in future, this should be replaced
 // something to be injectable into VMs.
 int init_module(void) {
-  unsigned long long devs[3];
-  size_t i;
   unsigned long mem = 0;
   void __iomem *baseptr;
   int (*printk_addr_func)(const char format, ...);
-  int (*init_vmsh_stage1p)(int devices_num, unsigned long long* devices, int stage2_argc, char** stage2_argv);
-
-  for (i = 0; i < devices_num; i++) {
-    if (kstrtoull(devices[i], 10, &devs[i])) {
-      printk(KERN_ERR "stage1: invalid mmio address: %s\n", devices[i]);
-      return -EINVAL;
-    }
-    printk(KERN_INFO "stage1: device address: 0x%llx\n", devs[i]);
-  }
+  int (*init_vmsh_stage1p)(void);
 
   if (phys_mem) {
     if (kstrtoul(phys_mem, 10, &mem)) {
@@ -67,27 +54,29 @@ int init_module(void) {
     printk(KERN_ERR "stage1: printk: 0x%lx vs 0x%lx!\n", (unsigned long) printk, (unsigned long) printk_addr_func);
   }
 
+  if (exit_func) {
+    if (kstrtoul(exit_func, 10, (unsigned long*)&cleanup_vmsh_stage1p)) {
+      printk(KERN_ERR "stage1: invalid exit_func: %s\n", virt_mem);
+    }
+  } else {
+    printk(KERN_ERR "stage1: no exit_func passed\n");
+    return -EINVAL;
+  }
+
   if (init_func) {
     if (kstrtoul(init_func, 10, (unsigned long*)&init_vmsh_stage1p)) {
       printk(KERN_ERR "stage1: invalid init_func: %s\n", virt_mem);
       return -EINVAL;
     }
-    return init_vmsh_stage1p(devices_num, devs, stage2_argc, stage2_argv);
+    return init_vmsh_stage1p();
   } else {
-    return init_vmsh_stage1(devices_num, devs, stage2_argc, stage2_argv);
+    printk(KERN_ERR "stage1: no init_func passed\n");
+    return -EINVAL;
   }
 }
 
 void cleanup_module(void) {
-  void (*cleanup_vmsh_stage1p)(void);
-  if (exit_func) {
-    if (kstrtoul(exit_func, 10, (unsigned long*)&cleanup_vmsh_stage1p)) {
-      printk(KERN_ERR "stage1: invalid exit_func: %s\n", virt_mem);
-    }
-    cleanup_vmsh_stage1p();
-  } else {
-    cleanup_vmsh_stage1();
-  }
+  cleanup_vmsh_stage1p();
 }
 
 // those parameter are used for testing
@@ -96,9 +85,6 @@ module_param(virt_mem, charp, 0);
 module_param(printk_addr, charp, 0);
 module_param(init_func, charp, 0);
 module_param(exit_func, charp, 0);
-
-module_param_array(devices, charp, &devices_num, 0);
-module_param_array(stage2_argv, charp, &stage2_argc, 0);
 
 MODULE_AUTHOR("joerg@thalheim.io");
 MODULE_DESCRIPTION("Mount block device and launch intial vmsh process");

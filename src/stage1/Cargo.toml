@@ -5,9 +5,22 @@ authors = ["Jörg Thalheim <joerg@thalheim.io>"]
 edition = "2018"
 license = "MIT"
 
+[lib]
+crate_type = ["cdylib"]
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [build-dependencies]
 build-utils = { path = "../build-utils" }
 
 [dependencies]
 chlorine = { version = "1.0.*", features = ["int_extras"] }
+
+[profile.dev]
+panic = "abort"
+lto = true
+opt-level = "z"
+
+[profile.release]
+panic = "abort"
+lto = true
+opt-level = "z"

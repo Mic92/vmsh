@@ -21,7 +21,7 @@ use crate::page_table::VirtMem;
 use crate::result::Result;
 
 const STAGE1_EXE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/stage1.ko"));
-const STAGE1_LIB: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/libstage1_freestanding.so"));
+const STAGE1_LIB: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/libstage1.so"));
 
 pub struct Stage1 {
     #[allow(unused)]
@@ -32,7 +32,11 @@ pub struct Stage1 {
 }
 
 impl Stage1 {
-    pub fn new(mut allocator: kvm::PhysMemAllocator) -> Result<Stage1> {
+    pub fn new(
+        mut allocator: kvm::PhysMemAllocator,
+        command: &[String],
+        mmio_ranges: Vec<u64>,
+    ) -> Result<Stage1> {
         let kernel = find_kernel(&allocator.guest_mem, &allocator.hv)?;
 
         let mut loader = try_with!(
@@ -43,7 +47,10 @@ impl Stage1 {
         let init_func = loader.init_func;
         let exit_func = loader.exit_func;
 
-        let virt_mem = try_with!(loader.load_binary(), "cannot load stage1");
+        let virt_mem = try_with!(
+            loader.load_binary(command, mmio_ranges),
+            "cannot load stage1"
+        );
 
         debug!(
             "load stage1 ({} kB) into vm at address {}",
@@ -62,12 +69,9 @@ impl Stage1 {
     pub fn spawn(
         &self,
         ssh_args: &str,
-        command: &[String],
-        mmio_ranges: Vec<u64>,
         result_sender: &SyncSender<()>,
     ) -> Result<InterrutableThread<Kmod, ()>> {
         let ssh_args = ssh_args.to_string();
-        let command = command.to_vec();
 
         let printk_addr = *require_with!(
             self.kernel.symbols.get("printk"),
@@ -82,15 +86,7 @@ impl Stage1 {
             result_sender,
             move |_ctx: &(), should_stop: Arc<AtomicBool>| {
                 // wait until vmsh can process block device requests
-                stage1_thread(
-                    ssh_args,
-                    &command,
-                    mmio_ranges,
-                    init_func,
-                    exit_func,
-                    printk_addr,
-                    should_stop,
-                )
+                stage1_thread(ssh_args, init_func, exit_func, printk_addr, should_stop)
             },
             (),
         );
@@ -154,8 +150,6 @@ impl Drop for Kmod {
 
 fn stage1_thread(
     ssh_args: String,
-    command: &[String],
-    mmio_addrs: Vec<u64>,
     init_func: usize,
     exit_func: usize,
     printk_addr: usize,
@@ -163,13 +157,6 @@ fn stage1_thread(
 ) -> Result<Kmod> {
     let debug_stage1 = if log_enabled!(Level::Debug) { "x" } else { "" };
     let stage1_size = padded_size(STAGE1_EXE.len());
-
-    let mmio_addrs = mmio_addrs
-        .iter()
-        .cloned()
-        .map(|a| a.to_string())
-        .collect::<Vec<_>>()
-        .join(",");
 
     let mut child = ssh_command(&ssh_args, move |cmd| -> &mut Command {
         let script = format!(
@@ -181,12 +168,10 @@ dd if=/proc/self/fd/0 of="$tmpdir/stage1.ko" count={} bs=512
 # cleanup old driver if still loaded
 rmmod stage1 2>/dev/null || true
 set -x
-insmod "$tmpdir/stage1.ko" devices="{}" stage2_argv="{}" printk_addr="{}" init_func="{}" exit_func="{}"
+insmod "$tmpdir/stage1.ko" printk_addr="{}" init_func="{}" exit_func="{}"
 "#,
             debug_stage1,
             stage1_size / 512,
-            mmio_addrs,
-            command.join(","),
             printk_addr,
             init_func,
             exit_func

@@ -7,7 +7,7 @@ rev := `nix eval --raw .#lib.nixpkgsRev`
 linux_dir := justfile_directory() + "/../linux"
 linux_repo := "https://github.com/Mic92/linux"
 nix_results := justfile_directory() + "/.git/nix-results/" + rev
-kernel_fhs := "$(nix build --out-link " + nix_results + "/kernel-fhs --json '.#kernel-fhs' | jq -r '.[] | .outputs | .out')/bin/linux-kernel-build"
+kernel_shell := "nix develop " + justfile_directory() + "#kernel-deps --command"
 
 virtio_blk_img := justfile_directory() + "/../linux/nixos.ext4"
 
@@ -78,12 +78,13 @@ clone-linux:
   fi
 
 # Configure linux kernel build
-configure-linux: #clone-linux
+configure-linux: clone-linux
   #!/usr/bin/env bash
   set -xeuo pipefail
   if [[ ! -f {{linux_dir}}/.config ]]; then
-    {{kernel_fhs}} "make -C {{linux_dir}} defconfig kvm_guest.config"
-    {{kernel_fhs}} "cd {{linux_dir}} && scripts/config \
+    cd {{linux_dir}}
+    {{kernel_shell}} make defconfig kvm_guest.config
+    {{kernel_shell}} scripts/config \
        --disable DRM \
        --disable USB \
        --disable WIRELESS \
@@ -116,8 +117,7 @@ configure-linux: #clone-linux
        --disable SQUASHFS_FILE_CACHE \
        --enable SQUASHFS_DECOMP_MULTI \
        --disable SQUASHFS_DECOMP_SINGLE \
-       --disable SQUASHFS_DECOMP_MULTI_PERCPU \
-    "
+       --disable SQUASHFS_DECOMP_MULTI_PERCPU
   fi
 
 # Sign drone ci configuration
@@ -128,11 +128,11 @@ sign-drone:
 
 # Linux kernel development shell
 build-linux-shell:
-  nix develop '.#kernel-fhs-shell'
+  nix develop '.#kernel-deps'
 
 # Build linux kernel
 build-linux: configure-linux
-  {{kernel_fhs}} "yes \n | make -C {{linux_dir}} -j$(nproc)"
+  yes \n | {{kernel_shell}} make -C {{linux_dir}} -j$(nproc)
 
 # Build kernel-less disk image for NixOS
 nixos-image:
