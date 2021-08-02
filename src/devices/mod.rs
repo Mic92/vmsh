@@ -24,7 +24,7 @@ use vm_memory::{GuestMemoryMmap, GuestRegionMmap};
 
 pub use self::threads::DeviceSet;
 
-pub const USE_IOREGIONFD: bool = true;
+pub const USE_IOREGIONFD: bool = false;
 
 pub type Block = block::Block<Arc<GuestMemoryMmap>>;
 pub type Console = console::Console<Arc<GuestMemoryMmap>>;

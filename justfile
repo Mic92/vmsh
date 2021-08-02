@@ -390,8 +390,7 @@ attach-qemu-ramdisk: mkramdisk
 
 attach-nested-qemu: vmsh-image
   cargo build
-  echo '/mnt/vmsh/target/debug/vmsh -l info,vmsh::devices::virtio::block::threads=trace,vmsh::kvm::hypervisor=info attach -f "/linux/vmsh-image.ext4" $(pgrep qemu) --ssh-args " -i /mnt/vmsh/nix/ssh_key -p 3333 root@localhost" -- /nix/var/nix/profiles/system/sw/bin/ls -la'
-  just ssh-qemu
+  just ssh-qemu '/mnt/vmsh/target/debug/vmsh -l info,vmsh::devices::virtio::block::threads=trace,vmsh::kvm::hypervisor=info attach -f "/linux/vmsh-image.ext4" $(pgrep qemu) --ssh-args " -i /mnt/vmsh/nix/ssh_key -p 3333 root@localhost" -- /nix/var/nix/profiles/system/sw/bin/ls -la'
 
 # Inspect first qemu vm found by pidof and owned by our own user
 inspect-qemu:
