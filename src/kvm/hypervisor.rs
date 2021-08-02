@@ -3,7 +3,10 @@ use crate::tracer::inject_syscall;
 use kvm_bindings as kvmb;
 use libc::{c_int, c_void};
 use log::*;
+use nix::poll::{ppoll, PollFd, PollFlags};
+use nix::sys::signal::SigSet;
 use nix::sys::socket::{socketpair, AddressFamily, SockFlag, SockType};
+use nix::sys::time::TimeSpec;
 use nix::unistd::Pid;
 use nix::unistd::{close, read, write};
 use simple_error::{bail, simple_error, try_with};
@@ -14,12 +17,9 @@ use std::mem::MaybeUninit;
 use std::os::unix::io::AsRawFd;
 use std::os::unix::prelude::RawFd;
 use std::sync::{Arc, Mutex, RwLock, RwLockWriteGuard};
+use std::time::Duration;
 use vm_memory::remote_mem;
 use vmm_sys_util::eventfd::{EventFd, EFD_NONBLOCK};
-use nix::poll::{ppoll, PollFd, PollFlags};
-use nix::sys::signal::SigSet;
-use nix::sys::time::TimeSpec;
-use std::time::Duration;
 
 use crate::cpu;
 use crate::devices::virtio::{register_ioeventfd, MmioConfig};
@@ -452,7 +452,6 @@ impl IoRegionFd {
     }
 
     pub fn fdclone(&mut self) -> RawIoRegionFd {
-        // for safety one could add a reference counter
         let pollfds = vec![PollFd::new(self.wfile, PollFlags::POLLIN)];
         RawIoRegionFd {
             rfile: self.rfile,
@@ -514,8 +513,16 @@ impl Drop for IoRegionFd {
             }
         }
 
-        if let Err(e) = tracee.close(self.hv_wf_hv) {
-            warn!("IoRegionFd: failed to close hv_wf_hv in hypervisor: {}", e)
+        match tracee.close(self.hv_wf_hv) {
+            Err(e) => warn!("IoRegionFd: close injection failed: {}", e),
+            Ok(ret) => {
+                if ret != 0 {
+                    warn!(
+                        "IoRegionFd: failed to close hv_wf_hv in hypervisor: {}",
+                        ret
+                    )
+                }
+            }
         }
 
         if let Err(e) = close(self.rf_hv) {

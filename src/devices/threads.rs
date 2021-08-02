@@ -296,9 +296,9 @@ fn ioregion_event_loop(
     let mut ioregionfd = {
         let mut device = try_with!(device.lock(), "cannot lock device");
         let ioregion = device.get_ioregionfd();
-        let ioregion = ioregion.as_mut().ok_or_else(|| simple_error!(
-            "cannot start ioregion event loop when ioregion does not exist"
-        ))?;
+        let ioregion = ioregion.as_mut().ok_or_else(|| {
+            simple_error!("cannot start ioregion event loop when ioregion does not exist")
+        })?;
         ioregion.fdclone()
     };
 
