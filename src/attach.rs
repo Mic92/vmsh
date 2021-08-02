@@ -1,6 +1,6 @@
 use log::{error, info};
 use nix::unistd::Pid;
-use simple_error::try_with;
+use simple_error::{require_with, try_with};
 use std::path::PathBuf;
 use std::sync::mpsc::sync_channel;
 use std::sync::Arc;
@@ -47,16 +47,25 @@ pub fn attach(opts: &AttachOptions) -> Result<()> {
     }
 
     let addrs = devices.mmio_addrs()?;
-    let stage1 = try_with!(
+    let mut stage1 = try_with!(
         Stage1::new(allocator, &opts.command, addrs),
         "failed to initialize stage1"
     );
+    let driver_status = require_with!(stage1.driver_status.take(), "no driver status set");
     let stage1_thread = try_with!(
-        stage1.spawn(opts.ssh_args.as_str(), &sender),
+        stage1.spawn(
+            opts.ssh_args.as_str(),
+            Arc::clone(&vm),
+            driver_status,
+            &sender
+        ),
         "failed to spawn stage1"
     );
-
-    let threads = try_with!(devices.start(&vm, &sender), "failed to start devices");
+    let device_status = require_with!(stage1.device_status.take(), "device status is not set");
+    let threads = try_with!(
+        devices.start(&vm, device_status, &sender),
+        "failed to start devices"
+    );
 
     info!("blkdev queue ready.");
     drop(sender);

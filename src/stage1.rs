@@ -1,3 +1,4 @@
+use libc::{c_char, c_ulonglong, c_void};
 use log::{debug, warn};
 use log::{info, log_enabled, Level};
 use nix::sys::signal::{kill, SIGTERM};
@@ -16,6 +17,7 @@ use std::time::Duration;
 use crate::interrutable_thread::InterrutableThread;
 use crate::kernel::{find_kernel, Kernel};
 use crate::kvm;
+use crate::kvm::hypervisor::{process_read, process_write, Hypervisor};
 use crate::loader::Loader;
 use crate::page_table::VirtMem;
 use crate::result::Result;
@@ -26,9 +28,60 @@ const STAGE1_LIB: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/libstage1.so
 pub struct Stage1 {
     #[allow(unused)]
     virt_mem: VirtMem,
+    pub device_status: Option<DeviceStatus>,
+    pub driver_status: Option<DriverStatus>,
     kernel: Kernel,
     init_func: usize,
     exit_func: usize,
+}
+// keep in sync with src/stage1/src/lib.rs
+/// Maximal number of virtio mmio devices to register
+const MAX_DEVICES: usize = 3;
+/// Maximal number of arguments to pass to stage2
+const MAX_ARGV: usize = 256;
+
+#[derive(PartialEq, Copy, Clone, Debug)]
+#[repr(C)]
+pub enum DeviceState {
+    Undefined = 0,
+    Initializing = 1,
+    Ready = 2,
+    Error = 3,
+}
+
+pub struct DeviceStatus {
+    pub host_addr: usize,
+}
+
+impl DeviceStatus {
+    pub fn update(&self, hv: &Hypervisor, state: DeviceState) -> Result<()> {
+        try_with!(
+            process_write(hv.pid, self.host_addr as *mut c_void, &state),
+            "failed to write state field to hypervisor memory"
+        );
+        Ok(())
+    }
+}
+
+pub struct DriverStatus {
+    pub host_addr: usize,
+}
+
+impl DriverStatus {
+    pub fn check(&self, hv: &Hypervisor) -> Result<DeviceState> {
+        process_read(hv.pid, self.host_addr as *mut c_void)
+    }
+}
+
+#[repr(C)]
+pub struct Stage1Args {
+    /// physical mmio addresses
+    pub device_addrs: [c_ulonglong; MAX_DEVICES],
+    /// null terminated array
+    /// the first argument is always STAGE2_PATH, the actual arguments come after
+    pub argv: [*mut c_char; MAX_ARGV],
+    pub device_status: DeviceState,
+    pub driver_status: DeviceState,
 }
 
 impl Stage1 {
@@ -47,7 +100,7 @@ impl Stage1 {
         let init_func = loader.init_func;
         let exit_func = loader.exit_func;
 
-        let virt_mem = try_with!(
+        let (virt_mem, device_status, driver_status) = try_with!(
             loader.load_binary(command, mmio_ranges),
             "cannot load stage1"
         );
@@ -60,6 +113,8 @@ impl Stage1 {
 
         Ok(Stage1 {
             virt_mem,
+            device_status: Some(device_status),
+            driver_status: Some(driver_status),
             kernel,
             init_func,
             exit_func,
@@ -69,6 +124,8 @@ impl Stage1 {
     pub fn spawn(
         &self,
         ssh_args: &str,
+        hv: Arc<Hypervisor>,
+        driver_status: DriverStatus,
         result_sender: &SyncSender<()>,
     ) -> Result<InterrutableThread<Kmod, ()>> {
         let ssh_args = ssh_args.to_string();
@@ -86,7 +143,15 @@ impl Stage1 {
             result_sender,
             move |_ctx: &(), should_stop: Arc<AtomicBool>| {
                 // wait until vmsh can process block device requests
-                stage1_thread(ssh_args, init_func, exit_func, printk_addr, should_stop)
+                stage1_thread(
+                    ssh_args,
+                    init_func,
+                    exit_func,
+                    printk_addr,
+                    driver_status,
+                    &hv,
+                    should_stop,
+                )
             },
             (),
         );
@@ -153,6 +218,8 @@ fn stage1_thread(
     init_func: usize,
     exit_func: usize,
     printk_addr: usize,
+    driver_status: DriverStatus,
+    hv: &Hypervisor,
     should_stop: Arc<AtomicBool>,
 ) -> Result<Kmod> {
     let debug_stage1 = if log_enabled!(Level::Debug) { "x" } else { "" };
@@ -220,8 +287,31 @@ insmod "$tmpdir/stage1.ko" printk_addr="{}" init_func="{}" exit_func="{}"
         };
     }
 
+    let kmod = Kmod { ssh_args };
+
+    let mut initialized = false;
+    loop {
+        match try_with!(driver_status.check(hv), "cannot check driver state") {
+            DeviceState::Initializing => {
+                if !initialized {
+                    info!("stage1 driver initializing...");
+                }
+                initialized = true;
+            }
+            DeviceState::Undefined => {}
+            DeviceState::Error => {
+                bail!("guest driver failed with error");
+            }
+            DeviceState::Ready => break,
+        };
+        if should_stop.load(Ordering::Relaxed) {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+
     info!("stage1 driver started");
-    Ok(Kmod { ssh_args })
+    Ok(kmod)
 }
 
 //#[cfg(test)]

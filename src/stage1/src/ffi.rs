@@ -127,4 +127,5 @@ extern "C" {
     ) -> *mut task_struct;
 
     pub fn wake_up_process(p: *mut task_struct);
+    pub fn usleep_range(min: c_ulong, max: c_ulong);
 }
