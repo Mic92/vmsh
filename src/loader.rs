@@ -5,7 +5,6 @@ use std::ptr;
 use elfloader::{
     ElfBinary, ElfLoader, ElfLoaderErr, Entry, Flags, LoadableHeaders, Rela, TypeRela64, VAddr, P64,
 };
-use libc::{c_char, c_ulonglong};
 use log::{debug, error, info, warn};
 use nix::sys::mman::ProtFlags;
 use nix::sys::uio::{process_vm_writev, IoVec, RemoteIoVec};
@@ -20,6 +19,7 @@ use crate::kvm::PhysMemAllocator;
 use crate::page_math::{page_align, page_start};
 use crate::page_table::VirtMem;
 use crate::result::Result;
+use crate::stage1::{DeviceState, DeviceStatus, DriverStatus, Stage1Args};
 use crate::try_core_res;
 
 pub struct Loader<'a> {
@@ -50,20 +50,6 @@ pub struct Loader<'a> {
     pub init_func: usize,
     /// virtual address of the `cleanup_vmsh_stage1` function
     pub exit_func: usize,
-}
-
-// keep in sync with src/stage1/src/lib.rs
-/// Maximal number of virtio mmio devices to register
-const MAX_DEVICES: usize = 3;
-/// Maximal number of arguments to pass to stage2
-const MAX_ARGV: usize = 256;
-#[repr(C)]
-struct Stage1Args {
-    /// physical mmio addresses
-    device_addrs: [c_ulonglong; MAX_DEVICES],
-    /// null terminated array
-    /// the first argument is always STAGE2_PATH, the actual arguments come after
-    argv: [*mut c_char; MAX_ARGV],
 }
 
 fn find_loadable(loadables: &mut [Loadable], addr: usize) -> Option<&mut Loadable> {
@@ -157,7 +143,11 @@ impl<'a> Loader<'a> {
         self.kernel.range.end
     }
 
-    fn write_stage1_args(&mut self, command: &[String], mmio_ranges: Vec<u64>) -> Result<()> {
+    fn write_stage1_args(
+        &mut self,
+        command: &[String],
+        mmio_ranges: Vec<u64>,
+    ) -> Result<(DeviceStatus, DriverStatus)> {
         let string_mapping = self
             .virt_mem
             .as_ref()
@@ -193,12 +183,8 @@ impl<'a> Loader<'a> {
             find_loadable(&mut self.loadables, addr),
             "could not find elf loadable for vmsh_stage1_args"
         );
-        info!(
-            "patch stage1 argv at {:#x}",
-            addr + size_of::<c_ulonglong>() * MAX_DEVICES
-        );
         let start = addr - (loadable.mapping.virt_start + loadable.virt_offset);
-        let range = start..size_of::<Stage1Args>();
+        let range = start..(start + size_of::<Stage1Args>());
         if range.end > loadable.content.len() {
             if range.end > loadable.mapping.len {
                 bail!(
@@ -213,22 +199,43 @@ impl<'a> Loader<'a> {
 
         stage1_args.argv[0..argv.len()].clone_from_slice(argv.as_slice());
         stage1_args.device_addrs[0..mmio_ranges.len()].clone_from_slice(&mmio_ranges);
-        Ok(())
+        stage1_args.device_status = DeviceState::Initializing;
+
+        let stage1_args_addr = stage1_args as *const Stage1Args as usize;
+
+        let dev_offset =
+            &stage1_args.device_status as *const DeviceState as usize - stage1_args_addr;
+        let drv_offset =
+            &stage1_args.driver_status as *const DeviceState as usize - stage1_args_addr;
+        let host_offset =
+            addr - loadable.mapping.virt_start + loadable.mapping.phys_start.host_addr();
+        Ok((
+            DeviceStatus {
+                host_addr: host_offset + dev_offset,
+            },
+            DriverStatus {
+                host_addr: host_offset + drv_offset,
+            },
+        ))
     }
 
-    pub fn load_binary(&mut self, command: &[String], mmio_ranges: Vec<u64>) -> Result<VirtMem> {
+    pub fn load_binary(
+        &mut self,
+        command: &[String],
+        mmio_ranges: Vec<u64>,
+    ) -> Result<(VirtMem, DeviceStatus, DriverStatus)> {
         let binary = try_core_res!(ElfBinary::new(self.binary), "cannot parse elf binary");
 
         self.string_arg_size = page_align(command.iter().map(|c| c.len() + 1).sum());
         try_core_res!(binary.load(self), "cannot load elf binary");
 
-        try_with!(
+        let (device_status, driver_status) = try_with!(
             self.write_stage1_args(command, mmio_ranges),
             "failed to write stage1 arguments"
         );
 
         try_with!(self.upload_binary(), "failed to upload binary to vm");
-        Ok(self.virt_mem.take().unwrap())
+        Ok((self.virt_mem.take().unwrap(), device_status, driver_status))
     }
 }
 

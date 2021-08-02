@@ -584,7 +584,7 @@ impl Hypervisor {
             let _ = self_wrapper.replace(wrapper);
         }
 
-        try_with!(f(&self.wrapper), "closure on KvmRunWrapper failed");
+        let res = f(&self.wrapper);
 
         // take wrapper out of self.wrapper
         let wrapper: KvmRunWrapper;
@@ -606,6 +606,7 @@ impl Hypervisor {
                 try_with!(tracee.attach_to(injector), &err);
             }
         }
+        try_with!(res, "closure on KvmRunWrapper failed");
 
         Ok(())
     }

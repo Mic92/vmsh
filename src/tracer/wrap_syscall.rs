@@ -308,15 +308,20 @@ impl KvmRunWrapper {
         Ok(())
     }
 
-    // TODO Err if third qemu thread terminates?
-    pub fn wait_for_ioctl(&mut self) -> Result<Option<MmioRw>> {
-        self.check_owner()?;
+    pub fn stop_on_syscall(&mut self) -> Result<()> {
         for thread in &mut self.threads {
             if !thread.is_running {
                 try_with!(thread.ptthread.syscall(), "ptrace.thread.syscall() failed");
                 thread.is_running = true;
             }
         }
+        Ok(())
+    }
+
+    // TODO Err if third qemu thread terminates?
+    pub fn wait_for_ioctl(&mut self) -> Result<Option<MmioRw>> {
+        self.check_owner()?;
+        self.stop_on_syscall()?;
         let status = try_with!(self.waitpid(), "cannot waitpid");
         let mmio = try_with!(self.process_status(status), "cannot process status");
 

@@ -1,6 +1,9 @@
 use crate::devices::mmio::IoPirate;
+use crate::stage1::DeviceState;
+use crate::stage1::DeviceStatus;
 use event_manager::EventManager;
 use event_manager::MutEventSubscriber;
+use log::error;
 use log::{debug, info, log_enabled, trace, Level};
 use simple_error::{bail, require_with, simple_error, try_with};
 use std::path::Path;
@@ -30,34 +33,62 @@ pub type SubscriberEventManager = EventManager<Arc<Mutex<dyn MutEventSubscriber 
 struct DeviceReady {
     // supress warning because of https://github.com/rust-lang/rust-clippy/issues/1516
     #[allow(clippy::mutex_atomic)]
-    lock: Mutex<bool>,
+    lock: Mutex<DeviceState>,
     condvar: Condvar,
+    device_status: DeviceStatus,
+    hv: Arc<Hypervisor>,
 }
 
 // supress warning because of https://github.com/rust-lang/rust-clippy/issues/1516
 #[allow(clippy::mutex_atomic)]
 impl DeviceReady {
     /// Creates a new DeviceReady structure
-    fn new() -> Self {
+    fn new(device_status: DeviceStatus, hv: Arc<Hypervisor>) -> Self {
         DeviceReady {
-            lock: Mutex::new(false),
+            lock: Mutex::new(DeviceState::Initializing),
             condvar: Condvar::new(),
+            device_status,
+            hv,
         }
     }
-    fn notify(&self) -> Result<()> {
-        let mut started = try_with!(self.lock.lock(), "failed to lock");
-        *started = true;
+
+    fn notify(&self, state: DeviceState) -> Result<()> {
+        let mut state_guard = try_with!(self.lock.lock(), "failed to lock");
+        info!("notify vm");
+        if *state_guard == DeviceState::Initializing {
+            *state_guard = state;
+            try_with!(
+                self.device_status.update(&self.hv, state),
+                "failed to notify stage1 in VM"
+            );
+        }
         self.condvar.notify_all();
         Ok(())
     }
 
     /// Blocks until block device is ready
     fn wait(&self) -> Result<()> {
-        let mut started = try_with!(self.lock.lock(), "failed to lock");
-        while !*started {
-            started = try_with!(self.condvar.wait(started), "failed to wait for condvar");
+        let mut state = try_with!(self.lock.lock(), "failed to lock");
+        while *state == DeviceState::Initializing {
+            state = try_with!(self.condvar.wait(state), "failed to wait for condvar");
         }
         Ok(())
+    }
+}
+
+impl Drop for DeviceReady {
+    fn drop(&mut self) {
+        match self.lock.lock() {
+            Ok(started) if *started == DeviceState::Initializing => {
+                if let Err(e) = self.device_status.update(&self.hv, DeviceState::Error) {
+                    error!("failed to update device status: {}", e);
+                }
+            }
+            Ok(_) => {}
+            Err(e) => {
+                error!("cannot update device status: failed to take lock: {}", e);
+            }
+        }
     }
 }
 
@@ -168,7 +199,16 @@ fn handle_mmio_exits(
     device_ready: &Arc<DeviceReady>,
 ) -> Result<()> {
     let mut mmio_mgr = try_with!(ctx.mmio_mgr.lock(), "cannot lock mmio manager");
-    device_ready.notify()?;
+    {
+        let mut wrapper_go = try_with!(wrapper_mo.lock(), "cannot obtain wrapper mutex");
+        let wrapper_g = require_with!(wrapper_go.as_mut(), "KvmRunWrapper not initialized");
+        try_with!(
+            wrapper_g.stop_on_syscall(),
+            "failed to wait for vmm exit_mmio"
+        );
+    };
+    info!("device ready!");
+    device_ready.notify(DeviceState::Ready)?;
 
     loop {
         let mut kvm_exit;
@@ -216,6 +256,8 @@ fn mmio_exit_handler_thread(
         move |dev: &Option<DeviceContext>, should_stop: Arc<AtomicBool>| {
             let dev = dev.as_ref().unwrap();
             if let Err(e) = vm.finish_thread_transfer() {
+                // don't shadow error here
+                let _ = device_ready.notify(DeviceState::Error);
                 bail!("failed transfer ptrace to mmio exit handler: {}", e);
             };
 
@@ -223,12 +265,13 @@ fn mmio_exit_handler_thread(
 
             let res = vm.kvmrun_wrapped(|wrapper_mo: &Mutex<Option<KvmRunWrapper>>| {
                 // Signal that our blockdevice driver is ready now
-                handle_mmio_exits(wrapper_mo, &should_stop, dev, &device_ready)?;
-
-                Ok(())
+                let res = handle_mmio_exits(wrapper_mo, &should_stop, dev, &device_ready);
+                if res.is_err() {
+                    // don't shadow error here
+                    let _ = device_ready.notify(DeviceState::Error);
+                }
+                res
             });
-
-            // drop remote resources like ioeventfd before disowning traced process.
 
             // we need to return ptrace control before returning to the main thread
             vm.prepare_thread_transfer()?;
@@ -247,7 +290,6 @@ pub struct DeviceSet {
 
 fn ioregion_event_loop(
     should_stop: &Arc<AtomicBool>,
-    device_ready: &Arc<DeviceReady>,
     mmio_mgr: Arc<Mutex<IoPirate>>,
     device: Arc<Mutex<dyn MaybeIoRegionFd + Send>>,
 ) -> Result<()> {
@@ -258,7 +300,6 @@ fn ioregion_event_loop(
             "cannot start ioregion event loop when ioregion does not exist"
         ))?
     };
-    device_ready.notify()?;
 
     loop {
         let cmd = try_with!(
@@ -286,18 +327,15 @@ fn ioregion_handler_thread(
     device: Arc<Mutex<dyn MaybeIoRegionFd + Send>>,
     mmio_mgr: Arc<Mutex<IoPirate>>,
     err_sender: &SyncSender<()>,
-    device_ready: &Arc<DeviceReady>,
 ) -> Result<InterrutableThread<(), Option<DeviceContext>>> {
-    let device_ready = device_ready.clone();
-
     let res = InterrutableThread::spawn(
         "ioregion-handler",
         err_sender,
         move |_ctx: &Option<DeviceContext>, should_stop: Arc<AtomicBool>| {
             info!("ioregion mmio handler started");
             try_with!(
-                ioregion_event_loop(&should_stop, &device_ready, mmio_mgr, device),
-                "foo"
+                ioregion_event_loop(&should_stop, mmio_mgr, device),
+                "ioregion_event_loop failed"
             );
 
             // TODO drop remote resources like ioeventfd before disowning traced process?
@@ -336,9 +374,10 @@ impl DeviceSet {
     pub fn start(
         self,
         vm: &Arc<Hypervisor>,
+        device_status: DeviceStatus,
         err_sender: &SyncSender<()>,
     ) -> Result<Vec<InterrutableThread<(), Option<DeviceContext>>>> {
-        let device_ready = Arc::new(DeviceReady::new());
+        let device_ready = Arc::new(DeviceReady::new(device_status, Arc::clone(vm)));
         let mut threads = vec![event_thread(self.event_manager, &self.context, err_sender)?];
 
         if log_enabled!(Level::Debug) {
@@ -347,22 +386,22 @@ impl DeviceSet {
 
         if devices::USE_IOREGIONFD {
             vm.resume()?;
+            // Device was ready already before that but this way,
+            // we only only indicate readiness just before we create our io threads.
+            try_with!(
+                device_ready.notify(DeviceState::Ready),
+                "cannot update device status"
+            );
             threads.push(try_with!(
                 ioregion_handler_thread(
                     self.context.blkdev,
                     self.context.mmio_mgr.clone(),
                     err_sender,
-                    &device_ready,
                 ),
                 "cannot spawn block ioregion handler"
             ));
             threads.push(try_with!(
-                ioregion_handler_thread(
-                    self.context.console,
-                    self.context.mmio_mgr,
-                    err_sender,
-                    &device_ready,
-                ),
+                ioregion_handler_thread(self.context.console, self.context.mmio_mgr, err_sender,),
                 "cannot spawn console ioregion handler"
             ));
         } else {

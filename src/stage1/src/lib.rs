@@ -25,6 +25,16 @@ const MAX_DEVICES: usize = 3;
 static mut DEVICES: [Option<PlatformDevice>; MAX_DEVICES] = [None, None, None];
 
 const MAX_ARGV: usize = 256;
+
+#[derive(PartialEq, Copy, Clone)]
+#[repr(C)]
+enum DeviceState {
+    Undefined = 0,
+    Initializing = 1,
+    Ready = 2,
+    Error = 3,
+}
+
 #[repr(C)]
 struct Stage1Args {
     /// physical mmio addresses
@@ -32,12 +42,16 @@ struct Stage1Args {
     /// null terminated array
     /// the first argument is always stage2_path, the actual arguments come after
     argv: [*mut c_char; MAX_ARGV],
+    device_status: DeviceState,
+    driver_status: DeviceState,
 }
 
 #[no_mangle]
 static mut VMSH_STAGE1_ARGS: Stage1Args = Stage1Args {
     device_addrs: [0; MAX_DEVICES],
     argv: [ptr::null_mut(); MAX_ARGV],
+    device_status: DeviceState::Undefined,
+    driver_status: DeviceState::Undefined,
 };
 
 /// This function is called on panic.
@@ -191,14 +205,7 @@ impl Drop for KFile {
     }
 }
 
-unsafe extern "C" fn spawn_stage2(_arg: *mut c_void) -> c_int {
-    //for (i, a) in VMSH_STAGE1_ARGS.argv.iter().enumerate() {
-    //    if *a == ptr::null_mut() {
-    //        break;
-    //    }
-    //    printkln!("stage1: argv[%d] = %s", i, *a)
-    //}
-
+unsafe fn run_stage2() -> c_int {
     for (i, addr) in VMSH_STAGE1_ARGS.device_addrs.iter().enumerate() {
         if *addr == 0 {
             continue;
@@ -268,6 +275,40 @@ unsafe extern "C" fn spawn_stage2(_arg: *mut c_void) -> c_int {
     if res != 0 {
         printkln!("stage1: failed to spawn stage2: %d", res);
     }
+    res
+}
+
+unsafe extern "C" fn spawn_stage2(_arg: *mut c_void) -> c_int {
+    //for (i, a) in VMSH_STAGE1_ARGS.argv.iter().enumerate() {
+    //    if *a == ptr::null_mut() {
+    //        break;
+    //    }
+    //    printkln!("stage1: argv[%d] = %s", i, *a)
+    //}
+    if VMSH_STAGE1_ARGS.device_status == DeviceState::Undefined {
+        printkln!("stage1: device is in undefined state, stopping...");
+        return 0;
+    }
+    while VMSH_STAGE1_ARGS.device_status == DeviceState::Initializing {
+        printkln!(
+            "current value: %d, %llx",
+            VMSH_STAGE1_ARGS.device_status,
+            &VMSH_STAGE1_ARGS.device_status
+        );
+        ffi::usleep_range(100, 1000);
+    }
+    VMSH_STAGE1_ARGS.driver_status = DeviceState::Initializing;
+    if VMSH_STAGE1_ARGS.device_status == DeviceState::Error {
+        printkln!("stage1: device error detected, stopping...");
+        return 0;
+    }
+    printkln!("stage1: initializing drivers");
+    let res = run_stage2();
+    VMSH_STAGE1_ARGS.driver_status = if res == 0 {
+        DeviceState::Ready
+    } else {
+        DeviceState::Error
+    };
     res
 }
 
