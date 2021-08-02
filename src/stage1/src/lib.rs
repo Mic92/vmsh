@@ -24,15 +24,13 @@ const STAGE2_EXE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/stage2"));
 const MAX_DEVICES: usize = 3;
 static mut DEVICES: [Option<PlatformDevice>; MAX_DEVICES] = [None, None, None];
 
-static STAGE2_PATH: &str = c_str!("/dev/.vmsh");
-
 const MAX_ARGV: usize = 256;
 #[repr(C)]
 struct Stage1Args {
     /// physical mmio addresses
     device_addrs: [c_ulonglong; MAX_DEVICES],
     /// null terminated array
-    /// the first argument is always STAGE2_PATH, the actual arguments come after
+    /// the first argument is always stage2_path, the actual arguments come after
     argv: [*mut c_char; MAX_ARGV],
 }
 
@@ -147,8 +145,12 @@ struct KFile {
 }
 
 impl KFile {
-    fn open(name: &str, flags: c_int, mode: ffi::umode_t) -> core::result::Result<KFile, c_int> {
-        let file = unsafe { ffi::filp_open(name.as_ptr() as *const c_char, flags, mode) };
+    fn open(
+        name: *const c_char,
+        flags: c_int,
+        mode: ffi::umode_t,
+    ) -> core::result::Result<KFile, c_int> {
+        let file = unsafe { ffi::filp_open(name, flags, mode) };
         if is_err_value(file) {
             return Err(err_value(file) as c_int);
         }
@@ -190,6 +192,13 @@ impl Drop for KFile {
 }
 
 unsafe extern "C" fn spawn_stage2(_arg: *mut c_void) -> c_int {
+    //for (i, a) in VMSH_STAGE1_ARGS.argv.iter().enumerate() {
+    //    if *a == ptr::null_mut() {
+    //        break;
+    //    }
+    //    printkln!("stage1: argv[%d] = %s", i, *a)
+    //}
+
     for (i, addr) in VMSH_STAGE1_ARGS.device_addrs.iter().enumerate() {
         if *addr == 0 {
             continue;
@@ -218,10 +227,14 @@ unsafe extern "C" fn spawn_stage2(_arg: *mut c_void) -> c_int {
 
     // we never delete this file, however deleting files is complex and requires accessing
     // internal structs that might change.
-    let mut file = match KFile::open(STAGE2_PATH, ffi::O_WRONLY | ffi::O_CREAT, 0o755) {
+    let mut file = match KFile::open(
+        VMSH_STAGE1_ARGS.argv[0],
+        ffi::O_WRONLY | ffi::O_CREAT,
+        0o755,
+    ) {
         Ok(f) => f,
         Err(e) => {
-            printkln!("stage1: cannot open /dev/.vmsh: %d", e);
+            printkln!("stage1: cannot open %s: %d", VMSH_STAGE1_ARGS.argv[0], e);
             return e;
         }
     };
@@ -247,7 +260,7 @@ unsafe extern "C" fn spawn_stage2(_arg: *mut c_void) -> c_int {
     let mut envp: [*mut c_char; 1] = [ptr::null_mut()];
 
     let res = ffi::call_usermodehelper(
-        STAGE2_PATH.as_ptr() as *mut c_char,
+        VMSH_STAGE1_ARGS.argv[0],
         VMSH_STAGE1_ARGS.argv.as_mut_ptr(),
         envp.as_mut_ptr(),
         ffi::UMH_WAIT_EXEC,
@@ -258,22 +271,20 @@ unsafe extern "C" fn spawn_stage2(_arg: *mut c_void) -> c_int {
     res
 }
 
-/// # Safety
-///
-/// this code is not thread-safe as it uses static globals
 #[no_mangle]
-unsafe fn init_vmsh_stage1() -> c_int {
+fn init_vmsh_stage1() -> c_int {
     printkln!("stage1: init");
-    VMSH_STAGE1_ARGS.argv[0] = STAGE2_PATH.as_ptr() as *mut c_char;
 
     // We cannot close a file synchronusly outside of a kthread
     // Within a kthread we can use `flush_delayed_fput`
-    let thread = ffi::kthread_create_on_node(
-        spawn_stage2,
-        ptr::null_mut(),
-        0,
-        c_str!("vmsh-stage1").as_ptr() as *const c_char,
-    );
+    let thread = unsafe {
+        ffi::kthread_create_on_node(
+            spawn_stage2,
+            ptr::null_mut(),
+            0,
+            c_str!("vmsh-stage1").as_ptr() as *const c_char,
+        )
+    };
     if is_err_value(thread) {
         printkln!(
             "stage1: failed to spawn kernel thread: %d",
@@ -281,7 +292,7 @@ unsafe fn init_vmsh_stage1() -> c_int {
         );
         return err_value(thread) as c_int;
     }
-    ffi::wake_up_process(thread);
+    unsafe { ffi::wake_up_process(thread) };
 
     0
 }

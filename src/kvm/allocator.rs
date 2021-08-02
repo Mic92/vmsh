@@ -105,6 +105,12 @@ pub struct VirtAlloc {
     pub prot: ProtFlags,
 }
 
+impl VirtAlloc {
+    pub fn virt_end(&self) -> usize {
+        self.virt_start + self.len
+    }
+}
+
 impl PhysMemAllocator {
     pub fn new(hv: Arc<Hypervisor>) -> Result<Self> {
         let next_allocation = get_first_allocation(&hv)?;

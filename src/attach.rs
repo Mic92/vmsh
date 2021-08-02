@@ -46,10 +46,13 @@ pub fn attach(opts: &AttachOptions) -> Result<()> {
         return Ok(());
     }
 
-    let stage1 = try_with!(Stage1::new(allocator), "failed to initialize stage1");
     let addrs = devices.mmio_addrs()?;
+    let stage1 = try_with!(
+        Stage1::new(allocator, &opts.command, addrs),
+        "failed to initialize stage1"
+    );
     let stage1_thread = try_with!(
-        stage1.spawn(opts.ssh_args.as_str(), &opts.command, addrs, &sender),
+        stage1.spawn(opts.ssh_args.as_str(), &sender),
         "failed to spawn stage1"
     );
 

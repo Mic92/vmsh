@@ -1,17 +1,20 @@
-use std::mem::size_of_val;
+use std::collections::HashMap;
+use std::mem::{size_of, size_of_val};
+use std::ptr;
 
 use elfloader::{
     ElfBinary, ElfLoader, ElfLoaderErr, Entry, Flags, LoadableHeaders, Rela, TypeRela64, VAddr, P64,
 };
-use log::{debug, error, warn};
+use libc::{c_char, c_ulonglong};
+use log::{debug, error, info, warn};
 use nix::sys::mman::ProtFlags;
 use nix::sys::uio::{process_vm_writev, IoVec, RemoteIoVec};
-use simple_error::{bail, try_with};
-use xmas_elf::sections::SectionData;
-use xmas_elf::symbol_table::{Binding, DynEntry64, Type};
+use simple_error::{bail, require_with, try_with};
+use xmas_elf::sections::{SectionData, SHN_UNDEF};
+use xmas_elf::symbol_table::{Binding, DynEntry64};
 
 use crate::guest_mem::MappedMemory;
-use crate::kernel::Kernel;
+use crate::kernel::{Kernel, LINUX_KERNEL_KASLR_RANGE};
 use crate::kvm::allocator::VirtAlloc;
 use crate::kvm::PhysMemAllocator;
 use crate::page_math::{page_align, page_start};
@@ -20,53 +23,53 @@ use crate::result::Result;
 use crate::try_core_res;
 
 pub struct Loader<'a> {
+    /// the linux kernel we link our code against
     kernel: &'a Kernel,
+    /// the virtual memory our binary is baked by
     virt_mem: Option<VirtMem>,
+    /// To page align elf section we need to pad space before and after each section
+    /// These are offsets where within an allocation where the actual section starts
     load_offsets: Vec<usize>,
     allocator: &'a mut PhysMemAllocator,
+    /// elf section of type PT_LOAD
     loadables: Vec<Loadable>,
+    /// the whole elf file
     binary: &'a [u8],
+    /// exported symbols from the elf binary above
+    lib_syms: HashMap<&'a str, usize>,
+    /// parsed elf header of the binary
     elf: ElfBinary<'a>,
+    /// reference to dynamic symbol table section of the elf binary
     dyn_syms: &'a [DynEntry64],
+    /// virtual address to `VMSH_STAGE1_ARGS` struct, used to write stage1 arguments
+    vmsh_stage1_args: usize,
+    /// How much space we need to reserve for strings for stage1_args.
+    /// Needs to be page aligned
+    string_arg_size: usize,
+    /// virtual address of the `vmsh_stage1_init` function
     pub init_func: usize,
+    /// virtual address of the `cleanup_vmsh_stage1` function
     pub exit_func: usize,
 }
 
-fn find_entry_and_exit_function(
-    elf: &ElfBinary,
-    dyn_syms: &[DynEntry64],
-) -> Result<(usize, usize)> {
-    let mut init_func = None;
-    let mut exit_func = None;
-    for sym in dyn_syms {
-        let typ = try_core_res!(sym.get_type(), "cannot get function type");
-        if typ != Type::Func {
-            continue;
-        }
-        let name = try_core_res!(sym.get_name(&elf.file), "cannot get name of function");
-        let value = sym.value();
-        match name {
-            "init_vmsh_stage1" => {
-                init_func = Some(value);
-            }
-            "cleanup_vmsh_stage1" => {
-                exit_func = Some(value);
-            }
-            _ => continue,
-        }
-        if init_func.is_some() && exit_func.is_some() {
-            break;
-        }
-    }
-    if let Some(init_func) = init_func {
-        if let Some(exit_func) = exit_func {
-            Ok((init_func as usize, exit_func as usize))
-        } else {
-            bail!("no cleanup_vmsh_stage1 symbol found")
-        }
-    } else {
-        bail!("no init_vmsh_stage1 symbol found")
-    }
+// keep in sync with src/stage1/src/lib.rs
+/// Maximal number of virtio mmio devices to register
+const MAX_DEVICES: usize = 3;
+/// Maximal number of arguments to pass to stage2
+const MAX_ARGV: usize = 256;
+#[repr(C)]
+struct Stage1Args {
+    /// physical mmio addresses
+    device_addrs: [c_ulonglong; MAX_DEVICES],
+    /// null terminated array
+    /// the first argument is always STAGE2_PATH, the actual arguments come after
+    argv: [*mut c_char; MAX_ARGV],
+}
+
+fn find_loadable(loadables: &mut [Loadable], addr: usize) -> Option<&mut Loadable> {
+    loadables
+        .iter_mut()
+        .find(|loadable| loadable.mapping.contains(addr))
 }
 
 impl<'a> Loader<'a> {
@@ -86,12 +89,17 @@ impl<'a> Loader<'a> {
             ),
         };
 
-        let (init_func, exit_func) = try_with!(
-            find_entry_and_exit_function(&elf, dyn_syms),
-            "cannot load stage1 entry point functions"
-        );
-
         let vbase = kernel.range.end;
+
+        let syms = dyn_syms
+            .iter()
+            .filter(|sym| sym.shndx() != SHN_UNDEF)
+            .map(|sym| {
+                let name = try_core_res!(sym.get_name(&elf.file), "cannot get name of function");
+                sym.get_binding().unwrap();
+                Ok((name, vbase + sym.value() as usize))
+            })
+            .collect::<Result<HashMap<_, _>>>()?;
 
         Ok(Loader {
             kernel,
@@ -102,8 +110,20 @@ impl<'a> Loader<'a> {
             binary,
             elf,
             dyn_syms,
-            init_func: vbase + init_func,
-            exit_func: vbase + exit_func,
+            init_func: *require_with!(
+                syms.get("init_vmsh_stage1"),
+                "no init_vmsh_stage1 symbol found"
+            ),
+            exit_func: *require_with!(
+                syms.get("cleanup_vmsh_stage1"),
+                "no cleanup_vmsh_stage1 symbol found"
+            ),
+            vmsh_stage1_args: *require_with!(
+                syms.get("VMSH_STAGE1_ARGS"),
+                "no cleanup_vmsh_stage1 symbol found"
+            ),
+            lib_syms: syms,
+            string_arg_size: 0,
         })
     }
 
@@ -137,9 +157,75 @@ impl<'a> Loader<'a> {
         self.kernel.range.end
     }
 
-    pub fn load_binary(&mut self) -> Result<VirtMem> {
+    fn write_stage1_args(&mut self, command: &[String], mmio_ranges: Vec<u64>) -> Result<()> {
+        let string_mapping = self
+            .virt_mem
+            .as_ref()
+            .unwrap()
+            .mappings
+            .last()
+            .unwrap()
+            .clone();
+
+        let mut strings: Vec<u8> = Vec::with_capacity(self.string_arg_size);
+
+        let mut argv = command
+            .iter()
+            .map(|arg| {
+                let ptr = strings.len() + string_mapping.virt_start;
+                strings.extend_from_slice(arg.as_bytes());
+                // make string null-terminated
+                strings.push(b'\0');
+                ptr as *mut libc::c_char
+            })
+            .collect::<Vec<_>>();
+
+        self.loadables.push(Loadable {
+            content: strings,
+            mapping: string_mapping,
+            virt_offset: 0,
+        });
+        // make argv null-terminated
+        argv.push(ptr::null_mut());
+
+        let addr = self.vmsh_stage1_args;
+        let loadable = require_with!(
+            find_loadable(&mut self.loadables, addr),
+            "could not find elf loadable for vmsh_stage1_args"
+        );
+        info!(
+            "patch stage1 argv at {:#x}",
+            addr + size_of::<c_ulonglong>() * MAX_DEVICES
+        );
+        let start = addr - (loadable.mapping.virt_start + loadable.virt_offset);
+        let range = start..size_of::<Stage1Args>();
+        if range.end > loadable.content.len() {
+            if range.end > loadable.mapping.len {
+                bail!(
+                    "stage1 args exceeds section by {:#x} bytes",
+                    loadable.mapping.len - range.end
+                );
+            }
+            loadable.content.resize(range.end, 0);
+        }
+        let stage1_args = loadable.content[range].as_mut_ptr() as *mut Stage1Args;
+        let stage1_args = unsafe { &mut (*stage1_args) };
+
+        stage1_args.argv[0..argv.len()].clone_from_slice(argv.as_slice());
+        stage1_args.device_addrs[0..mmio_ranges.len()].clone_from_slice(&mmio_ranges);
+        Ok(())
+    }
+
+    pub fn load_binary(&mut self, command: &[String], mmio_ranges: Vec<u64>) -> Result<VirtMem> {
         let binary = try_core_res!(ElfBinary::new(self.binary), "cannot parse elf binary");
+
+        self.string_arg_size = page_align(command.iter().map(|c| c.len() + 1).sum());
         try_core_res!(binary.load(self), "cannot load elf binary");
+
+        try_with!(
+            self.write_stage1_args(command, mmio_ranges),
+            "failed to write stage1 arguments"
+        );
 
         try_with!(self.upload_binary(), "failed to upload binary to vm");
         Ok(self.virt_mem.take().unwrap())
@@ -179,7 +265,7 @@ macro_rules! require_elf {
 impl<'a> ElfLoader for Loader<'a> {
     fn allocate(&mut self, headers: LoadableHeaders) -> ElfResult {
         let allocs = headers.map(|h| {
-            debug!(
+            info!(
                 "allocate base = {:#x} size = {:#x} flags = {}",
                 h.virtual_addr(),
                 h.mem_size(),
@@ -204,9 +290,44 @@ impl<'a> ElfLoader for Loader<'a> {
         });
         let mut allocs = allocs.collect::<Vec<_>>();
         allocs.sort_by_key(|k| k.virt_start);
-        //allocs.iter().for_each(|a| {
-        //    info!("{:#x}-{:#x}", a.virt_start, a.virt_start + a.len);
-        //});
+        let last_addr = allocs.last().unwrap().virt_end();
+
+        // put strings for stage1 args before elf binary
+        let last = VirtAlloc {
+            virt_start: last_addr,
+            virt_offset: 0,
+            len: self.string_arg_size,
+            prot: ProtFlags::PROT_READ | ProtFlags::PROT_WRITE,
+        };
+        if !LINUX_KERNEL_KASLR_RANGE.contains(&(last.virt_start + last.len)) {
+            error!("virtual memory allocation ({:#x}-{:#x}) does not fit into kernel aslr range ({:#x}-{:#x}).",
+                  last.virt_start, last.virt_start + last.len,
+                  LINUX_KERNEL_KASLR_RANGE.start, LINUX_KERNEL_KASLR_RANGE.end
+            );
+            allocs.iter().for_each(|a| {
+                error!(
+                    "{:#x}-{:#x} ({:?})",
+                    a.virt_start,
+                    a.virt_start + a.len,
+                    a.prot
+                );
+            });
+            return Err(ElfLoaderErr::ElfParser {
+                source: "virtual memory allocation does not fit into kernel aslr range",
+            });
+        }
+        allocs.push(last);
+
+        allocs.iter().for_each(|a| {
+            if a.virt_start > self.vbase() {
+                error!(
+                    "{:#x}-{:#x} ({:?})",
+                    a.virt_start - self.vbase(),
+                    a.virt_start + a.len - self.vbase(),
+                    a.prot
+                );
+            }
+        });
 
         if allocs.is_empty() {
             return Err(ElfLoaderErr::ElfParser {
@@ -225,7 +346,7 @@ impl<'a> ElfLoader for Loader<'a> {
     fn load(&mut self, flags: Flags, base: VAddr, region: &[u8]) -> ElfResult {
         let start = self.vbase() + base as usize;
         let end = self.vbase() + base as usize + region.len() as usize;
-        debug!(
+        info!(
             "load region into = {:#x} -- {:#x} ({:?})",
             start, end, flags
         );
@@ -258,12 +379,9 @@ impl<'a> ElfLoader for Loader<'a> {
         let typ = TypeRela64::from(entry.get_type());
         let addr = self.vbase() + entry.get_offset() as usize;
         let syms = &self.kernel.symbols;
+        let lib_syms = &self.lib_syms;
         let vbase = self.vbase();
-        let loadable = self
-            .loadables
-            .iter_mut()
-            .find(|loadable| loadable.mapping.contains(addr));
-        let loadable = require_elf!(loadable, {
+        let loadable = require_elf!(find_loadable(&mut self.loadables, addr), {
             error!(
                 "no loadable found for relocation address: {:#x} ({:#x})",
                 addr,
@@ -294,8 +412,8 @@ impl<'a> ElfLoader for Loader<'a> {
 
                 let sym_name = sym.get_name(&self.elf.file)?;
                 debug!("R_GLOB_DAT *{:#x} = @ {}", addr, sym_name);
-
-                let symbol = require_elf!(syms.get(sym_name), {
+                let res = syms.get(sym_name).or_else(|| lib_syms.get(sym_name));
+                let symbol = require_elf!(res, {
                     error!("binary requires unknown symbol: {}", sym_name);
                     "cannot find symbol"
                 });
