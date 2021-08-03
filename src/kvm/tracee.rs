@@ -250,6 +250,17 @@ impl Tracee {
         Ok(sregs)
     }
 
+    /// Set general-purpose pointer registers of VCPU
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    pub fn set_regs(&self, vcpu: &VCPU, regs: &HvMem<kvmb::kvm_regs>) -> Result<()> {
+        use crate::kvm::ioctls::KVM_SET_REGS;
+        try_with!(
+            self.vcpu_ioctl(vcpu, KVM_SET_REGS(), regs.ptr as c_ulong),
+            "vcpu_ioctl failed"
+        );
+        Ok(())
+    }
+
     /// Get general-purpose pointer registers of VCPU
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     pub fn get_regs(&self, vcpu: &VCPU, regs: &HvMem<kvmb::kvm_regs>) -> Result<cpu::Regs> {

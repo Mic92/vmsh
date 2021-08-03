@@ -209,7 +209,7 @@ ioctl_iow_nr!(KVM_IOEVENTFD, KVMIO, 0x79, kvmb::kvm_ioeventfd);
 // Available with KVM_CAP_IRQFD
 ioctl_iow_nr!(KVM_IRQFD, KVMIO, 0x76, kvmb::kvm_irqfd);
 
-// Avaulable with KVM_CAP_USER_MEMORY
+// Available with KVM_CAP_USER_MEMORY
 ioctl_iow_nr!(
     KVM_SET_USER_MEMORY_REGION,
     KVMIO,
@@ -234,6 +234,8 @@ ioctl_io_nr!(KVM_RUN, KVMIO, 0x80);
 // Ioctls for VCPU fds.
 #[cfg(not(any(target_arch = "arm", target_arch = "aarch64")))]
 ioctl_ior_nr!(KVM_GET_REGS, KVMIO, 0x81, kvmb::kvm_regs);
+#[cfg(not(any(target_arch = "arm", target_arch = "aarch64")))]
+ioctl_iow_nr!(KVM_SET_REGS, KVMIO, 0x82, kvmb::kvm_regs);
 #[cfg(any(
     target_arch = "x86",
     target_arch = "x86_64",

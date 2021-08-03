@@ -14,7 +14,6 @@ use crate::{kvm, signal_handler};
 
 pub struct AttachOptions {
     pub pid: Pid,
-    pub ssh_args: String,
     pub command: Vec<String>,
     pub backing: PathBuf,
 }
@@ -54,17 +53,12 @@ pub fn attach(opts: &AttachOptions) -> Result<()> {
     );
     let driver_status = require_with!(stage1.driver_status.take(), "no driver status set");
     let stage1_thread = try_with!(
-        stage1.spawn(
-            opts.ssh_args.as_str(),
-            Arc::clone(&vm),
-            driver_status,
-            &sender
-        ),
+        stage1.spawn(Arc::clone(&vm), driver_status.clone(), &sender),
         "failed to spawn stage1"
     );
     let device_status = require_with!(stage1.device_status.take(), "device status is not set");
-    let threads = try_with!(
-        devices.start(&vm, device_status, &sender),
+    let (threads, driver_notifier) = try_with!(
+        devices.start(&vm, device_status, driver_status, &sender),
         "failed to start devices"
     );
 
@@ -77,6 +71,9 @@ pub fn attach(opts: &AttachOptions) -> Result<()> {
     if let Err(e) = stage1_thread.join() {
         error!("{}", e);
     };
+    if let Err(e) = driver_notifier.terminate() {
+        error!("failed to stop device: {}", e);
+    }
     threads.iter().for_each(|t| t.shutdown());
     let contexts = threads
         .into_iter()

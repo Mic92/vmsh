@@ -49,7 +49,6 @@ fn attach(args: &ArgMatches) {
 
     let opts = AttachOptions {
         pid: parse_pid_arg(args),
-        ssh_args: value_t_or_exit!(args, "ssh-args", String),
         command,
         backing: PathBuf::from(value_t!(args, "backing-file", String).unwrap_or_else(|e| e.exit())),
     };
@@ -101,12 +100,6 @@ fn main() {
         .version(crate_version!())
         .author(crate_authors!("\n"))
         .arg(pid_arg(1))
-        .arg(
-            Arg::with_name("ssh-args")
-                .long("ssh-args")
-                .help("Arguments passed to ssh")
-                .takes_value(true),
-        )
         .arg(
             Arg::with_name("stage2-path")
                 .long("stage2-path")

@@ -78,6 +78,13 @@ mod arch {
         pub gs: u64,
     }
 
+    impl Regs {
+        /// true if current cpu privilege level is userspace
+        pub fn is_userspace(&self) -> bool {
+            self.cs & 3 == 3
+        }
+    }
+
     // from arch/x86/include/asm/fpu/types.h
     #[repr(C)]
     #[derive(Clone, Copy, Debug)]

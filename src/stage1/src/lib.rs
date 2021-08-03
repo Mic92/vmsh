@@ -7,8 +7,9 @@ mod printk;
 use core::include_bytes;
 use core::panic::PanicInfo;
 use core::ptr;
+use stage1_interface::{DeviceState, Stage1Args, MAX_ARGV, MAX_DEVICES};
 
-use chlorine::{c_char, c_int, c_long, c_ulonglong, c_void, size_t};
+use chlorine::{c_char, c_int, c_long, c_void, size_t};
 use ffi::loff_t;
 
 // used by our driver
@@ -18,33 +19,6 @@ const MMIO_IRQ: usize = 5;
 const MMIO_DEVICE_ID: i32 = 1863406883;
 
 const STAGE2_EXE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/stage2"));
-
-/// Holds the device we create by this code, so we can unregister it later
-
-const MAX_DEVICES: usize = 3;
-static mut DEVICES: [Option<PlatformDevice>; MAX_DEVICES] = [None, None, None];
-
-const MAX_ARGV: usize = 256;
-
-#[derive(PartialEq, Copy, Clone)]
-#[repr(C)]
-enum DeviceState {
-    Undefined = 0,
-    Initializing = 1,
-    Ready = 2,
-    Error = 3,
-}
-
-#[repr(C)]
-struct Stage1Args {
-    /// physical mmio addresses
-    device_addrs: [c_ulonglong; MAX_DEVICES],
-    /// null terminated array
-    /// the first argument is always stage2_path, the actual arguments come after
-    argv: [*mut c_char; MAX_ARGV],
-    device_status: DeviceState,
-    driver_status: DeviceState,
-}
 
 #[no_mangle]
 static mut VMSH_STAGE1_ARGS: Stage1Args = Stage1Args {
@@ -205,7 +179,10 @@ impl Drop for KFile {
     }
 }
 
-unsafe fn run_stage2() -> c_int {
+// cannot put this onto the stack without stackoverflows?
+static mut DEVICES: [Option<PlatformDevice>; MAX_DEVICES] = [None, None, None];
+
+unsafe fn run_stage2() -> Result<(), ()> {
     for (i, addr) in VMSH_STAGE1_ARGS.device_addrs.iter().enumerate() {
         if *addr == 0 {
             continue;
@@ -222,12 +199,12 @@ unsafe fn run_stage2() -> c_int {
                     *elem = Some(v);
                 } else {
                     printkln!("stage1: out-of-bound write to devs");
-                    return -ffi::EFAULT;
+                    return Err(());
                 }
             }
             Err(res) => {
                 printkln!("stage1: failed to register block mmio device: %d", res);
-                return res;
+                return Err(());
             }
         };
     }
@@ -242,23 +219,24 @@ unsafe fn run_stage2() -> c_int {
         Ok(f) => f,
         Err(e) => {
             printkln!("stage1: cannot open %s: %d", VMSH_STAGE1_ARGS.argv[0], e);
-            return e;
+            return Err(());
         }
     };
     match file.write_all(STAGE2_EXE, 0) {
         Ok(n) => {
             if n != STAGE2_EXE.len() {
                 printkln!(
-                    "/dev/.vmsh: incomplete write (%zu != %zu)",
+                    "%s: incomplete write (%zu != %zu)",
+                    VMSH_STAGE1_ARGS.argv[0],
                     n,
                     STAGE2_EXE.len()
                 );
-                return -ffi::EIO;
+                return Err(());
             }
         }
         Err(res) => {
-            printkln!("stage1: cannot write /dev/.vmsh: %d", res);
-            return res;
+            printkln!("stage1: cannot write %s: %d", VMSH_STAGE1_ARGS.argv[0], res);
+            return Err(());
         }
     }
     drop(file);
@@ -275,7 +253,8 @@ unsafe fn run_stage2() -> c_int {
     if res != 0 {
         printkln!("stage1: failed to spawn stage2: %d", res);
     }
-    res
+
+    Ok(())
 }
 
 unsafe extern "C" fn spawn_stage2(_arg: *mut c_void) -> c_int {
@@ -304,12 +283,26 @@ unsafe extern "C" fn spawn_stage2(_arg: *mut c_void) -> c_int {
     }
     printkln!("stage1: initializing drivers");
     let res = run_stage2();
-    VMSH_STAGE1_ARGS.driver_status = if res == 0 {
-        DeviceState::Ready
+    printkln!("stage1: ready");
+    if res.is_ok() {
+        VMSH_STAGE1_ARGS.driver_status = DeviceState::Ready;
     } else {
-        DeviceState::Error
+        DEVICES.iter_mut().for_each(|d| {
+            d.take();
+        });
+        VMSH_STAGE1_ARGS.driver_status = DeviceState::Error;
+        return 0;
     };
-    res
+
+    while VMSH_STAGE1_ARGS.device_status == DeviceState::Ready {
+        ffi::usleep_range(300, 1000);
+    }
+
+    DEVICES.iter_mut().for_each(|d| {
+        d.take();
+    });
+    VMSH_STAGE1_ARGS.driver_status = DeviceState::Terminating;
+    0
 }
 
 #[no_mangle]
@@ -336,15 +329,4 @@ fn init_vmsh_stage1() -> c_int {
     unsafe { ffi::wake_up_process(thread) };
 
     0
-}
-
-/// # Safety
-///
-/// this code is not thread-safe as it uses static globals
-#[no_mangle]
-pub unsafe fn cleanup_vmsh_stage1() {
-    printkln!("stage1: cleanup");
-    DEVICES.iter_mut().for_each(|d| {
-        d.take();
-    });
 }

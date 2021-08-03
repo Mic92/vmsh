@@ -14,6 +14,7 @@ build-utils = { path = "../build-utils" }
 
 [dependencies]
 chlorine = { version = "1.0.*", features = ["int_extras"] }
+stage1-interface = { path = "../stage1-interface" }
 
 [profile.dev]
 panic = "abort"

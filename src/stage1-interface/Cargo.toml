@@ -1,0 +1,9 @@
+[package]
+name = "stage1-interface"
+version = "0.1.0"
+authors = ["Jörg Thalheim <joerg@thalheim.io>"]
+edition = "2018"
+license = "MIT"
+
+[dependencies]
+chlorine = { version = "1.0.*", features = ["int_extras"] }

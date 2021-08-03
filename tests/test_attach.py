@@ -1,7 +1,6 @@
 import conftest
 
 import os
-from root import PROJECT_ROOT
 
 
 def test_attach(helpers: conftest.Helpers) -> None:
@@ -9,16 +8,12 @@ def test_attach(helpers: conftest.Helpers) -> None:
         helpers.notos_image()
     ) as vm:
         vm.wait_for_ssh()
-        ssh_key = PROJECT_ROOT.joinpath("nix", "ssh_key")
-        ssh_args = f" -i {ssh_key} -p {vm.ssh_port} root@127.0.0.1"
         vmsh = helpers.spawn_vmsh_command(
             [
                 "attach",
                 "--backing-file",
                 str(img),
                 str(vm.pid),
-                "--ssh-args",
-                ssh_args,
                 "--",
                 "/bin/sh",
                 "-c",

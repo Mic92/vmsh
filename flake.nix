@@ -106,11 +106,6 @@
 
           shellHook = ''
             pre-commit install
-            # XXX sometimes disappear -> direnv-nix bug?
-            export KERNELDIR=$(pwd)/../linux;
-          '' + pkgs.lib.optionalString (false) ''
-            # when debugging not-os kernel
-            export KERNELDIR=${not-os-image.kerneldir};
           '';
           # interesting when supporting aarch64
           #CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER =
