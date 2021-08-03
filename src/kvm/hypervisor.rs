@@ -561,7 +561,7 @@ impl RawIoRegionFd {
         let t_slice = unsafe { std::slice::from_raw_parts_mut(t_mem.as_mut_ptr() as *mut u8, len) };
 
         // read
-        let timeout = TimeSpec::from(Duration::from_millis(100));
+        let timeout = TimeSpec::from(Duration::from_millis(300));
         let nr_events = try_with!(
             ppoll(&mut self.pollfds, Some(timeout), SigSet::empty()),
             "read/ppoll failed"
