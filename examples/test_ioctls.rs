@@ -230,11 +230,16 @@ fn ioregionfd(pid: Pid) -> Result<()> {
     }
     println!("caps good");
 
-    let ioregionfd = vm.ioregionfd(0xd0000000, 32)?;
+    let mut ioregionfd = vm.ioregionfd(0xd0000000, 32)?;
+    let mut rawiorefd = ioregionfd.fdclone();
     vm.resume()?;
 
-    for _ in 0..100 {
-        let cmd = try_with!(ioregionfd.read(), "foo");
+    for _ in 0..10000 {
+        let cmd = match try_with!(rawiorefd.read(), "foo") {
+            Some(cmd) => cmd,
+            None => continue,
+        };
+
         println!(
             "{:?}, {:?}, response={}: {:?}",
             cmd.info.cmd(),
@@ -243,8 +248,8 @@ fn ioregionfd(pid: Pid) -> Result<()> {
             cmd
         );
         match cmd.info.cmd() {
-            Cmd::Read => ioregionfd.write(0xFF)?,
-            Cmd::Write => ioregionfd.write(0)?,
+            Cmd::Read => rawiorefd.write(0xFF)?,
+            Cmd::Write => rawiorefd.write(0)?,
         };
     }
 

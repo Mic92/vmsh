@@ -219,8 +219,8 @@ where
 }
 
 impl<M: GuestAddressSpace + Clone + Send + 'static> MaybeIoRegionFd for Block<M> {
-    fn get_ioregionfd(&self) -> &Option<IoRegionFd> {
-        &self.ioregionfd
+    fn get_ioregionfd(&mut self) -> &mut Option<IoRegionFd> {
+        &mut self.ioregionfd
     }
 }
 

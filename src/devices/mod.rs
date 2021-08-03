@@ -65,7 +65,7 @@ fn convert(pid: pid_t, mappings: &[Mapping]) -> Result<GuestMemoryMmap> {
 }
 
 trait MaybeIoRegionFd {
-    fn get_ioregionfd(&self) -> &Option<IoRegionFd>;
+    fn get_ioregionfd(&mut self) -> &mut Option<IoRegionFd>;
 }
 
 pub struct DeviceContext {
