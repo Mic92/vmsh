@@ -206,6 +206,8 @@ impl Drop for KFile {
 }
 
 unsafe fn run_stage2() -> c_int {
+    let mut devices: [Option<PlatformDevice>; MAX_DEVICES] = [None, None, None];
+
     for (i, addr) in VMSH_STAGE1_ARGS.device_addrs.iter().enumerate() {
         if *addr == 0 {
             continue;
@@ -218,7 +220,7 @@ unsafe fn run_stage2() -> c_int {
             MMIO_IRQ,
         ) {
             Ok(v) => {
-                if let Some(elem) = DEVICES.get_mut(i) {
+                if let Some(elem) = devices.get_mut(i) {
                     *elem = Some(v);
                 } else {
                     printkln!("stage1: out-of-bound write to devs");
@@ -275,6 +277,7 @@ unsafe fn run_stage2() -> c_int {
     if res != 0 {
         printkln!("stage1: failed to spawn stage2: %d", res);
     }
+    DEVICES = devices;
     res
 }
 
