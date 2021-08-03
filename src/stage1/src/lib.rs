@@ -251,7 +251,8 @@ unsafe fn run_stage2() -> c_int {
         Ok(n) => {
             if n != STAGE2_EXE.len() {
                 printkln!(
-                    "/dev/.vmsh: incomplete write (%zu != %zu)",
+                    "%s: incomplete write (%zu != %zu)",
+                    VMSH_STAGE1_ARGS.argv[0],
                     n,
                     STAGE2_EXE.len()
                 );
@@ -259,7 +260,7 @@ unsafe fn run_stage2() -> c_int {
             }
         }
         Err(res) => {
-            printkln!("stage1: cannot write /dev/.vmsh: %d", res);
+            printkln!("stage1: cannot write %s: %d", VMSH_STAGE1_ARGS.argv[0], res);
             return res;
         }
     }
