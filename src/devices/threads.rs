@@ -1,11 +1,12 @@
 use crate::devices::mmio::IoPirate;
-use crate::stage1::DeviceState;
 use crate::stage1::DeviceStatus;
+use crate::stage1::DriverStatus;
 use event_manager::EventManager;
 use event_manager::MutEventSubscriber;
 use log::error;
 use log::{debug, info, log_enabled, trace, Level};
 use simple_error::{bail, require_with, simple_error, try_with};
+use stage1_interface::DeviceState;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::SyncSender;
@@ -30,31 +31,32 @@ const EVENT_LOOP_TIMEOUT_MS: i32 = 1;
 pub type SubscriberEventManager = EventManager<Arc<Mutex<dyn MutEventSubscriber + Send>>>;
 
 /// data structure to wait for block device to become ready
-struct DeviceReady {
+pub struct DriverNotifier {
     // supress warning because of https://github.com/rust-lang/rust-clippy/issues/1516
     #[allow(clippy::mutex_atomic)]
     lock: Mutex<DeviceState>,
     condvar: Condvar,
     device_status: DeviceStatus,
+    driver_status: DriverStatus,
     hv: Arc<Hypervisor>,
 }
 
 // supress warning because of https://github.com/rust-lang/rust-clippy/issues/1516
 #[allow(clippy::mutex_atomic)]
-impl DeviceReady {
-    /// Creates a new DeviceReady structure
-    fn new(device_status: DeviceStatus, hv: Arc<Hypervisor>) -> Self {
-        DeviceReady {
+impl DriverNotifier {
+    /// Creates a new DriverNotifier structure
+    fn new(device_status: DeviceStatus, driver_status: DriverStatus, hv: Arc<Hypervisor>) -> Self {
+        DriverNotifier {
             lock: Mutex::new(DeviceState::Initializing),
             condvar: Condvar::new(),
             device_status,
+            driver_status,
             hv,
         }
     }
 
     fn notify(&self, state: DeviceState) -> Result<()> {
         let mut state_guard = try_with!(self.lock.lock(), "failed to lock");
-        info!("notify vm");
         if *state_guard == DeviceState::Initializing {
             *state_guard = state;
             try_with!(
@@ -63,6 +65,35 @@ impl DeviceReady {
             );
         }
         self.condvar.notify_all();
+        Ok(())
+    }
+
+    pub fn terminate(&self) -> Result<()> {
+        let mut state_guard = try_with!(self.lock.lock(), "failed to lock");
+        if *state_guard == DeviceState::Initializing {
+            bail!("cannot terminate unitialized device");
+        }
+
+        *state_guard = DeviceState::Terminating;
+        try_with!(
+            self.device_status
+                .update(&self.hv, DeviceState::Terminating),
+            "failed to notify stage1 in VM about termination"
+        );
+
+        loop {
+            match try_with!(
+                self.driver_status.check(&self.hv),
+                "cannot check device state"
+            ) {
+                DeviceState::Ready => {}
+                DeviceState::Terminating => break,
+                s => {
+                    bail!("unexpected driver state: {:?}", s);
+                }
+            }
+        }
+
         Ok(())
     }
 
@@ -76,7 +107,7 @@ impl DeviceReady {
     }
 }
 
-impl Drop for DeviceReady {
+impl Drop for DriverNotifier {
     fn drop(&mut self) {
         match self.lock.lock() {
             Ok(started) if *started == DeviceState::Initializing => {
@@ -196,7 +227,7 @@ fn handle_mmio_exits(
     wrapper_mo: &Mutex<Option<KvmRunWrapper>>,
     should_stop: &Arc<AtomicBool>,
     ctx: &DeviceContext,
-    device_ready: &Arc<DeviceReady>,
+    driver_notifier: &Arc<DriverNotifier>,
 ) -> Result<()> {
     let mut mmio_mgr = try_with!(ctx.mmio_mgr.lock(), "cannot lock mmio manager");
     {
@@ -208,7 +239,7 @@ fn handle_mmio_exits(
         );
     };
     info!("device ready!");
-    device_ready.notify(DeviceState::Ready)?;
+    driver_notifier.notify(DeviceState::Ready)?;
 
     loop {
         let mut kvm_exit;
@@ -244,9 +275,9 @@ fn mmio_exit_handler_thread(
     vm: &Arc<Hypervisor>,
     device: Arc<DeviceContext>,
     err_sender: &SyncSender<()>,
-    device_ready: &Arc<DeviceReady>,
+    driver_notifier: &Arc<DriverNotifier>,
 ) -> Result<InterrutableThread<(), Option<Arc<DeviceContext>>>> {
-    let device_ready = Arc::clone(device_ready);
+    let driver_notifier = Arc::clone(driver_notifier);
     let vm = Arc::clone(vm);
     vm.prepare_thread_transfer()?;
 
@@ -257,7 +288,7 @@ fn mmio_exit_handler_thread(
             let dev = dev.as_ref().unwrap();
             if let Err(e) = vm.finish_thread_transfer() {
                 // don't shadow error here
-                let _ = device_ready.notify(DeviceState::Error);
+                let _ = driver_notifier.notify(DeviceState::Error);
                 bail!("failed transfer ptrace to mmio exit handler: {}", e);
             };
 
@@ -265,10 +296,10 @@ fn mmio_exit_handler_thread(
 
             let res = vm.kvmrun_wrapped(|wrapper_mo: &Mutex<Option<KvmRunWrapper>>| {
                 // Signal that our blockdevice driver is ready now
-                let res = handle_mmio_exits(wrapper_mo, &should_stop, dev, &device_ready);
+                let res = handle_mmio_exits(wrapper_mo, &should_stop, dev, &driver_notifier);
                 if res.is_err() {
                     // don't shadow error here
-                    let _ = device_ready.notify(DeviceState::Error);
+                    let _ = driver_notifier.notify(DeviceState::Error);
                 }
                 res
             });
@@ -348,6 +379,7 @@ fn ioregion_handler_thread(
 
     Ok(try_with!(res, "cannot spawn mmio exit handler thread"))
 }
+pub type Threads = Vec<InterrutableThread<(), Option<Arc<DeviceContext>>>>;
 
 impl DeviceSet {
     pub fn mmio_addrs(&self) -> Result<Vec<u64>> {
@@ -376,9 +408,14 @@ impl DeviceSet {
         self,
         vm: &Arc<Hypervisor>,
         device_status: DeviceStatus,
+        driver_status: DriverStatus,
         err_sender: &SyncSender<()>,
-    ) -> Result<Vec<InterrutableThread<(), Option<Arc<DeviceContext>>>>> {
-        let device_ready = Arc::new(DeviceReady::new(device_status, Arc::clone(vm)));
+    ) -> Result<(Threads, Arc<DriverNotifier>)> {
+        let driver_notifier = Arc::new(DriverNotifier::new(
+            device_status,
+            driver_status,
+            Arc::clone(vm),
+        ));
         let mut threads = vec![event_thread(self.event_manager, &self.context, err_sender)?];
 
         if log_enabled!(Level::Debug) {
@@ -390,7 +427,7 @@ impl DeviceSet {
             // Device was ready already before that but this way,
             // we only only indicate readiness just before we create our io threads.
             try_with!(
-                device_ready.notify(DeviceState::Ready),
+                driver_notifier.notify(DeviceState::Ready),
                 "cannot update device status"
             );
             threads.push(try_with!(
@@ -416,11 +453,11 @@ impl DeviceSet {
                 vm,
                 self.context,
                 err_sender,
-                &device_ready,
+                &driver_notifier,
             )?);
         }
 
-        device_ready.wait()?;
-        Ok(threads)
+        driver_notifier.wait()?;
+        Ok((threads, driver_notifier))
     }
 }

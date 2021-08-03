@@ -984,6 +984,37 @@ impl Hypervisor {
     }
 
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    pub fn set_regs(&self, vcpu: &VCPU, regs: &cpu::Regs) -> Result<()> {
+        let mem = self.alloc_mem()?;
+        let regs = kvmb::kvm_regs {
+            rax: regs.rax,
+            rbx: regs.rbx,
+            rcx: regs.rcx,
+            rdx: regs.rdx,
+            rsi: regs.rsi,
+            rdi: regs.rdi,
+            rsp: regs.rsp,
+            rbp: regs.rbp,
+            r8: regs.r8,
+            r9: regs.r9,
+            r10: regs.r10,
+            r11: regs.r11,
+            r12: regs.r12,
+            r13: regs.r13,
+            r14: regs.r14,
+            r15: regs.r15,
+            rip: regs.rip,
+            rflags: regs.eflags,
+        };
+        mem.write(&regs)?;
+        let tracee = try_with!(
+            self.tracee.write(),
+            "cannot obtain tracee write lock: poinsoned"
+        );
+        tracee.set_regs(vcpu, &mem)
+    }
+
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     pub fn get_fpu_regs(&self, vcpu: &VCPU) -> Result<cpu::FpuRegs> {
         let mem = self.alloc_mem()?;
         let tracee = try_with!(

@@ -1,28 +1,22 @@
-use libc::{c_char, c_ulonglong, c_void};
-use log::{debug, warn};
-use log::{info, log_enabled, Level};
-use nix::sys::signal::{kill, SIGTERM};
-use nix::sys::wait::{waitpid, WaitPidFlag, WaitStatus};
+use libc::c_void;
+use log::{debug, info};
 /// This module loads kernel code into the VM that we want to attach to.
 use simple_error::bail;
-use simple_error::{require_with, try_with};
-use std::io::Write;
-use std::process::Command;
-use std::process::Stdio;
+use simple_error::try_with;
+use stage1_interface::DeviceState;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::SyncSender;
 use std::sync::Arc;
 use std::time::Duration;
 
 use crate::interrutable_thread::InterrutableThread;
-use crate::kernel::{find_kernel, Kernel};
+use crate::kernel::find_kernel;
 use crate::kvm;
 use crate::kvm::hypervisor::{process_read, process_write, Hypervisor};
 use crate::loader::Loader;
 use crate::page_table::VirtMem;
 use crate::result::Result;
 
-const STAGE1_EXE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/stage1.ko"));
 const STAGE1_LIB: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/libstage1.so"));
 
 pub struct Stage1 {
@@ -30,23 +24,7 @@ pub struct Stage1 {
     virt_mem: VirtMem,
     pub device_status: Option<DeviceStatus>,
     pub driver_status: Option<DriverStatus>,
-    kernel: Kernel,
     init_func: usize,
-    exit_func: usize,
-}
-// keep in sync with src/stage1/src/lib.rs
-/// Maximal number of virtio mmio devices to register
-const MAX_DEVICES: usize = 3;
-/// Maximal number of arguments to pass to stage2
-const MAX_ARGV: usize = 256;
-
-#[derive(PartialEq, Copy, Clone, Debug)]
-#[repr(C)]
-pub enum DeviceState {
-    Undefined = 0,
-    Initializing = 1,
-    Ready = 2,
-    Error = 3,
 }
 
 pub struct DeviceStatus {
@@ -63,6 +41,7 @@ impl DeviceStatus {
     }
 }
 
+#[derive(Clone)]
 pub struct DriverStatus {
     pub host_addr: usize,
 }
@@ -71,17 +50,6 @@ impl DriverStatus {
     pub fn check(&self, hv: &Hypervisor) -> Result<DeviceState> {
         process_read(hv.pid, self.host_addr as *mut c_void)
     }
-}
-
-#[repr(C)]
-pub struct Stage1Args {
-    /// physical mmio addresses
-    pub device_addrs: [c_ulonglong; MAX_DEVICES],
-    /// null terminated array
-    /// the first argument is always STAGE2_PATH, the actual arguments come after
-    pub argv: [*mut c_char; MAX_ARGV],
-    pub device_status: DeviceState,
-    pub driver_status: DeviceState,
 }
 
 impl Stage1 {
@@ -98,7 +66,6 @@ impl Stage1 {
         );
 
         let init_func = loader.init_func;
-        let exit_func = loader.exit_func;
 
         let (virt_mem, device_status, driver_status) = try_with!(
             loader.load_binary(command, mmio_ranges),
@@ -115,43 +82,32 @@ impl Stage1 {
             virt_mem,
             device_status: Some(device_status),
             driver_status: Some(driver_status),
-            kernel,
             init_func,
-            exit_func,
         })
     }
 
     pub fn spawn(
         &self,
-        ssh_args: &str,
         hv: Arc<Hypervisor>,
         driver_status: DriverStatus,
         result_sender: &SyncSender<()>,
-    ) -> Result<InterrutableThread<Kmod, ()>> {
-        let ssh_args = ssh_args.to_string();
-
-        let printk_addr = *require_with!(
-            self.kernel.symbols.get("printk"),
-            "no printk function found in kernel symbols"
+    ) -> Result<InterrutableThread<(), ()>> {
+        let mut regs = try_with!(hv.get_regs(&hv.vcpus[0]), "failed to get cpu registers");
+        if regs.is_userspace() {
+            bail!("vcpu was stopped in userspace. This is not supported");
+        }
+        regs.rip = self.init_func as u64;
+        try_with!(
+            hv.set_regs(&hv.vcpus[0], &regs),
+            "failed to set cpu registers"
         );
-
-        let init_func = self.init_func;
-        let exit_func = self.exit_func;
 
         let res = InterrutableThread::spawn(
             "stage1",
             result_sender,
             move |_ctx: &(), should_stop: Arc<AtomicBool>| {
                 // wait until vmsh can process block device requests
-                stage1_thread(
-                    ssh_args,
-                    init_func,
-                    exit_func,
-                    printk_addr,
-                    driver_status,
-                    &hv,
-                    should_stop,
-                )
+                stage1_thread(driver_status, &hv, should_stop)
             },
             (),
         );
@@ -159,136 +115,11 @@ impl Stage1 {
     }
 }
 
-fn cleanup_stage1(ssh_args: &str) -> Result<()> {
-    let mut proc = ssh_command(ssh_args, |cmd| cmd.arg(r#"rmmod stage1.ko"#))?;
-    let status = try_with!(proc.wait(), "failed to wait for ssh");
-    if !status.success() {
-        match status.code() {
-            Some(code) => bail!("ssh exited with status code: {}", code),
-            None => bail!("ssh terminated by signal"),
-        }
-    }
-    Ok(())
-}
-
-fn ssh_command<F>(ssh_args: &str, mut configure: F) -> Result<std::process::Child>
-where
-    F: FnMut(&mut Command) -> &mut Command,
-{
-    let mut cmd = Command::new("sh");
-    // shell split first argument into multiple
-    let cmd_ref = cmd
-        .arg("-c")
-        .arg(r#"set -f; set -- $1 "$2"; exec ssh -oStrictHostKeyChecking=no -oUserKnownHostsFile=/dev/null "$@""#)
-        .arg("--")
-        .arg(ssh_args);
-    let configured = configure(cmd_ref);
-    Ok(try_with!(configured.spawn(), "ssh command failed"))
-}
-
-fn padded_size(size: usize) -> usize {
-    ((size + 512 - 1) / 512) * 512
-}
-
-fn write_padded(f: &mut dyn Write, bytes: &[u8], padded_size: usize) -> Result<()> {
-    try_with!(f.write_all(bytes), "Failed to write");
-    let mut padding = padded_size - bytes.len();
-    while padding != 0 {
-        padding -= try_with!(f.write(&[0]), "Failed to write");
-    }
-    Ok(())
-}
-
-pub struct Kmod {
-    ssh_args: String,
-}
-
-impl Drop for Kmod {
-    fn drop(&mut self) {
-        debug!("stage1 cleanup started");
-        if let Err(e) = cleanup_stage1(&self.ssh_args) {
-            warn!("could not cleanup stage1: {}", e);
-        }
-        debug!("stage1 cleanup finished");
-    }
-}
-
 fn stage1_thread(
-    ssh_args: String,
-    init_func: usize,
-    exit_func: usize,
-    printk_addr: usize,
     driver_status: DriverStatus,
     hv: &Hypervisor,
     should_stop: Arc<AtomicBool>,
-) -> Result<Kmod> {
-    let debug_stage1 = if log_enabled!(Level::Debug) { "x" } else { "" };
-    let stage1_size = padded_size(STAGE1_EXE.len());
-
-    let mut child = ssh_command(&ssh_args, move |cmd| -> &mut Command {
-        let script = format!(
-            r#"
-set -eu{} -o pipefail
-tmpdir=$(mktemp -d)
-trap "rm -rf '$tmpdir'" EXIT
-dd if=/proc/self/fd/0 of="$tmpdir/stage1.ko" count={} bs=512
-# cleanup old driver if still loaded
-rmmod stage1 2>/dev/null || true
-set -x
-insmod "$tmpdir/stage1.ko" printk_addr="{}" init_func="{}" exit_func="{}"
-"#,
-            debug_stage1,
-            stage1_size / 512,
-            printk_addr,
-            init_func,
-            exit_func
-        );
-        cmd.stdin(Stdio::piped()).arg(script)
-    })?;
-
-    info!("wait for payload to be written");
-    let mut stdin = require_with!(child.stdin.take(), "Failed to open stdin");
-    try_with!(
-        write_padded(&mut stdin, STAGE1_EXE, stage1_size),
-        "failed to write stage1"
-    );
-
-    let pid = nix::unistd::Pid::from_raw(child.id() as i32);
-
-    info!("wait for ssh to complete");
-    // In theory interrupting waitpid could be implemented faster with signals...,
-    // however since we will replace this eventually. just use a simple sleep...
-    let mut wait_flag = Some(WaitPidFlag::WNOHANG);
-    loop {
-        if should_stop.load(Ordering::Relaxed) {
-            try_with!(kill(pid, SIGTERM), "cannot terminate stage1 ssh command");
-            wait_flag = None;
-        }
-        let status = try_with!(waitpid(Some(pid), wait_flag), "waitpid failed");
-        match status {
-            WaitStatus::StillAlive => {
-                std::thread::sleep(Duration::from_millis(100));
-            }
-            WaitStatus::Exited(_, status) => {
-                if status != 0 {
-                    bail!("ssh command failed: {}", status);
-                }
-                break;
-            }
-            WaitStatus::Signaled(_, SIGTERM, _) => {
-                if should_stop.load(Ordering::Relaxed) {
-                    break;
-                }
-                bail!("ssh command was stopped by term signal");
-            }
-            status => {
-                bail!("unexpected wait result: {:?}", status);
-            }
-        };
-    }
-
-    let kmod = Kmod { ssh_args };
-
+) -> Result<()> {
     let mut initialized = false;
     loop {
         match try_with!(driver_status.check(hv), "cannot check driver state") {
@@ -299,6 +130,9 @@ insmod "$tmpdir/stage1.ko" printk_addr="{}" init_func="{}" exit_func="{}"
                 initialized = true;
             }
             DeviceState::Undefined => {}
+            DeviceState::Terminating => {
+                bail!("guest driver is in unexpecting terminating state");
+            }
             DeviceState::Error => {
                 bail!("guest driver failed with error");
             }
@@ -311,16 +145,5 @@ insmod "$tmpdir/stage1.ko" printk_addr="{}" init_func="{}" exit_func="{}"
     }
 
     info!("stage1 driver started");
-    Ok(kmod)
+    Ok(())
 }
-
-//#[cfg(test)]
-//mod tests {
-//    use crate::{loader::Loader, stage1::STAGE1_LIB};
-//
-//    #[test]
-//    fn test_load_binary() {
-//        let mut loader = Loader::new(STAGE1_LIB).expect("cannot load stage1");
-//        loader.load_binary().expect("cannot load stage1");
-//    }
-//}

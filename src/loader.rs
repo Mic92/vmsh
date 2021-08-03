@@ -9,6 +9,7 @@ use log::{debug, error, info, warn};
 use nix::sys::mman::ProtFlags;
 use nix::sys::uio::{process_vm_writev, IoVec, RemoteIoVec};
 use simple_error::{bail, require_with, try_with};
+use stage1_interface::{DeviceState, Stage1Args};
 use xmas_elf::sections::{SectionData, SHN_UNDEF};
 use xmas_elf::symbol_table::{Binding, DynEntry64};
 
@@ -19,7 +20,7 @@ use crate::kvm::PhysMemAllocator;
 use crate::page_math::{page_align, page_start};
 use crate::page_table::VirtMem;
 use crate::result::Result;
-use crate::stage1::{DeviceState, DeviceStatus, DriverStatus, Stage1Args};
+use crate::stage1::{DeviceStatus, DriverStatus};
 use crate::try_core_res;
 
 pub struct Loader<'a> {
@@ -48,8 +49,6 @@ pub struct Loader<'a> {
     string_arg_size: usize,
     /// virtual address of the `vmsh_stage1_init` function
     pub init_func: usize,
-    /// virtual address of the `cleanup_vmsh_stage1` function
-    pub exit_func: usize,
 }
 
 fn find_loadable(loadables: &mut [Loadable], addr: usize) -> Option<&mut Loadable> {
@@ -99,10 +98,6 @@ impl<'a> Loader<'a> {
             init_func: *require_with!(
                 syms.get("init_vmsh_stage1"),
                 "no init_vmsh_stage1 symbol found"
-            ),
-            exit_func: *require_with!(
-                syms.get("cleanup_vmsh_stage1"),
-                "no cleanup_vmsh_stage1 symbol found"
             ),
             vmsh_stage1_args: *require_with!(
                 syms.get("VMSH_STAGE1_ARGS"),

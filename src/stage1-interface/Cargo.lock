@@ -3,23 +3,10 @@
 version = 3
 
 [[package]]
-name = "build-utils"
-version = "0.0.1"
-
-[[package]]
 name = "chlorine"
 version = "1.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bd650552110e39b7c5058986cf177decd3365841836578ac50a286094eac0be6"
-
-[[package]]
-name = "stage1"
-version = "0.1.0"
-dependencies = [
- "build-utils",
- "chlorine",
- "stage1-interface",
-]
 
 [[package]]
 name = "stage1-interface"

@@ -21,8 +21,7 @@ members = ["src/virtio", "src/ioutils"]
 exclude = [
   "src/build-utils",
   "src/stage1",
-  "src/stage1-kmod",
-  "src/stage1-freestanding",
+  "src/stage1-interface",
   "src/stage2"
 ]
 
@@ -35,6 +34,7 @@ ioutils = { path = "src/ioutils" }
 nix = "0.22.*"
 libc = "0.2.*"
 bitflags = "1.2.1"
+stage1-interface = { path = "src/stage1-interface" }
 
 # drops regex dependency -> faster build
 # https://github.com/rust-bpf/rust-bcc/pull/179
