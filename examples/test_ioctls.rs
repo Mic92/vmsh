@@ -7,7 +7,7 @@ use std::os::unix::io::AsRawFd;
 use std::sync::Mutex;
 use std::time::Duration;
 use vmm_sys_util::eventfd::{EventFd, EFD_NONBLOCK};
-use vmsh::kvm::hypervisor::{get_hypervisor, PhysMem};
+use vmsh::kvm::hypervisor::{get_hypervisor, memory::PhysMem};
 use vmsh::kvm::ioctls::{self, Cmd};
 use vmsh::result::Result;
 use vmsh::tracer::wrap_syscall::KvmRunWrapper;

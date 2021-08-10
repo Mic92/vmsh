@@ -27,7 +27,9 @@ use crate::devices::virtio::{IrqAckHandler, MmioConfig, SingleFdSignalQueue, QUE
 use crate::devices::MaybeIoRegionFd;
 use crate::devices::USE_IOREGIONFD;
 use crate::kvm::hypervisor::Hypervisor;
-use crate::kvm::hypervisor::{IoEvent, IoRegionFd, UserspaceIoEventFd};
+use crate::kvm::hypervisor::{
+    ioevent::IoEvent, ioregionfd::IoRegionFd, userspaceioeventfd::UserspaceIoEventFd,
+};
 
 use super::inorder_handler::InOrderQueueHandler;
 use super::queue_handler::QueueHandler;

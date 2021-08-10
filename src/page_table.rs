@@ -8,7 +8,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use crate::guest_mem::MappedMemory;
-use crate::kvm::hypervisor::{process_read, Hypervisor, PhysMem};
+use crate::kvm::hypervisor::{memory::process_read, memory::PhysMem, Hypervisor};
 use crate::page_math::{is_page_aligned, page_align, page_size};
 use crate::result::Result;
 use bitflags::bitflags;

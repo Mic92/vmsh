@@ -1,4 +1,4 @@
-use crate::kvm::hypervisor::RawIoRegionFd;
+use crate::kvm::hypervisor::ioregionfd::RawIoRegionFd;
 use crate::kvm::ioctls::{ioregionfd_cmd, Cmd};
 use crate::result::Result;
 use crate::tracer::wrap_syscall::{MmioRw, MMIO_RW_DATA_MAX};

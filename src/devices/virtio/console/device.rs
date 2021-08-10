@@ -25,7 +25,9 @@ use crate::devices::virtio::features::{
 use crate::devices::virtio::{IrqAckHandler, MmioConfig, SingleFdSignalQueue, QUEUE_MAX_SIZE};
 use crate::devices::MaybeIoRegionFd;
 use crate::devices::USE_IOREGIONFD;
-use crate::kvm::hypervisor::{Hypervisor, IoEvent, IoRegionFd, UserspaceIoEventFd};
+use crate::kvm::hypervisor::{
+    ioevent::IoEvent, ioregionfd::IoRegionFd, userspaceioeventfd::UserspaceIoEventFd, Hypervisor,
+};
 
 //use super::queue_handler::QueueHandler;
 use super::{build_config_space, ConsoleArgs, Error, Result, CONSOLE_DEVICE_ID};

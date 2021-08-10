@@ -9,7 +9,7 @@ use vmm_sys_util::epoll::EventSet;
 
 use crate::devices::virtio::block::inorder_handler::InOrderQueueHandler;
 use crate::devices::virtio::SingleFdSignalQueue;
-use crate::kvm::hypervisor::IoEvent;
+use crate::kvm::hypervisor::ioevent::IoEvent;
 
 const IOEVENT_DATA: u32 = 0;
 
