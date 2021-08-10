@@ -7,7 +7,7 @@ use std::mem::{size_of, MaybeUninit};
 use std::os::unix::prelude::*;
 use std::sync::{Arc, RwLock};
 
-use crate::kvm::hypervisor::HvMem;
+use crate::kvm::hypervisor::memory::HvMem;
 use crate::kvm::tracee::{socklen_t, Tracee};
 use crate::result::Result;
 use crate::tracer::inject_syscall;

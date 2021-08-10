@@ -12,7 +12,7 @@ use std::time::Duration;
 use crate::interrutable_thread::InterrutableThread;
 use crate::kernel::find_kernel;
 use crate::kvm;
-use crate::kvm::hypervisor::{process_read, process_write, Hypervisor};
+use crate::kvm::hypervisor::{memory::process_read, memory::process_write, Hypervisor};
 use crate::loader::Loader;
 use crate::page_table::VirtMem;
 use crate::result::Result;

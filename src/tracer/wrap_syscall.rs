@@ -97,12 +97,12 @@ impl MmioRw {
         // may or may not perform vcpu_map size assertions.
         let mmio_ptr: *mut MmioRwRaw = unsafe { &mut ((*kvm_run_ptr).__bindgen_anon_1.mmio) };
         let data_ptr: *mut [u8; MMIO_RW_DATA_MAX] = unsafe { &mut ((*mmio_ptr).data) };
-        hypervisor::process_write(self.pid, data_ptr.cast::<libc::c_void>(), &self.data)?;
+        hypervisor::memory::process_write(self.pid, data_ptr.cast::<libc::c_void>(), &self.data)?;
 
         // guess who will never know that this was a mmio read
         let is_totally_write = 1u8;
         let is_write_ptr: *mut u8 = unsafe { &mut ((*mmio_ptr).is_write) };
-        hypervisor::process_write(
+        hypervisor::memory::process_write(
             self.pid,
             is_write_ptr.cast::<libc::c_void>(),
             &is_totally_write,
@@ -428,7 +428,7 @@ impl KvmRunWrapper {
         // fulfilled precondition: ioctl(KVM_RUN) just returned
         let map_ptr = thread.vcpu_map.start as *const kvm_bindings::kvm_run;
         let kvm_run: kvm_bindings::kvm_run =
-            hypervisor::process_read(pid, map_ptr.cast::<libc::c_void>())?;
+            hypervisor::memory::process_read(pid, map_ptr.cast::<libc::c_void>())?;
         let mmio = MmioRw::from(&kvm_run, thread.ptthread.tid, thread.vcpu_map.clone());
 
         Ok(mmio)

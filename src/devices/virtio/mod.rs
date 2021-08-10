@@ -11,7 +11,7 @@ use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use crate::kvm::hypervisor::{Hypervisor, IoEventFd};
+use crate::kvm::hypervisor::{ioeventfd::IoEventFd, Hypervisor};
 use crate::result::Result;
 use crate::tracer::inject_syscall;
 use crate::tracer::wrap_syscall::KvmRunWrapper;

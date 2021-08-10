@@ -11,7 +11,7 @@ use vm_device::bus::{MmioAddress, MmioRange};
 
 use crate::{page_math, result::Result};
 
-use super::hypervisor::{Hypervisor, PhysMem};
+use super::hypervisor::{memory::PhysMem, Hypervisor};
 
 pub struct PhysMemAllocator {
     pub hv: Arc<Hypervisor>,

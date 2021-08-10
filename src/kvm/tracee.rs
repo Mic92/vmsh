@@ -8,7 +8,7 @@ use std::ptr;
 
 use super::ioctls;
 use crate::cpu;
-use crate::kvm::hypervisor::{HvMem, VCPU};
+use crate::kvm::hypervisor::{memory::HvMem, VCPU};
 use crate::kvm::ioctls::KVM_CHECK_EXTENSION;
 use crate::kvm::memslots::{get_maps, get_vcpu_maps};
 use crate::result::Result;

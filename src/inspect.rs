@@ -37,12 +37,12 @@ pub fn inspect(opts: &InspectOptions) -> Result<()> {
 
         let map_ptr = map.start as *const kvm_bindings::kvm_run;
         let kvm_run: kvm_bindings::kvm_run =
-            kvm::hypervisor::process_read(opts.pid, map_ptr as *const libc::c_void)?;
+            kvm::hypervisor::memory::process_read(opts.pid, map_ptr as *const libc::c_void)?;
         info!("kvm_run: exit_reason {}", kvm_run.exit_reason);
 
         let reason_ptr: *const u32 = unsafe { &((*map_ptr).exit_reason) };
         let reason: u32 =
-            kvm::hypervisor::process_read(opts.pid, reason_ptr as *const libc::c_void)?;
+            kvm::hypervisor::memory::process_read(opts.pid, reason_ptr as *const libc::c_void)?;
         info!("reason ptr = {:?}", reason_ptr);
         info!("reason = {}", reason);
     }

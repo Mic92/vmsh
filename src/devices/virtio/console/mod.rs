@@ -1,6 +1,4 @@
 mod device;
-//mod console_handler;
-//mod queue_handler;
 mod log_handler;
 
 use std::io;
