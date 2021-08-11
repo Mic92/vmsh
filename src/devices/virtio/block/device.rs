@@ -19,13 +19,13 @@ use vm_device::{DeviceMmio, MutDeviceMmio};
 use vm_memory::GuestAddressSpace;
 use vmm_sys_util::eventfd::EventFd;
 
+use crate::devices::use_ioregionfd;
 use crate::devices::virtio::block::{BLOCK_DEVICE_ID, VIRTIO_BLK_F_FLUSH, VIRTIO_BLK_F_RO};
 use crate::devices::virtio::features::{
     VIRTIO_F_IN_ORDER, VIRTIO_F_RING_EVENT_IDX, VIRTIO_F_VERSION_1,
 };
 use crate::devices::virtio::{IrqAckHandler, MmioConfig, SingleFdSignalQueue, QUEUE_MAX_SIZE};
 use crate::devices::MaybeIoRegionFd;
-use crate::devices::USE_IOREGIONFD;
 use crate::kvm::hypervisor::Hypervisor;
 use crate::kvm::hypervisor::{
     ioevent::IoEvent, ioregionfd::IoRegionFd, userspaceioeventfd::UserspaceIoEventFd,
@@ -107,7 +107,7 @@ where
         )));
 
         let mut ioregionfd = None;
-        if USE_IOREGIONFD {
+        if use_ioregionfd() {
             ioregionfd = Some(
                 args.common
                     .vmm
@@ -268,7 +268,7 @@ impl<M: GuestAddressSpace + Clone + Send + 'static> VirtioDeviceActions for Bloc
 
 impl<M: GuestAddressSpace + Clone + Send + 'static> VirtioQueueNotifiable for Block<M> {
     fn queue_notify(&mut self, val: u32) {
-        if USE_IOREGIONFD {
+        if use_ioregionfd() {
             self.uioefd.queue_notify(val);
             log::trace!("queue_notify {}", val);
         }

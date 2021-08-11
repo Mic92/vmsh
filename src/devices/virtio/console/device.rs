@@ -17,6 +17,7 @@ use vm_device::{DeviceMmio, MutDeviceMmio};
 use vm_memory::GuestAddressSpace;
 use vmm_sys_util::eventfd::EventFd;
 
+use crate::devices::use_ioregionfd;
 use crate::devices::virtio::console::log_handler::LogQueueHandler;
 use crate::devices::virtio::console::VIRTIO_CONSOLE_F_SIZE;
 use crate::devices::virtio::features::{
@@ -24,7 +25,6 @@ use crate::devices::virtio::features::{
 };
 use crate::devices::virtio::{IrqAckHandler, MmioConfig, SingleFdSignalQueue, QUEUE_MAX_SIZE};
 use crate::devices::MaybeIoRegionFd;
-use crate::devices::USE_IOREGIONFD;
 use crate::kvm::hypervisor::{
     ioevent::IoEvent, ioregionfd::IoRegionFd, userspaceioeventfd::UserspaceIoEventFd, Hypervisor,
 };
@@ -91,7 +91,7 @@ where
         )));
 
         let mut ioregionfd = None;
-        if USE_IOREGIONFD {
+        if use_ioregionfd() {
             ioregionfd = Some(
                 args.common
                     .vmm
@@ -243,7 +243,7 @@ impl<M: GuestAddressSpace + Clone + Send + 'static> VirtioDeviceActions for Cons
 
 impl<M: GuestAddressSpace + Clone + Send + 'static> VirtioQueueNotifiable for Console<M> {
     fn queue_notify(&mut self, val: u32) {
-        if USE_IOREGIONFD {
+        if use_ioregionfd() {
             self.uioefd.queue_notify(val);
             log::trace!("queue_notify {}", val);
         }

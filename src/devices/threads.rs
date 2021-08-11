@@ -422,7 +422,7 @@ impl DeviceSet {
             threads.push(blkdev_monitor_thread(&self.context, err_sender)?);
         }
 
-        if devices::USE_IOREGIONFD {
+        if devices::use_ioregionfd() {
             vm.resume()?;
             // Device was ready already before that but this way,
             // we only only indicate readiness just before we create our io threads.
