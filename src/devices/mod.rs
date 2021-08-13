@@ -15,6 +15,8 @@ use crate::tracer::proc::Mapping;
 use libc::pid_t;
 use simple_error::{bail, try_with};
 use std::path::Path;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 use vm_device::device_manager::MmioManager;
 use vm_memory::guest_memory::GuestAddress;
@@ -24,7 +26,12 @@ use vm_memory::{GuestMemoryMmap, GuestRegionMmap};
 
 pub use self::threads::DeviceSet;
 
-pub const USE_IOREGIONFD: bool = false;
+/// Should be initialized by the argument parser.
+pub static USE_IOREGIONFD: AtomicBool = AtomicBool::new(false);
+
+pub fn use_ioregionfd() -> bool {
+    USE_IOREGIONFD.load(Ordering::Relaxed)
+}
 
 pub type Block = block::Block<Arc<GuestMemoryMmap>>;
 pub type Console = console::Console<Arc<GuestMemoryMmap>>;

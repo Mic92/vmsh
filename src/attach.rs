@@ -6,8 +6,8 @@ use std::sync::mpsc::sync_channel;
 use std::sync::Arc;
 use std::time::Duration;
 
+use crate::devices::use_ioregionfd;
 use crate::devices::DeviceSet;
-use crate::devices::USE_IOREGIONFD;
 use crate::result::Result;
 use crate::stage1::Stage1;
 use crate::{kvm, signal_handler};
@@ -92,7 +92,7 @@ pub fn attach(opts: &AttachOptions) -> Result<()> {
     // MMIO exit handler thread took over pthread control
     // We need ptrace the process again before we can finish.
     vm.stop()?;
-    if !USE_IOREGIONFD {
+    if !use_ioregionfd() {
         vm.finish_thread_transfer()?;
     }
     // now that we got the tracer back, we can cleanup physical memory and file descriptors

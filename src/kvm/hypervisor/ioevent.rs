@@ -7,8 +7,8 @@ use vmm_sys_util::eventfd::EventFd;
 use super::ioeventfd::IoEventFd;
 use super::userspaceioeventfd::UserspaceIoEventFd;
 use super::Hypervisor;
+use crate::devices::use_ioregionfd;
 use crate::devices::virtio::{register_ioeventfd, MmioConfig};
-use crate::devices::USE_IOREGIONFD;
 use crate::result::Result;
 use std::ops::Deref;
 
@@ -27,7 +27,7 @@ impl IoEvent {
         mmio_cfg: &MmioConfig,
         queue_idx: u64,
     ) -> Result<IoEvent> {
-        if USE_IOREGIONFD {
+        if use_ioregionfd() {
             let eventfd = try_with!(
                 uioefd.userpace_ioeventfd(Some(queue_idx as u32)),
                 "cannot register userspace ioeventfd"

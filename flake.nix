@@ -40,6 +40,14 @@
 
         kernel-deps = pkgs.callPackage ./nix/kernel-deps.nix {};
 
+        measureDeps = [
+          pkgs.numactl
+          (pkgs.python3.withPackages (ps: [
+            ps.matplotlib
+            ps.pandas
+          ]))
+        ];
+
         ciDeps = [
           rustToolchain
           pkgs.qemu_kvm
@@ -56,10 +64,15 @@
             ps.isort
             ps.mypy
           ]))
-        ] ++ vmsh.nativeBuildInputs;
+        ] ++ vmsh.nativeBuildInputs ++ measureDeps;
 
         not-os-image = pkgs.callPackage ./nix/not-os-image.nix {
           inherit not-os;
+          notos-config = ./nix/modules/not-os-config.nix;
+        };
+        measurement-image = pkgs.callPackage ./nix/not-os-image.nix {
+          inherit not-os;
+          notos-config = ./nix/modules/measurement-config.nix;
         };
       in
       rec {
@@ -81,6 +94,7 @@
 
           # see justfile/not-os
           inherit not-os-image;
+          inherit measurement-image;
 
           # see justfile/nixos-image
           nixos-image = pkgs.callPackage ./nix/nixos-image.nix {};
@@ -102,6 +116,7 @@
             fenixPkgs.rust-analyzer
             pkgs.gdb
             # pkgs.libguestfs-with-appliance # needed for just attach-qemu-img and thus stress-test
+            pkgs.gnuplot
           ];
 
           shellHook = ''

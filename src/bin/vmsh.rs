@@ -1,5 +1,6 @@
 use log::*;
 use std::path::PathBuf;
+use std::sync::atomic::Ordering;
 
 use clap::{
     crate_authors, crate_version, value_t, value_t_or_exit, values_t, App, AppSettings, Arg,
@@ -9,6 +10,7 @@ use nix::unistd::Pid;
 
 use vmsh::attach::{self, AttachOptions};
 use vmsh::coredump::CoredumpOptions;
+use vmsh::devices::USE_IOREGIONFD;
 use vmsh::inspect::InspectOptions;
 use vmsh::{coredump, inspect};
 
@@ -52,6 +54,11 @@ fn attach(args: &ArgMatches) {
         command,
         backing: PathBuf::from(value_t!(args, "backing-file", String).unwrap_or_else(|e| e.exit())),
     };
+
+    USE_IOREGIONFD.store(
+        value_t_or_exit!(args, "mmio", String) == "ioregionfd",
+        Ordering::Release,
+    );
 
     if let Err(err) = attach::attach(&opts) {
         error!("{}", err);
@@ -115,6 +122,14 @@ fn main() {
                 .takes_value(true)
                 .default_value("/dev/null")
                 .help("File which shall be served as a block device."),
+        )
+        .arg(
+            Arg::with_name("mmio")
+                .long("mmio")
+                .takes_value(true)
+                .possible_values(&["wrap_syscall", "ioregionfd"])
+                .default_value("wrap_syscall")
+                .help("Backend used to serve Virtio MMIO memory of devices."),
         );
 
     let coredump_command = SubCommand::with_name("coredump")
