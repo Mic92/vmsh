@@ -1,4 +1,4 @@
-{ pkgs, not-os, notos-config }:
+{ pkgs, not-os }:
 let
   inherit (pkgs) stdenv lib;
   inherit (pkgs.pkgsMusl.hostPlatform) system parsed;
@@ -10,7 +10,7 @@ let
     system = if useMusl then null else pkgs.system;
     configuration = { ... }: {
       imports = [
-        notos-config
+        ./modules/not-os-config.nix
         (not-os  + "/qemu.nix")
       ];
 
