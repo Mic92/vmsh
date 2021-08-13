@@ -11,6 +11,9 @@
 # nix-build symlinks
 /result
 
+# measurement results
+tests/measurements/
+
 # coredumps
 core.*
 

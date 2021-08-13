@@ -40,8 +40,8 @@ def busybox_image() -> Iterator[Path]:
         yield Path(n.name)
 
 
-def notos_image() -> VmImage:
-    data = nix_build(".#not-os-image.json")
+def notos_image(nix: str = ".#not-os-image.json") -> VmImage:
+    data = nix_build(nix)
     with open(data[0]["outputs"]["out"]) as f:
         data = json.load(f)
         return VmImage(

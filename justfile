@@ -224,6 +224,18 @@ qemu-notos:
   print(" ".join(cmd))
   subprocess.run(cmd)
 
+qemu-measurement:
+  #!/usr/bin/env python3
+  import sys, os, subprocess
+  sys.path.insert(0, os.path.join("{{justfile_directory()}}", "tests"))
+  from nix import notos_image, notos_image_custom_kernel
+  from qemu import qemu_command
+  image = notos_image(nix=".#measurement-image.json")
+  #image = notos_image_custom_kernel()
+  cmd = qemu_command(image, "qmp.sock", ssh_port={{qemu_ssh_port}})
+  print(" ".join(cmd))
+  subprocess.run(cmd)
+
 # Attach gdb to vmsh
 gdb:
   sudo gdb --pid $(pidof vmsh) -ex 'thread apply all bt' -ex 'info threads'
@@ -383,6 +395,12 @@ benchmark SAMPLES="15": mkramdisk
   just benchmark-attached /dev/vda longread {{SAMPLES}}
   just benchmark-attached /dev/sda longread {{SAMPLES}}
   just benchmark-detached /dev/sda longread {{SAMPLES}}
+
+# inspect test/measurements from the console
+gnuplot:
+  #!/bin/sh
+  cd tests/measurements
+  gnuplot -e "set terminal dumb; set key autotitle columnhead;" -
 
 attach-qemu-ramdisk: mkramdisk
   cargo run --release -- -l warn attach -f "/tmp/ramdisk/raw" "{{qemu_pid}}" --ssh-args " -i {{invocation_directory()}}/nix/ssh_key -p {{qemu_ssh_port}} root@localhost" -- /nix/var/nix/profiles/system/sw/bin/ls -la
