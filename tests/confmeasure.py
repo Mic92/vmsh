@@ -175,21 +175,31 @@ class Helpers:
 
     @staticmethod
     def spawn_qemu(
-        image: VmImage, extra_drive: Any = None, extra_args: List[str] = []
+        image: VmImage,
+        virtio_blk: Optional[str] = None,
+        virtio_9p: Optional[str] = None,
+        extra_args: List[str] = [],
     ) -> "contextlib._GeneratorContextManager[QemuVm]":
         extra_args_pre = [
             "numactl",
             "-C",
             CORES_QEMU,
         ]
-        if extra_drive is not None:
-            extra_args += [
+        extra_args_ = []
+        extra_args_ += extra_args
+        if virtio_blk is not None:
+            extra_args_ += [
                 "-drive",
-                f"id=drive2,file={extra_drive},format=raw,if=none",
+                f"id=drive2,file={virtio_blk},format=raw,if=none",
                 "-device",
                 "virtio-blk-pci,drive=drive2",  # TODO mmio
             ]
-        return spawn_qemu(image, extra_args, extra_args_pre)
+        if virtio_9p is not None:
+            extra_args_ += [
+                "-virtfs",
+                f"local,path={virtio_9p},security_model=none,mount_tag=measure9p",
+            ]
+        return spawn_qemu(image, extra_args_, extra_args_pre)
 
 
 @pytest.fixture
