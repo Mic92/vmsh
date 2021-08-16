@@ -1,7 +1,14 @@
 from root import MEASURE_RESULTS
 import confmeasure
 import measure_helpers as util
-from measure_helpers import GUEST_JAVDEV, GUEST_QEMUBLK
+from measure_helpers import (
+    GUEST_JAVDEV,
+    GUEST_QEMUBLK,
+    GUEST_QEMU9P,
+    GUEST_JAVDEV_MOUNT,
+    GUEST_QEMUBLK_MOUNT,
+)
+from qemu import QemuVm
 
 from typing import List, Any, Optional, Callable, Tuple
 import re
@@ -12,12 +19,12 @@ import json
 QUICK = True
 
 
-def lsblk(vm: Any) -> None:
+def lsblk(vm: QemuVm) -> None:
     term = vm.ssh_cmd(["lsblk"], check=False)
     print(term.stdout)
 
 
-def hdparm(vm: Any, device: str) -> Optional[float]:
+def hdparm(vm: QemuVm, device: str) -> Optional[float]:
     term = vm.ssh_cmd(["hdparm", "-t", device], check=False)
     if term.returncode != 0:
         return None
@@ -30,8 +37,8 @@ def hdparm(vm: Any, device: str) -> Optional[float]:
 
 
 def fio(
-    vm: Any,
-    target: str,
+    vm: QemuVm,
+    device: str,
     random: bool = False,
     readonly: bool = True,
     iops: bool = False,
@@ -46,15 +53,17 @@ def fio(
     @return (read_mean, stddev, write_mean, stdev) in kiB/s
     """
     runtime = 120
+    size = 100  # filesize in GB
     if QUICK:
         runtime = 10
+        size = 10
 
-    cmd = ["fio", f"--filename={target}"]
+    cmd = ["fio"]
 
     if file:
-        cmd += ["--size=500GB"]
-
-    cmd += ["--direct=1"]
+        cmd += [f"--filename={device}/file", f"--size={size}GB"]
+    else:
+        cmd += [f"--filename={device}", "--direct=1"]
 
     if readonly and random:
         cmd += ["--rw=randread"]
@@ -136,6 +145,33 @@ def sample(
     return ret
 
 
+# QUICK: ? else: ~5min
+def fio_suite(
+    vm: QemuVm, measurements: Any, device: str, name: str, file: bool = True
+) -> Any:
+    measurements["fio"][f"{name}-best-case-bw"] = list(
+        fio(
+            vm,
+            device,
+            random=False,
+            readonly=False,
+            iops=False,
+            file=file,
+        )
+    )
+    measurements["fio"][f"{name}-worst-case-iops"] = list(
+        fio(
+            vm,
+            device,
+            random=True,
+            readonly=False,
+            iops=True,
+            file=file,
+        )
+    )
+    pass
+
+
 if __name__ == "__main__":
     util.check_ssd()
     util.check_system()
@@ -145,32 +181,58 @@ if __name__ == "__main__":
     measurements["fio"] = {}
     measurements["hdparm"] = {}
     with util.fresh_ssd():
-        with util.testbench(helpers, with_vmsh=True, ioregionfd=False) as vm:
-            lsblk(vm)
-            measurements["fio"]["foo"] = list(
-                fio(
-                    vm,
-                    GUEST_QEMUBLK,
-                    random=False,
-                    readonly=True,
-                    iops=False,
-                    file=False,
-                )
+        with util.testbench(helpers, with_vmsh=False, ioregionfd=False) as vm:
+            fio_suite(
+                vm, measurements, GUEST_QEMUBLK, "detached_qemublk_nofile", file=False
             )
-            measurements["hdparm"]["attached_wrapsys_qemudev"] = sample(
+    with util.fresh_ssd():
+        with util.testbench(helpers, with_vmsh=False, ioregionfd=False) as vm:
+            lsblk(vm)
+            fio_suite(vm, measurements, GUEST_QEMUBLK_MOUNT, "detached_qemublk")
+            fio_suite(vm, measurements, GUEST_QEMU9P, "detached_qemu9p")
+            measurements["hdparm"]["detached_qemublk"] = sample(
                 lambda: hdparm(vm, GUEST_QEMUBLK)
             )
-            measurements["hdparm"]["attached_wrapsys_javdev"] = sample(
+
+        with util.testbench(helpers, with_vmsh=True, ioregionfd=False) as vm:
+            fio_suite(vm, measurements, GUEST_JAVDEV_MOUNT, "attached_ws_javdev")
+
+        with util.testbench(helpers, with_vmsh=True, ioregionfd=True) as vm:
+            fio_suite(vm, measurements, GUEST_JAVDEV_MOUNT, "attached_iorefd_javdev")
+
+            measurements["hdparm"]["attached_iorefd_javdev"] = sample(
                 lambda: hdparm(vm, GUEST_JAVDEV)
             )
-    #
-    #        with util.testbench(helpers, with_vmsh=False, ioregionfd=False) as vm:
-    #            lsblk(vm)
-    #            measurements["hdparm_detached_9p"] = sample(
-    #                lambda: hdparm(vm, GUEST_QEMUBLK)
-    #            )
 
     util.export_lineplot("hdparm_warmup", measurements["hdparm"])
     util.export_barplot("hdparm_warmup_barplot", measurements["hdparm"])
     util.export_fio("fio", measurements["fio"])
     util.write_stats(f"{MEASURE_RESULTS}/stats.json", measurements)
+
+"""
+# Compare block devices:
+
+- qemu virtio blk
+- qemu virtio 9p
+- vmsh virtio blk ws
+- vmsh virtio blk ioregionfd
+
+for each:
+- best case bw read
+- best case bw write
+- worst case iops
+
+# Compare guest performance under vmsh
+
+- native
+- detached
+- vmsh ws
+- vmsh ioregionfd
+- run via vmsh (in container in vm)
+- run via ssh (no container in vm)
+
+for each:
+- blkdev
+- shell latency
+- phoronix
+"""

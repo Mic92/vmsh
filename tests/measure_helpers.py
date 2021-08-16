@@ -15,9 +15,11 @@ import time
 
 HOST_SSD = "/dev/nvme0n1"
 HOST_DIR = "/mnt/nvme"
-GUEST_JAVDEV = "/dev/vdb"
-GUEST_QEMUBLK = "/dev/vdc"
+GUEST_JAVDEV = "/dev/vdc"
+GUEST_QEMUBLK = "/dev/vdb"
 GUEST_QEMU9P = "/9p"
+GUEST_JAVDEV_MOUNT = "/javdev"
+GUEST_QEMUBLK_MOUNT = "/blk"
 
 
 @contextmanager
@@ -49,7 +51,18 @@ def testbench(
                 ]
             ).stdout
         )
-        print(vm.ssh_cmd(["ls", "-la", GUEST_QEMU9P]).stdout)
+        # print(vm.ssh_cmd(["ls", "-la", GUEST_QEMU9P]).stdout)
+
+        print(vm.ssh_cmd(["mkdir", "-p", GUEST_QEMUBLK_MOUNT]).stdout)
+        print(
+            vm.ssh_cmd(
+                [
+                    "mount",
+                    GUEST_QEMUBLK,
+                    GUEST_QEMUBLK_MOUNT,
+                ]
+            ).stdout
+        )
 
         if not with_vmsh:
             yield vm
@@ -76,7 +89,18 @@ def testbench(
                         lambda l: "stage1 driver started" in l,
                     )
                 finally:
+                    print(vm.ssh_cmd(["mkdir", "-p", GUEST_JAVDEV_MOUNT]).stdout)
+                    print(
+                        vm.ssh_cmd(
+                            [
+                                "mount",
+                                GUEST_JAVDEV,
+                                GUEST_JAVDEV_MOUNT,
+                            ]
+                        ).stdout
+                    )
                     yield vm
+                    print(vm.ssh_cmd(["umount", GUEST_JAVDEV_MOUNT]).stdout)
 
             try:
                 os.kill(vmsh.pid, 0)
@@ -84,6 +108,8 @@ def testbench(
                 pass
             else:
                 assert False, "vmsh was not terminated properly"
+        print(vm.ssh_cmd(["umount", GUEST_QEMUBLK_MOUNT]).stdout)
+        print(vm.ssh_cmd(["umount", GUEST_QEMU9P]).stdout)
 
 
 def run(
@@ -123,6 +149,7 @@ def fresh_ssd() -> Iterator[Any]:
         run(["mkfs.ext4", HOST_SSD], check=True)
         Path(HOST_DIR).mkdir(exist_ok=True)
         run(["sudo", "mount", HOST_SSD, HOST_DIR], check=True)
+        run(["touch", f"{HOST_DIR}/file"], check=True)
         run(["sudo", "chown", os.getlogin(), HOST_DIR], check=True)
     except Exception:
         pass
