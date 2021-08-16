@@ -229,7 +229,7 @@ qemu-measurement:
   import sys, os, subprocess
   sys.path.insert(0, os.path.join("{{justfile_directory()}}", "tests"))
   from nix import notos_image, notos_image_custom_kernel
-  from qemu import qemu_command, SSH_PORT
+  from qemu import qemu_command
   import measure_helpers as util
   import confmeasure
   from measure_block import lsblk

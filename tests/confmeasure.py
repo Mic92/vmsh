@@ -185,7 +185,10 @@ class Helpers:
             "-C",
             CORES_QEMU,
         ]
-        extra_args_ = []
+        extra_args_ = [  # TODO more CPUs
+            "-m",
+            "3583", 
+        ]
         extra_args_ += extra_args
         if virtio_blk is not None:
             extra_args_ += [
