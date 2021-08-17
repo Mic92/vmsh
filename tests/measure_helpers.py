@@ -126,7 +126,7 @@ def run(
     env_string = []
     for k, v in extra_env.items():
         env_string.append(f"{k}={v}")
-    print(f"$ {' '.join(env_string)} {' '.join(cmd)}")
+    print(f"$ {' '.join(env_string + cmd)}")
     return subprocess.run(
         cmd,
         stdout=stdout,
@@ -141,20 +141,22 @@ def run(
 
 @contextmanager
 def fresh_ssd() -> Iterator[Any]:
+    while "target is busy" in run(["sudo", "umount", HOST_SSD], check=False).stderr:
+        print("umount: waiting for target not to be busy")
+        time.sleep(1)
+    run(["sudo", "blkdiscard", "-f", HOST_SSD])
+    run(["sudo", "mkfs.ext4", HOST_SSD])
+    Path(HOST_DIR).mkdir(exist_ok=True)
+    run(["sudo", "mount", HOST_SSD, HOST_DIR])
+    run(["sudo", "chown", os.getlogin(), HOST_DIR])
+    run(["sudo", "chown", os.getlogin(), HOST_SSD])
     try:
-        while "target is busy" in run(["sudo", "umount", HOST_SSD], check=False).stderr:
-            print("umount: waiting for target not to be busy")
-            time.sleep(1)
-        run(["blkdiscard", "-f", HOST_SSD], check=True)
-        run(["mkfs.ext4", HOST_SSD], check=True)
-        Path(HOST_DIR).mkdir(exist_ok=True)
-        run(["sudo", "mount", HOST_SSD, HOST_DIR], check=True)
         run(["touch", f"{HOST_DIR}/file"], check=True)
-        run(["sudo", "chown", os.getlogin(), HOST_DIR], check=True)
-    except Exception:
-        pass
-    yield
-    run(["sudo", "umount", HOST_SSD], check=False)
+        yield
+    finally:
+        run(["sudo", "chown", "0", HOST_SSD])
+        if Path(HOST_DIR).is_mount():
+            run(["sudo", "umount", HOST_DIR], check=False)
 
 
 def check_ssd() -> None:
@@ -196,28 +198,28 @@ def export_barplot(name: str, data: Dict[str, List[float]]) -> None:
     frame.to_csv(f"{MEASURE_RESULTS}/{name}-latest.tsv", index=True, sep="\t")
 
 
-def export_fio(name: str, data_: Dict[str, List[float]]) -> None:
-    data: Any = data_.copy()
-    data["index"] = ["read", "stddev", "write", "stddev"]
-    frame = pd.DataFrame(data)
-    frame = frame.set_index("index")
+def export_fio(name: str, data: Dict[str, List[float]]) -> None:
+    df = pd.DataFrame(data)
     path = f"{MEASURE_RESULTS}/{name}-{NOW}.tsv"
     print(path)
-    frame.to_csv(path, index=True, sep="\t")
-    frame.to_csv(f"{MEASURE_RESULTS}/{name}-latest.tsv", index=True, sep="\t")
+    df.to_csv(path, index=True, sep="\t")
+    df.to_csv(f"{MEASURE_RESULTS}/{name}-latest.tsv", index=True, sep="\t")
 
 
-def read_stats(path: str) -> DefaultDict[str, Dict[str, List]]:
-    stats: DefaultDict[str, Dict[str, List]] = defaultdict(Dict[str, list])
+def read_stats(path: Path) -> DefaultDict[str, List]:
+    stats: DefaultDict[str, List] = defaultdict(list)
     if not os.path.exists(path):
         return stats
     with open(path) as f:
-        raw_stats = json.load(f)
-        for key, value in raw_stats.items():
-            stats[key] = value
-    return stats
+        return json.load(f)
 
 
-def write_stats(path: str, stats: DefaultDict[str, Dict[str, List]]) -> None:
+def write_stats(path: Path, stats: Dict[str, List]) -> None:
+    path.parent.mkdir(exist_ok=True, parents=True)
     with open(path, "w") as f:
-        json.dump(stats, f)
+        json.dump(
+            stats,
+            f,
+            indent=4,
+            sort_keys=True,
+        )
