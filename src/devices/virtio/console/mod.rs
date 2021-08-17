@@ -1,5 +1,7 @@
 mod device;
 mod log_handler;
+mod stdin_stdout_device;
+mod stdin_stdout_handler;
 
 use std::io;
 
