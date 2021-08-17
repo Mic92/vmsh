@@ -8,7 +8,7 @@ use std::sync::Mutex;
 use std::time::Duration;
 use vmm_sys_util::eventfd::{EventFd, EFD_NONBLOCK};
 use vmsh::kvm::hypervisor::{get_hypervisor, memory::PhysMem};
-use vmsh::kvm::ioctls::{self, Cmd};
+use vmsh::kvm::kvm_ioregionfd::{self, Cmd};
 use vmsh::result::Result;
 use vmsh::tracer::wrap_syscall::KvmRunWrapper;
 
@@ -219,7 +219,7 @@ fn ioregionfd(pid: Pid) -> Result<()> {
     vm.stop()?;
 
     let has_cap = try_with!(
-        vm.check_extension(ioctls::KVM_CAP_IOREGIONFD as i32),
+        vm.check_extension(kvm_ioregionfd::KVM_CAP_IOREGIONFD as i32),
         "cannot check kvm extension capabilities"
     );
     if has_cap == 0 {

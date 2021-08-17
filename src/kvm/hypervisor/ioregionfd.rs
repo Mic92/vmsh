@@ -15,8 +15,8 @@ use std::time::Duration;
 use super::memory::HvMem;
 use super::Hypervisor;
 use crate::kvm::ioctls;
-use crate::kvm::ioctls::kvm_ioregion;
-use crate::kvm::ioctls::{ioregionfd_cmd, ioregionfd_resp};
+use crate::kvm::kvm_ioregionfd::kvm_ioregion;
+use crate::kvm::kvm_ioregionfd::{self, ioregionfd_cmd, ioregionfd_resp};
 use crate::kvm::tracee::Tracee;
 use crate::result::Result;
 
@@ -102,7 +102,7 @@ impl IoRegionFd {
 
     pub fn capability_present(hv: &Hypervisor) -> Result<bool> {
         let has_cap = try_with!(
-            hv.check_extension(ioctls::KVM_CAP_IOREGIONFD as i32),
+            hv.check_extension(kvm_ioregionfd::KVM_CAP_IOREGIONFD as i32),
             "cannot check kvm extension capabilities"
         );
         Ok(has_cap == 0)
