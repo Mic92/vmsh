@@ -42,6 +42,7 @@
 
         measureDeps = [
           pkgs.numactl
+          pkgs.fio
           (pkgs.python3.withPackages (ps: [
             ps.matplotlib
             ps.pandas

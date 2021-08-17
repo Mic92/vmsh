@@ -10,6 +10,7 @@
     pkgs.hdparm
     pkgs.sysbench
     pkgs.phoronix-test-suite
+    pkgs.fio
   ];
 
   environment.pathsToLink = [ "/lib/modules" ];

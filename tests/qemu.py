@@ -311,3 +311,11 @@ def spawn_qemu(
                 yield QemuVm(session, tmux_session, qemu_pid)
         finally:
             subprocess.run(["tmux", "-L", tmux_session, "kill-server"])
+            while True:
+                try:
+                    os.kill(qemu_pid, 0)
+                except ProcessLookupError:
+                    break
+                else:
+                    print("waiting for qemu to stop")
+                    time.sleep(1)

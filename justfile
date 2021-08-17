@@ -230,11 +230,24 @@ qemu-measurement:
   sys.path.insert(0, os.path.join("{{justfile_directory()}}", "tests"))
   from nix import notos_image, notos_image_custom_kernel
   from qemu import qemu_command
-  image = notos_image(nix=".#measurement-image.json")
-  #image = notos_image_custom_kernel()
-  cmd = qemu_command(image, "qmp.sock", ssh_port={{qemu_ssh_port}})
-  print(" ".join(cmd))
-  subprocess.run(cmd)
+  import measure_helpers as util
+  import confmeasure
+  from measure_block import lsblk
+
+  util.check_ssd()
+  util.check_system()
+  helpers = confmeasure.Helpers()
+  
+  with util.fresh_ssd():
+    with util.testbench(helpers, with_vmsh=True, ioregionfd=False) as vm:
+      lsblk(vm)
+      print(f"ssh running on {vm.ssh_port}")
+      input("stop?")
+      util.run(["ssh", "-i", "{{justfile_directory()}}/nix/ssh_key",
+      "-o", "StrictHostKeyChecking=no",
+      "-o", "UserKnownHostsFile=/dev/null",
+      "{{qemu_ssh_remote}}",
+      "-p", str(vm.ssh_port), "bash" ], stdin=subprocess.PIPE)
 
 # Attach gdb to vmsh
 gdb:
@@ -311,6 +324,10 @@ attach-qemu-img: nixos-image
 # Attach block device to first qemu vm found by pidof and owned by our own user
 attach-qemu: vmsh-image
   cargo run -- attach -f "{{linux_dir}}/vmsh-image.ext4" "{{qemu_pid}}" -- /nix/var/nix/profiles/system/sw/bin/ls -la
+
+measure:
+  rm tests/measurements/stats.json || true
+  python3 tests/measure_block.py
 
 # mom says we already have a benchmark at home
 benchmark-qemu-at-home DISK="/dev/vda": 
