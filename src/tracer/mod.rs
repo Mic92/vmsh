@@ -12,8 +12,8 @@ pub mod ptrace;
 pub mod ptrace_syscall_info;
 pub mod wrap_syscall;
 
-use proc::Mapping;
 use std::thread::ThreadId;
+use crate::kvm::hypervisor::VCPU;
 
 /// Traces syscalls in a process
 pub struct Tracer {
@@ -22,7 +22,7 @@ pub struct Tracer {
     pub owner: Option<ThreadId>,
 
     threads: Vec<ptrace::Thread>,
-    pub vcpu_map: Mapping, // TODO support multiple cpus
+    pub vcpus: Vec<VCPU>,
 }
 
 impl Tracer {

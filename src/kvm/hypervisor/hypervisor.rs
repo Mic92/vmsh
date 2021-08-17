@@ -5,7 +5,7 @@ use kvm_bindings as kvmb;
 use libc::c_int;
 use log::*;
 use nix::unistd::Pid;
-use simple_error::{bail, try_with};
+use simple_error::{simple_error, bail, try_with};
 use std::ffi::OsStr;
 use std::marker::PhantomData;
 use std::mem::size_of;
@@ -26,9 +26,29 @@ use crate::tracer::proc::{openpid, Mapping, PidHandle};
 use crate::tracer::wrap_syscall::KvmRunWrapper;
 
 #[allow(clippy::upper_case_acronyms)]
+#[derive(Debug,Clone)]
 pub struct VCPU {
+    /// The idx as used in the inode name: anon_inode:kvm-vcpu:0
     pub idx: usize,
     pub fd_num: RawFd,
+    /// hypervisor memory where fd_num is mapped to. Must be initialized before use.
+    pub vcpu_map: Option<Mapping>,
+}
+
+impl VCPU {
+    pub fn match_maps(vcpus: &mut Vec<VCPU>, vcpu_maps: &Vec<Mapping>) {
+        for vcpu in vcpus {
+            let name = format!("{}{}", VCPUFD_INODE_NAME_STARTS_WITH, vcpu.idx);
+            match vcpu_maps.iter().find(|map| map.pathname == name) {
+                Some(map) => vcpu.vcpu_map = Some(map.clone()),
+                None => warn!("no mapped memory of vcpu fd {} found called {}", vcpu.fd_num, name),
+            }
+        }
+    }
+
+    pub fn map(&self) -> Result<&Mapping> {
+        self.vcpu_map.as_ref().ok_or(simple_error!("vcpu_map must be initialized before use (programming error)"))
+    }
 }
 
 /// Owns the tracee to prevent that multiple tracees are created for a Hypervisor. The Hypervisor
@@ -37,9 +57,6 @@ pub struct Hypervisor {
     pub pid: Pid,
     pub vm_fd: RawFd,
     pub vcpus: Vec<VCPU>,
-    /// hypervisor memory where fd_num is mapped to.
-    /// sorted by vcpu nr. TODO what if there exist cpu [0, 1, 4]?
-    pub vcpu_maps: Vec<Mapping>,
     pub(super) tracee: Arc<RwLock<Tracee>>,
     pub wrapper: Mutex<Option<KvmRunWrapper>>,
 }
@@ -103,12 +120,12 @@ impl Hypervisor {
                 Some(injector) => {
                     let wrapper = KvmRunWrapper::from_tracer(inject_syscall::into_tracer(
                         injector,
-                        self.vcpu_maps[0].clone(),
+                        self.vcpus.clone(),
                     )?)?;
                     (true, wrapper)
                 }
                 None => {
-                    let wrapper = KvmRunWrapper::attach(self.pid, &self.vcpu_maps)?;
+                    let wrapper = KvmRunWrapper::attach(self.pid, &self.vcpus)?;
                     (false, wrapper)
                 }
             }
@@ -498,6 +515,7 @@ fn find_vm_fd(handle: &PidHandle) -> Result<(Vec<RawFd>, Vec<VCPU>)> {
             vcpu_fds.push(VCPU {
                 idx,
                 fd_num: fd.fd_num,
+                vcpu_map: None,
             })
         }
     }
@@ -513,7 +531,7 @@ fn find_vm_fd(handle: &PidHandle) -> Result<(Vec<RawFd>, Vec<VCPU>)> {
 pub fn get_hypervisor(pid: Pid) -> Result<Hypervisor> {
     let handle = try_with!(openpid(pid), "cannot open handle in proc");
 
-    let (vm_fds, vcpus) = try_with!(find_vm_fd(&handle), "failed to access kvm fds");
+    let (vm_fds, mut vcpus) = try_with!(find_vm_fd(&handle), "failed to access kvm fds");
     if vm_fds.is_empty() {
         bail!("no KVM-VMs found. If this is qemu, does it enable KVM?");
     }
@@ -523,20 +541,19 @@ pub fn get_hypervisor(pid: Pid) -> Result<Hypervisor> {
 
     let tracee = Hypervisor::attach(pid, vm_fds[0]);
     let vcpu_maps = try_with!(tracee.get_vcpu_maps(), "cannot get vcpufd memory maps");
-
     if vcpus.is_empty() {
         bail!("found KVM instance but no VCPUs");
     }
     if vcpu_maps.is_empty() {
         bail!("found VCPUs but no mappings of their fds");
     }
+    VCPU::match_maps(&mut vcpus, &vcpu_maps);
 
     Ok(Hypervisor {
         pid,
         tracee: Arc::new(RwLock::new(tracee)),
         vm_fd: vm_fds[0],
         vcpus,
-        vcpu_maps,
         wrapper: Mutex::new(None),
     })
 }

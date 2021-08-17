@@ -205,7 +205,7 @@ pub fn register_ioeventfd(
         let injector = tracee.detach().unwrap();
         let wrapper = KvmRunWrapper::from_tracer(inject_syscall::into_tracer(
             injector,
-            vmm.vcpu_maps[0].clone(),
+            vmm.vcpus.clone(),
         )?)?;
         let _ = wrapper_go.replace(wrapper);
     }
