@@ -7,6 +7,8 @@ from measure_helpers import (
     GUEST_QEMU9P,
     GUEST_JAVDEV_MOUNT,
     GUEST_QEMUBLK_MOUNT,
+    HOST_SSD,
+    run,
 )
 from qemu import QemuVm
 
@@ -37,7 +39,7 @@ def hdparm(vm: QemuVm, device: str) -> Optional[float]:
 
 
 def fio(
-    vm: QemuVm,
+    vm: Optional[QemuVm],
     device: str,
     random: bool = False,
     readonly: bool = True,
@@ -96,7 +98,11 @@ def fio(
     cmd += ["--output-format=json"]
 
     print(cmd)
-    term = vm.ssh_cmd(cmd, check=True)
+    if vm is None:
+        term = run(cmd, check=True)
+    else:
+        term = vm.ssh_cmd(cmd, check=True)
+
     out = term.stdout
     # print(out)
     j = json.loads(out)
@@ -131,6 +137,7 @@ if QUICK:
     SIZE = 2
 
 
+# QUICK: 20s else: 5min
 def sample(
     f: Callable[[], Optional[float]], size: int = SIZE, warmup: int = WARMUP
 ) -> List[float]:
@@ -147,7 +154,7 @@ def sample(
 
 # QUICK: ? else: ~5min
 def fio_suite(
-    vm: QemuVm, measurements: Any, device: str, name: str, file: bool = True
+    vm: Optional[QemuVm], measurements: Any, device: str, name: str, file: bool = True
 ) -> Any:
     measurements["fio"][f"{name}-best-case-bw"] = list(
         fio(
@@ -172,6 +179,7 @@ def fio_suite(
     pass
 
 
+# not quick: 5 * fio_suite(5min) + 2 * sample(5min) = 35min
 if __name__ == "__main__":
     util.check_ssd()
     util.check_system()
@@ -180,11 +188,32 @@ if __name__ == "__main__":
     measurements = util.read_stats(f"{MEASURE_RESULTS}/stats.json")
     measurements["fio"] = {}
     measurements["hdparm"] = {}
+
+    # fresh ssd, unmount and fio_suite(HOST_SSD)
+    with util.fresh_ssd():
+        pass
+    fio_suite(None, measurements, HOST_SSD, "direct_host", file=False)
+
     with util.fresh_ssd():
         with util.testbench(helpers, with_vmsh=False, ioregionfd=False) as vm:
             fio_suite(
-                vm, measurements, GUEST_QEMUBLK, "detached_qemublk_nofile", file=False
+                vm, measurements, GUEST_QEMUBLK, "direct_detached_qemublk", file=False
             )
+    # testbench wants to mount again -> restore fs via fresh_ssd()
+    with util.fresh_ssd():
+        with util.testbench(helpers, with_vmsh=True, ioregionfd=False) as vm:
+            fio_suite(vm, measurements, GUEST_QEMUBLK, "direct_ws_qemublk", file=False)
+            fio_suite(vm, measurements, GUEST_JAVDEV, "direct_ws_javdev", file=False)
+    with util.fresh_ssd():
+        with util.testbench(helpers, with_vmsh=True, ioregionfd=True) as vm:
+            fio_suite(
+                vm, measurements, GUEST_QEMUBLK, "direct_iorefd_qemublk", file=False
+            )
+            fio_suite(
+                vm, measurements, GUEST_JAVDEV, "direct_iorefd_javdev", file=False
+            )
+
+    # we just wrote randomly to the disk -> fresh_ssd() required
     with util.fresh_ssd():
         with util.testbench(helpers, with_vmsh=False, ioregionfd=False) as vm:
             lsblk(vm)
