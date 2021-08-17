@@ -1,3 +1,31 @@
+"""
+# Compare block devices:
+
+- qemu virtio blk
+- qemu virtio 9p
+- vmsh virtio blk ws
+- vmsh virtio blk ioregionfd
+
+for each:
+- best case bw read
+- best case bw write
+- worst case iops
+
+# Compare guest performance under vmsh
+
+- native
+- detached
+- vmsh ws
+- vmsh ioregionfd
+- run via vmsh (in container in vm)
+- run via ssh (no container in vm)
+
+for each:
+- blkdev
+- shell latency
+- phoronix
+"""
+
 from root import MEASURE_RESULTS
 import confmeasure
 import measure_helpers as util
@@ -11,8 +39,9 @@ from measure_helpers import (
     run,
 )
 from qemu import QemuVm
+from dataclasses import dataclass
 
-from typing import List, Any, Optional, Callable, Tuple
+from typing import List, Any, Optional, Callable, DefaultDict
 import re
 import json
 
@@ -38,6 +67,14 @@ def hdparm(vm: QemuVm, device: str) -> Optional[float]:
     return mb / sec
 
 
+@dataclass
+class FioResult:
+    read_mean: float
+    read_stddev: float
+    write_mean: float
+    write_stddev: float
+
+
 def fio(
     vm: Optional[QemuVm],
     device: str,
@@ -45,7 +82,7 @@ def fio(
     readonly: bool = True,
     iops: bool = False,
     file: bool = False,
-) -> Tuple[float, float, float, float]:
+) -> FioResult:
     """
     inspired by https://docs.oracle.com/en-us/iaas/Content/Block/References/samplefiocommandslinux.htm
     @param random: random vs sequential
@@ -59,8 +96,10 @@ def fio(
     if QUICK:
         runtime = 10
         size = 10
-
-    cmd = ["fio"]
+    cmd = []
+    if not vm and not file:
+        cmd += ["sudo"]
+    cmd += ["fio"]
 
     if file:
         cmd += [f"--filename={device}/file", f"--size={size}GB"]
@@ -97,7 +136,7 @@ def fio(
 
     cmd += ["--output-format=json"]
 
-    print(cmd)
+    # print(cmd)
     if vm is None:
         term = run(cmd, check=True)
     else:
@@ -118,7 +157,7 @@ def fio(
             write["iops_mean"],
             write["iops_stddev"],
         )
-        return (
+        return FioResult(
             read["iops_mean"],
             read["iops_stddev"],
             write["iops_mean"],
@@ -127,7 +166,9 @@ def fio(
     else:
         print("Bandwidth read", float(read["bw_mean"]) / 1024 / 1024, "GB/s")
         print("Bandwidth write", float(write["bw_mean"]) / 1024 / 1024, "GB/s")
-        return (read["bw_mean"], read["bw_dev"], write["bw_mean"], write["bw_dev"])
+        return FioResult(
+            read["bw_mean"], read["bw_dev"], write["bw_mean"], write["bw_dev"]
+        )
 
 
 SIZE = 16
@@ -152,116 +193,99 @@ def sample(
     return ret
 
 
+STATS_PATH = MEASURE_RESULTS.joinpath("fio-stats.json")
+
+
 # QUICK: ? else: ~5min
 def fio_suite(
-    vm: Optional[QemuVm], measurements: Any, device: str, name: str, file: bool = True
-) -> Any:
-    measurements["fio"][f"{name}-best-case-bw"] = list(
-        fio(
-            vm,
-            device,
-            random=False,
-            readonly=False,
-            iops=False,
-            file=file,
-        )
-    )
-    measurements["fio"][f"{name}-worst-case-iops"] = list(
-        fio(
-            vm,
-            device,
-            random=True,
-            readonly=False,
-            iops=True,
-            file=file,
-        )
-    )
-    pass
+    vm: Optional[QemuVm],
+    stats: DefaultDict[str, List[Any]],
+    device: str,
+    name: str,
+    file: bool = True,
+) -> None:
+    if name in stats["system"]:
+        print(f"skip {name}")
+        return
+
+    results = [
+        (
+            "best-case-bw",
+            fio(
+                vm,
+                device,
+                random=False,
+                readonly=False,
+                iops=False,
+                file=file,
+            ),
+        ),
+        (
+            "worst-case-iops",
+            fio(
+                vm,
+                device,
+                random=True,
+                readonly=False,
+                iops=True,
+                file=file,
+            ),
+        ),
+    ]
+    for benchmark, result in results:
+        stats["system"].append(name)
+        stats["benchmark"].append(benchmark)
+        stats["read_mean"].append(result.read_mean)
+        stats["read_stddev"].append(result.read_stddev)
+        stats["write_mean"].append(result.write_mean)
+        stats["write_stddev"].append(result.write_stddev)
+    util.write_stats(STATS_PATH, stats)
 
 
-# not quick: 5 * fio_suite(5min) + 2 * sample(5min) = 35min
-if __name__ == "__main__":
+def main() -> None:
+    """
+    not quick: 5 * fio_suite(5min) + 2 * sample(5min) = 35min
+    """
     util.check_ssd()
     util.check_system()
     helpers = confmeasure.Helpers()
 
-    measurements = util.read_stats(f"{MEASURE_RESULTS}/stats.json")
-    measurements["fio"] = {}
-    measurements["hdparm"] = {}
+    fio_stats = util.read_stats(STATS_PATH)
 
     # fresh ssd, unmount and fio_suite(HOST_SSD)
-    with util.fresh_ssd():
-        pass
-    fio_suite(None, measurements, HOST_SSD, "direct_host", file=False)
+    util.fresh_ssd()
+    fio_suite(None, fio_stats, HOST_SSD, "direct_host", file=False)
 
     with util.fresh_ssd():
         with util.testbench(helpers, with_vmsh=False, ioregionfd=False) as vm:
             fio_suite(
-                vm, measurements, GUEST_QEMUBLK, "direct_detached_qemublk", file=False
+                vm, fio_stats, GUEST_QEMUBLK, "direct_detached_qemublk", file=False
             )
     # testbench wants to mount again -> restore fs via fresh_ssd()
     with util.fresh_ssd():
         with util.testbench(helpers, with_vmsh=True, ioregionfd=False) as vm:
-            fio_suite(vm, measurements, GUEST_QEMUBLK, "direct_ws_qemublk", file=False)
-            fio_suite(vm, measurements, GUEST_JAVDEV, "direct_ws_javdev", file=False)
+            fio_suite(vm, fio_stats, GUEST_QEMUBLK, "direct_ws_qemublk", file=False)
+            fio_suite(vm, fio_stats, GUEST_JAVDEV, "direct_ws_javdev", file=False)
     with util.fresh_ssd():
         with util.testbench(helpers, with_vmsh=True, ioregionfd=True) as vm:
-            fio_suite(
-                vm, measurements, GUEST_QEMUBLK, "direct_iorefd_qemublk", file=False
-            )
-            fio_suite(
-                vm, measurements, GUEST_JAVDEV, "direct_iorefd_javdev", file=False
-            )
+            fio_suite(vm, fio_stats, GUEST_QEMUBLK, "direct_iorefd_qemublk", file=False)
+            fio_suite(vm, fio_stats, GUEST_JAVDEV, "direct_iorefd_javdev", file=False)
 
     # we just wrote randomly to the disk -> fresh_ssd() required
     with util.fresh_ssd():
         with util.testbench(helpers, with_vmsh=False, ioregionfd=False) as vm:
             lsblk(vm)
-            fio_suite(vm, measurements, GUEST_QEMUBLK_MOUNT, "detached_qemublk")
-            fio_suite(vm, measurements, GUEST_QEMU9P, "detached_qemu9p")
-            measurements["hdparm"]["detached_qemublk"] = sample(
-                lambda: hdparm(vm, GUEST_QEMUBLK)
-            )
+            fio_suite(vm, fio_stats, GUEST_QEMUBLK_MOUNT, "detached_qemublk")
+            fio_suite(vm, fio_stats, GUEST_QEMU9P, "detached_qemu9p")
 
         with util.testbench(helpers, with_vmsh=True, ioregionfd=False) as vm:
-            fio_suite(vm, measurements, GUEST_JAVDEV_MOUNT, "attached_ws_javdev")
+            fio_suite(vm, fio_stats, GUEST_JAVDEV_MOUNT, "attached_ws_javdev")
 
         with util.testbench(helpers, with_vmsh=True, ioregionfd=True) as vm:
-            fio_suite(vm, measurements, GUEST_JAVDEV_MOUNT, "attached_iorefd_javdev")
+            fio_suite(vm, fio_stats, GUEST_JAVDEV_MOUNT, "attached_iorefd_javdev")
 
-            measurements["hdparm"]["attached_iorefd_javdev"] = sample(
-                lambda: hdparm(vm, GUEST_JAVDEV)
-            )
+    util.export_fio("fio", fio_stats)
 
-    util.export_lineplot("hdparm_warmup", measurements["hdparm"])
-    util.export_barplot("hdparm_warmup_barplot", measurements["hdparm"])
-    util.export_fio("fio", measurements["fio"])
-    util.write_stats(f"{MEASURE_RESULTS}/stats.json", measurements)
 
-"""
-# Compare block devices:
-
-- qemu virtio blk
-- qemu virtio 9p
-- vmsh virtio blk ws
-- vmsh virtio blk ioregionfd
-
-for each:
-- best case bw read
-- best case bw write
-- worst case iops
-
-# Compare guest performance under vmsh
-
-- native
-- detached
-- vmsh ws
-- vmsh ioregionfd
-- run via vmsh (in container in vm)
-- run via ssh (no container in vm)
-
-for each:
-- blkdev
-- shell latency
-- phoronix
-"""
+if __name__ == "__main__":
+    main()
