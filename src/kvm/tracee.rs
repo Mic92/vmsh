@@ -1,3 +1,4 @@
+use crate::cpu;
 use kvm_bindings as kvmb;
 use libc::{c_int, c_ulong, c_void};
 use nix::unistd::Pid;
@@ -7,7 +8,6 @@ use std::os::unix::prelude::RawFd;
 use std::ptr;
 
 use super::ioctls;
-use crate::cpu;
 use crate::kvm::hypervisor::{memory::HvMem, VCPU};
 use crate::kvm::ioctls::KVM_CHECK_EXTENSION;
 use crate::kvm::memslots::{get_maps, get_vcpu_maps};

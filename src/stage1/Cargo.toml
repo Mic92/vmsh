@@ -6,11 +6,12 @@ edition = "2018"
 license = "MIT"
 
 [lib]
-crate_type = ["cdylib"]
+crate_type = ["cdylib", "staticlib"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [build-dependencies]
 build-utils = { path = "../build-utils" }
+cc = "1.0.69"
 
 [dependencies]
 chlorine = { version = "1.0.*", features = ["int_extras"] }
@@ -19,9 +20,11 @@ stage1-interface = { path = "../stage1-interface" }
 [profile.dev]
 panic = "abort"
 lto = true
+incremental = false
 opt-level = "z"
 
 [profile.release]
 panic = "abort"
 lto = true
+incremental = false
 opt-level = "z"

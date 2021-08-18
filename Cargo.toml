@@ -22,7 +22,7 @@ exclude = [
   "src/build-utils",
   "src/stage1",
   "src/stage1-interface",
-  "src/stage2"
+  "src/stage2",
 ]
 
 [dependencies]

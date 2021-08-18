@@ -1,7 +1,7 @@
 use build_utils::{copy_out, rebuild_if_dir_changed, run, stage_dir};
 
 fn main() {
-    let srcs = ["build.rs"];
+    let srcs = ["build.rs", "trampoline.S"];
 
     for src in &srcs {
         println!("cargo:rerun-if-changed=src/stage1/{}", src);

@@ -1,3 +1,4 @@
+use crate::cpu::{FpuRegs, Regs};
 use crate::kvm::hypervisor::VCPU;
 use kvm_bindings as kvmb;
 use libc::{c_void, off_t, timeval, PT_LOAD, PT_NOTE};
@@ -12,7 +13,6 @@ use std::path::PathBuf;
 use std::{fs::File, io::Write, ptr, slice::from_raw_parts_mut};
 use std::{mem::size_of, os::unix::prelude::AsRawFd};
 
-use crate::cpu::{FpuRegs, Regs};
 use crate::elf::{
     elf_prpsinfo, elf_prstatus, elf_siginfo, Ehdr, Elf_Addr, Elf_Half, Elf_Off, Elf_Word, Nhdr,
     Phdr, Shdr, ELFARCH, ELFCLASS, ELFDATA2, ELFMAG0, ELFMAG1, ELFMAG2, ELFMAG3, ELF_NGREG,
