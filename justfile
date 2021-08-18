@@ -327,6 +327,7 @@ attach-qemu: vmsh-image
 
 measure:
   rm tests/measurements/stats.json || true
+  rm tests/measurements/fio-stats.json || true
   python3 tests/measure_block.py
 
 # mom says we already have a benchmark at home

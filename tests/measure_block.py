@@ -44,6 +44,7 @@ from dataclasses import dataclass
 from typing import List, Any, Optional, Callable, DefaultDict
 import re
 import json
+from enum import Enum
 
 
 # overwrite the number of samples to take to a minimum
@@ -75,18 +76,23 @@ class FioResult:
     write_stddev: float
 
 
+class Rw(Enum):
+    r = 1
+    w = 2
+    rw = 3
+
+
 def fio(
     vm: Optional[QemuVm],
     device: str,
     random: bool = False,
-    readonly: bool = True,
+    rw: Rw = Rw.r,
     iops: bool = False,
     file: bool = False,
 ) -> FioResult:
     """
     inspired by https://docs.oracle.com/en-us/iaas/Content/Block/References/samplefiocommandslinux.htm
     @param random: random vs sequential
-    @param readonly: readonly vs read+write
     @param iops: return iops vs bandwidth
     @param file: target is file vs blockdevice
     @return (read_mean, stddev, write_mean, stdev) in kiB/s
@@ -106,14 +112,18 @@ def fio(
     else:
         cmd += [f"--filename={device}", "--direct=1"]
 
-    if readonly and random:
+    if rw == Rw.r and random:
         cmd += ["--rw=randread"]
-    elif not readonly and random:
+    if rw == Rw.w and random:
+        cmd += ["--rw=randwrite"]
+    elif rw == Rw.rw and random:
         # fio/examples adds rwmixread=60 and rwmixwrite=40 here
         cmd += ["--rw=randrw"]
-    elif readonly and not random:
+    elif rw == Rw.r and not random:
         cmd += ["--rw=read"]
-    elif not readonly and not random:
+    elif rw == Rw.w and not random:
+        cmd += ["--rw=write"]
+    elif rw == Rw.rw and not random:
         cmd += ["--rw=readwrite"]
 
     if iops:
@@ -131,7 +141,7 @@ def fio(
         "--eta-newline=1",
     ]
 
-    if readonly:
+    if rw == Rw.r:
         cmd += ["--readonly"]
 
     cmd += ["--output-format=json"]
@@ -196,7 +206,35 @@ def sample(
 STATS_PATH = MEASURE_RESULTS.joinpath("fio-stats.json")
 
 
-# QUICK: ? else: ~5min
+def fio_read_write(
+    vm: Optional[QemuVm],
+    device: str,
+    random: bool = False,
+    iops: bool = False,
+    file: bool = False,
+) -> FioResult:
+    read = fio(
+        vm,
+        device,
+        random=random,
+        rw=Rw.r,
+        iops=iops,
+        file=file,
+    )
+    write = fio(
+        vm,
+        device,
+        random=random,
+        rw=Rw.w,
+        iops=iops,
+        file=file,
+    )
+    return FioResult(
+        read.read_mean, read.read_stddev, write.write_mean, write.write_stddev
+    )
+
+
+# QUICK: ? else: ~2*2.5min
 def fio_suite(
     vm: Optional[QemuVm],
     stats: DefaultDict[str, List[Any]],
@@ -210,23 +248,43 @@ def fio_suite(
 
     results = [
         (
-            "best-case-bw",
+            "best-case-bw-mixed",
             fio(
                 vm,
                 device,
                 random=False,
-                readonly=False,
+                rw=Rw.rw,
                 iops=False,
                 file=file,
             ),
         ),
         (
-            "worst-case-iops",
+            "best-case-bw-seperate",
+            fio_read_write(
+                vm,
+                device,
+                random=False,
+                iops=False,
+                file=file,
+            ),
+        ),
+        (
+            "worst-case-iops-mixed",
             fio(
                 vm,
                 device,
                 random=True,
-                readonly=False,
+                rw=Rw.rw,
+                iops=True,
+                file=file,
+            ),
+        ),
+        (
+            "worst-case-iops-seperate",
+            fio_read_write(
+                vm,
+                device,
+                random=True,
                 iops=True,
                 file=file,
             ),
@@ -253,8 +311,10 @@ def main() -> None:
     fio_stats = util.read_stats(STATS_PATH)
 
     # fresh ssd, unmount and fio_suite(HOST_SSD)
-    util.fresh_ssd()
-    fio_suite(None, fio_stats, HOST_SSD, "direct_host", file=False)
+    with util.fresh_ssd():
+        pass
+    fio_suite(None, fio_stats, HOST_SSD, "direct_host1", file=False)
+    fio_suite(None, fio_stats, HOST_SSD, "direct_host2", file=False)
 
     with util.fresh_ssd():
         with util.testbench(helpers, with_vmsh=False, ioregionfd=False) as vm:
