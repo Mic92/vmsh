@@ -18,6 +18,10 @@ mod arch {
     }
 
     impl Regs {
+        pub fn set_ip(&mut self, ip: u64) {
+            self.pc = ip
+        }
+
         pub fn ip(&self) -> u64 {
             self.pc
         }
@@ -47,7 +51,7 @@ mod arch {
 #[cfg(target_arch = "x86_64")]
 mod arch {
     #[repr(C)]
-    #[derive(Clone, Copy, Debug)]
+    #[derive(Clone, Copy, Debug, Default)]
     pub struct Regs {
         pub r15: u64,
         pub r14: u64,
@@ -110,6 +114,10 @@ mod arch {
     }
 
     impl Regs {
+        pub fn set_ip(&mut self, ip: u64) {
+            self.rip = ip
+        }
+
         pub fn ip(&self) -> u64 {
             self.rip
         }

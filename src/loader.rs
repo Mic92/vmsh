@@ -61,6 +61,7 @@ impl<'a> Loader<'a> {
     pub fn new(
         binary: &'a [u8],
         kernel: &'a Kernel,
+        return_address: usize,
         allocator: &'a mut PhysMemAllocator,
     ) -> Result<Loader<'a>> {
         let elf = try_core_res!(ElfBinary::new(binary), "cannot parse elf binary");
@@ -74,9 +75,22 @@ impl<'a> Loader<'a> {
             ),
         };
 
+        // we use symtab instead of dynsym here because rust does not allow us
+        // to export our assembly trampoline (_init_vmsh) from the stage1 build
+        // via .dynsym
+        let symbol_section = elf.file.find_section_by_name(".symtab").unwrap();
+        let symbol_table = symbol_section.get_data(&elf.file)?;
+        let sym_entries = match symbol_table {
+            SectionData::SymbolTable64(entries) => entries,
+            _ => bail!(
+                "expected .symtab to be a SymbolTable64, got: {:?}",
+                symbol_table
+            ),
+        };
+
         let vbase = kernel.range.end;
 
-        let syms = dyn_syms
+        let mut syms = sym_entries
             .iter()
             .filter(|sym| sym.shndx() != SHN_UNDEF)
             .map(|sym| {
@@ -85,6 +99,8 @@ impl<'a> Loader<'a> {
                 Ok((name, vbase + sym.value() as usize))
             })
             .collect::<Result<HashMap<_, _>>>()?;
+
+        syms.insert("VMSH_STAGE1_PC", return_address);
 
         Ok(Loader {
             kernel,
@@ -95,10 +111,7 @@ impl<'a> Loader<'a> {
             binary,
             elf,
             dyn_syms,
-            init_func: *require_with!(
-                syms.get("init_vmsh_stage1"),
-                "no init_vmsh_stage1 symbol found"
-            ),
+            init_func: *require_with!(syms.get("_init_vmsh"), "no _init_vmsh symbol found"),
             vmsh_stage1_args: *require_with!(
                 syms.get("VMSH_STAGE1_ARGS"),
                 "no cleanup_vmsh_stage1 symbol found"

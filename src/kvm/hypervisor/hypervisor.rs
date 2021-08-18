@@ -1,3 +1,4 @@
+use crate::cpu;
 use crate::page_table::PhysAddr;
 use crate::tracer::inject_syscall;
 use kvm_bindings as kvmb;
@@ -16,7 +17,6 @@ use vmm_sys_util::eventfd::{EventFd, EFD_NONBLOCK};
 use super::ioeventfd::IoEventFd;
 use super::ioregionfd::IoRegionFd;
 use super::memory::*;
-use crate::cpu;
 use crate::kvm::fd_transfer;
 use crate::kvm::ioctls;
 use crate::kvm::tracee::{kvm_msrs, Tracee};

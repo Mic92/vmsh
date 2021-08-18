@@ -1,3 +1,4 @@
+use crate::cpu::Regs;
 use libc::{c_long, c_void, pid_t};
 use nix::errno::Errno;
 use nix::sys::ptrace::{self, AddressType, Request, RequestType};
@@ -8,7 +9,6 @@ use simple_error::{require_with, try_with};
 use std::fs;
 use std::{mem, ptr};
 
-use crate::cpu::Regs;
 use crate::result::Result;
 use crate::tracer::proc;
 use crate::tracer::ptrace_syscall_info::{get_syscall_info, SyscallInfo};

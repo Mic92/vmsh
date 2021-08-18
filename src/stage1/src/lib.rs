@@ -304,9 +304,19 @@ unsafe extern "C" fn spawn_stage2(_arg: *mut c_void) -> c_int {
     VMSH_STAGE1_ARGS.driver_status = DeviceState::Terminating;
     0
 }
+extern "C" {
+    #[link(name = "trampoline", kind = "static")]
+    pub fn _init_vmsh();
+}
 
 #[no_mangle]
-fn init_vmsh_stage1() -> c_int {
+unsafe fn linker_hack() {
+    // force linker to include _init_vmsh() symbol
+    _init_vmsh();
+}
+
+#[no_mangle]
+fn init_vmsh() -> c_int {
     printkln!("stage1: init");
 
     // We cannot close a file synchronusly outside of a kthread
@@ -327,6 +337,7 @@ fn init_vmsh_stage1() -> c_int {
         return err_value(thread) as c_int;
     }
     unsafe { ffi::wake_up_process(thread) };
+    printkln!("stage1: finished");
 
     0
 }

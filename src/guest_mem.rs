@@ -1,19 +1,19 @@
-use std::ops::Range;
-use std::sync::Arc;
-
-use crate::kvm::hypervisor::memory::PhysMem;
-use crate::page_math::huge_page_size;
-use crate::page_table::{
-    self, PageTable, PageTableFlags, PageTableIteratorValue, PhysAddr, VirtMem,
-};
-use crate::tracer::proc::Mapping;
-use crate::{cpu::Regs, kvm::hypervisor::Hypervisor};
+use crate::cpu::Regs;
 use kvm_bindings as kvmb;
 use log::debug;
 use nix::sys::mman::ProtFlags;
 use simple_error::{bail, require_with, try_with};
+use std::ops::Range;
+use std::sync::Arc;
 
+use crate::kvm::hypervisor::memory::PhysMem;
+use crate::kvm::hypervisor::Hypervisor;
+use crate::page_math::huge_page_size;
+use crate::page_table::{
+    self, PageTable, PageTableFlags, PageTableIteratorValue, PhysAddr, VirtMem,
+};
 use crate::result::Result;
+use crate::tracer::proc::Mapping;
 
 pub struct GuestMem {
     maps: Vec<Mapping>,

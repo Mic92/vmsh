@@ -1,3 +1,4 @@
+use crate::cpu::Regs;
 use libc::c_void;
 use log::{debug, info};
 /// This module loads kernel code into the VM that we want to attach to.
@@ -24,7 +25,7 @@ pub struct Stage1 {
     virt_mem: VirtMem,
     pub device_status: Option<DeviceStatus>,
     pub driver_status: Option<DriverStatus>,
-    init_func: usize,
+    regs: Regs,
 }
 
 pub struct DeviceStatus {
@@ -60,8 +61,13 @@ impl Stage1 {
     ) -> Result<Stage1> {
         let kernel = find_kernel(&allocator.guest_mem, &allocator.hv)?;
 
+        let mut regs = try_with!(
+            allocator.hv.get_regs(&allocator.hv.vcpus[0]),
+            "failed to get vm registers"
+        );
+
         let mut loader = try_with!(
-            Loader::new(STAGE1_LIB, &kernel, &mut allocator),
+            Loader::new(STAGE1_LIB, &kernel, regs.ip() as usize, &mut allocator),
             "cannot load stage1"
         );
 
@@ -78,11 +84,16 @@ impl Stage1 {
             virt_mem.mappings[0].virt_start
         );
 
+        if regs.is_userspace() {
+            bail!("vcpu was stopped in userspace. This is not supported");
+        }
+        regs.set_ip(init_func as u64);
+
         Ok(Stage1 {
             virt_mem,
             device_status: Some(device_status),
             driver_status: Some(driver_status),
-            init_func,
+            regs,
         })
     }
 
@@ -92,13 +103,8 @@ impl Stage1 {
         driver_status: DriverStatus,
         result_sender: &SyncSender<()>,
     ) -> Result<InterrutableThread<(), ()>> {
-        let mut regs = try_with!(hv.get_regs(&hv.vcpus[0]), "failed to get cpu registers");
-        if regs.is_userspace() {
-            bail!("vcpu was stopped in userspace. This is not supported");
-        }
-        regs.rip = self.init_func as u64;
         try_with!(
-            hv.set_regs(&hv.vcpus[0], &regs),
+            hv.set_regs(&hv.vcpus[0], &self.regs),
             "failed to set cpu registers"
         );
 
