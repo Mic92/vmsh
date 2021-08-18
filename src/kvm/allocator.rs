@@ -123,18 +123,20 @@ impl PhysMemAllocator {
         })
     }
 
-    fn reserve_range(&mut self, size: usize) -> Result<usize> {
+    fn next_addr(&mut self, size: usize) -> Result<usize> {
         let start = require_with!(self.next_allocation.checked_sub(size), "out of memory");
-        let last_mapping =
-            require_with!(self.guest_mem.last_mapping(), "vm has no memory assigned");
-        let last_alloc = last_mapping.phys_addr + last_mapping.size();
+        let last_range = require_with!(
+            self.guest_mem.last_memslot_range(),
+            "vm has no memory assigned"
+        );
+        let last_alloc = last_range.end;
         if start < last_alloc {
             bail!(
-                "cannot allocate memory at {:x}, our allocator conflicts with mapping at {:x} ({:x}B). \
+                "cannot allocate memory at {:x}, our allocator conflicts with mapping at {:x}-{:x}. \
                    This might happen if the last vmsh run did not clean up memory \
                    correctly or the hypervisor has allocated memory at the very end of \
                    the physical address space",
-                start, last_mapping.start, last_mapping.size()
+                start, last_range.start, last_range.end
             );
         }
         self.next_allocation = start;
@@ -145,7 +147,7 @@ impl PhysMemAllocator {
     pub fn phys_alloc(&mut self, size: usize, readonly: bool) -> Result<PhysMem<u8>> {
         let old_start = self.next_allocation;
         let padded_size = page_math::page_align(size);
-        let start = self.reserve_range(padded_size)?;
+        let start = self.next_addr(padded_size)?;
         let res = self.hv.vm_add_mem(start as u64, padded_size, readonly);
         if res.is_err() {
             self.next_allocation = old_start;
@@ -177,7 +179,7 @@ impl PhysMemAllocator {
     }
 
     pub fn alloc_mmio_range(&mut self, size: usize) -> Result<MmioRange> {
-        let start = self.reserve_range(size)?;
+        let start = self.next_addr(size)?;
         Ok(try_with!(
             MmioRange::new(MmioAddress(start as u64), size as u64),
             "failed to allocate mmio range"

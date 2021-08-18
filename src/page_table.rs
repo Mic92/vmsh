@@ -7,7 +7,7 @@ use std::ops::Range;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use crate::guest_mem::MappedMemory;
+use crate::guest_mem::{MappedMemory, PhysHostMap};
 use crate::kvm::hypervisor::{memory::process_read, memory::PhysMem, Hypervisor};
 use crate::page_math::{is_page_aligned, page_align, page_size};
 use crate::result::Result;
@@ -15,7 +15,7 @@ use bitflags::bitflags;
 use log::{error, info};
 use nix::sys::mman::ProtFlags;
 use nix::sys::uio::{process_vm_writev, IoVec, RemoteIoVec};
-use simple_error::{bail, try_with};
+use simple_error::{bail, require_with, try_with};
 use vm_memory::remote_mem::any_as_bytes;
 
 const ENTRY_COUNT: usize = 512;
@@ -134,6 +134,7 @@ pub struct PageTable {
 
 pub struct PageTableIterator<'a> {
     hv: &'a Hypervisor,
+    phys_host_map: Arc<PhysHostMap>,
     page_table: PageTable,
     range: Range<usize>,
     count: usize,
@@ -163,16 +164,27 @@ impl PageTable {
         })
     }
 
-    pub fn phys_addr(&self, e: PageTableEntry) -> PhysAddr {
-        PhysAddr {
+    pub fn phys_addr(&self, e: PageTableEntry, m: &PhysHostMap) -> Result<PhysAddr> {
+        let host_offset = require_with!(
+            m.get(e.addr() as usize),
+            "physical address {} is not backed by memslot",
+            e.addr()
+        );
+        Ok(PhysAddr {
             value: e.addr() as usize,
-            host_offset: self.phys_addr.host_offset,
-        }
+            host_offset,
+        })
     }
 
-    pub fn iter(self, hv: &Hypervisor, range: Range<usize>) -> PageTableIterator {
+    pub fn iter(
+        self,
+        hv: &Hypervisor,
+        phys_host_map: Arc<PhysHostMap>,
+        range: Range<usize>,
+    ) -> PageTableIterator {
         PageTableIterator {
             hv,
+            phys_host_map,
             range,
             page_table: self,
             count: 0,
@@ -280,10 +292,15 @@ fn allocate_page_table(
 fn read_page_table(
     hv: &Hypervisor,
     phys_addr: usize,
-    host_offset: isize,
     old_tables: &mut Vec<PageTable>,
     upsert_tables: &mut UpsertTable,
+    phys_host_map: &PhysHostMap,
 ) -> Result<PageTableRef> {
+    let host_offset = require_with!(
+        phys_host_map.get(phys_addr),
+        "phys address {} is not backed by memslot",
+        phys_addr
+    );
     let addr = PhysAddr {
         value: phys_addr,
         host_offset,
@@ -302,11 +319,11 @@ fn read_page_table(
 
 fn get_page_table(
     hv: &Hypervisor,
-    pt_host_offset: isize,
     entry: &mut PageTableEntry,
     phys_addr: &mut PhysAddr,
     old_tables: &mut Vec<PageTable>,
     upsert_tables: &mut UpsertTable,
+    phys_host_map: &PhysHostMap,
 ) -> Result<PageTableRef> {
     // should be empty
     if entry
@@ -321,7 +338,7 @@ fn get_page_table(
         if let Some(t) = upsert_tables.get(&addr) {
             Ok(Rc::clone(t))
         } else {
-            read_page_table(hv, addr, pt_host_offset, old_tables, upsert_tables)
+            read_page_table(hv, addr, old_tables, upsert_tables, phys_host_map)
         }
     } else {
         info!("allocate page table at {:#x}", phys_addr.value);
@@ -380,20 +397,20 @@ fn map_memory_single(
     upsert_tables: &mut UpsertTable,
     old_tables: &mut Vec<PageTable>,
     pt_addr: &mut PhysAddr,
+    phys_host_map: &PhysHostMap,
 ) -> Result<()> {
     let mut phys_addr = m.phys_start.clone();
     let mut len = m.len;
-    let pt_host_offset = pml4.phys_addr.host_offset;
     let start0 = get_index(m.virt_start as u64, 0) as usize;
     'outer: for (i0, entry0) in pml4.entries[start0..].iter_mut().enumerate() {
         let start1 = get_start_idx(m.virt_start, i0, 1);
         let pt1 = get_page_table(
             hv,
-            pt_host_offset,
             entry0,
             pt_addr,
             old_tables,
             upsert_tables,
+            phys_host_map,
         )?;
         let mut pt1 = pt1.borrow_mut();
 
@@ -401,11 +418,11 @@ fn map_memory_single(
             let start2 = get_start_idx(m.virt_start, i1, 2);
             let pt2 = get_page_table(
                 hv,
-                pt_host_offset,
                 entry1,
                 pt_addr,
                 old_tables,
                 upsert_tables,
+                phys_host_map,
             )?;
             let mut pt2 = pt2.borrow_mut();
 
@@ -413,11 +430,11 @@ fn map_memory_single(
                 let start3 = get_start_idx(m.virt_start, i2, 3);
                 let pt3 = get_page_table(
                     hv,
-                    pt_host_offset,
                     entry2,
                     pt_addr,
                     old_tables,
                     upsert_tables,
+                    phys_host_map,
                 )?;
                 let mut pt3 = pt3.borrow_mut();
 
@@ -450,6 +467,7 @@ pub fn map_memory(
     phys_mem: PhysMem<u8>,
     pml4_addr: &mut PhysAddr,
     mappings: &[MappedMemory],
+    phys_host_map: &PhysHostMap,
 ) -> Result<VirtMem> {
     // New/modified tables to be written to guest
     let mut upsert_tables: UpsertTable = HashMap::new();
@@ -459,9 +477,9 @@ pub fn map_memory(
         read_page_table(
             &hv,
             pml4_addr.value,
-            pml4_addr.host_offset,
             &mut old_tables,
-            &mut upsert_tables
+            &mut upsert_tables,
+            phys_host_map
         ),
         "cannot read pml4 page table"
     );
@@ -492,6 +510,7 @@ pub fn map_memory(
             &mut upsert_tables,
             &mut old_tables,
             &mut pt_addr,
+            phys_host_map,
         )?;
     }
 
@@ -551,8 +570,9 @@ impl<'a> Iterator for PageTableIterator<'a> {
                     entry: *entry,
                 }));
             }
+            let next_phys_addr = pt.phys_addr(*entry, &self.phys_host_map).ok()?;
             let next_pt =
-                PageTable::read(self.hv, &pt.phys_addr(*entry), virt_addr, pt.level + 1).ok()?;
+                PageTable::read(self.hv, &next_phys_addr, virt_addr, pt.level + 1).ok()?;
 
             let start = if idx as usize > start {
                 0
@@ -565,7 +585,7 @@ impl<'a> Iterator for PageTableIterator<'a> {
                 self.range.end
             };
 
-            let mut inner = next_pt.iter(self.hv, start..end);
+            let mut inner = next_pt.iter(self.hv, Arc::clone(&self.phys_host_map), start..end);
             if let Some(next) = &inner.next() {
                 self.inner = Some(Box::new(inner));
                 return Some(next.clone());

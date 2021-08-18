@@ -3,6 +3,7 @@ use kvm_bindings as kvmb;
 use log::debug;
 use nix::sys::mman::ProtFlags;
 use simple_error::{bail, require_with, try_with};
+use std::cmp::{max, Ordering};
 use std::ops::Range;
 use std::sync::Arc;
 
@@ -13,18 +14,14 @@ use crate::page_table::{
     self, PageTable, PageTableFlags, PageTableIteratorValue, PhysAddr, VirtMem,
 };
 use crate::result::Result;
-use crate::tracer::proc::Mapping;
 
 pub struct GuestMem {
-    maps: Vec<Mapping>,
+    maps: Arc<PhysHostMap>,
     regs: Regs,
-    sregs: kvmb::kvm_sregs,
-    page_table_mapping_idx: usize,
     pml4: PhysAddr,
 }
 
 // x86_64 & linux address to load the Linux kernel too
-const KERNEL_PHYS_LOAD_ADDR: usize = 0x100000;
 const PHYS_ADDR_MASK: u64 = 0xFFFFFFFFFF000;
 
 // enable PCID support
@@ -76,6 +73,59 @@ fn mapped_memory(e: &PageTableIteratorValue, host_offset: isize) -> MappedMemory
     }
 }
 
+pub struct PhysHostMap {
+    memslots: Vec<(Range<usize>, isize)>,
+}
+
+impl PhysHostMap {
+    pub fn new<I>(memslots: I) -> PhysHostMap
+    where
+        I: Iterator<Item = (Range<usize>, isize)>,
+    {
+        let mut vec: Vec<(Range<usize>, isize)> = Vec::new();
+
+        for (range, val) in memslots.into_iter() {
+            if let Some(&mut (ref mut last_range, ref last_val)) = vec.last_mut() {
+                if range.start <= last_range.end && &val != last_val {
+                    panic!("overlapping ranges ({:x}-{:x}) and ({:x}-{:x}) map to values {:x} and {:x}",
+                           last_range.start, last_range.end, range.start, range.end, last_val, val);
+                }
+
+                if range.start <= last_range.end.saturating_add(1) && &val == last_val {
+                    last_range.end = max(range.end, last_range.end);
+                    continue;
+                }
+            }
+
+            vec.push((range.clone(), val));
+        }
+        PhysHostMap { memslots: vec }
+    }
+
+    pub fn last_range(&self) -> Option<Range<usize>> {
+        self.memslots.last().map(|v| v.0.clone())
+    }
+
+    pub fn get_range(&self, phys_addr: usize) -> Option<(Range<usize>, isize)> {
+        self.memslots
+            .binary_search_by(|r| {
+                if r.0.end < phys_addr {
+                    Ordering::Less
+                } else if r.0.start > phys_addr {
+                    Ordering::Greater
+                } else {
+                    Ordering::Equal
+                }
+            })
+            .ok()
+            .map(|idx| self.memslots[idx].clone())
+    }
+
+    pub fn get(&self, phys_addr: usize) -> Option<isize> {
+        self.get_range(phys_addr).map(|v| v.1)
+    }
+}
+
 impl GuestMem {
     pub fn new(hv: &Hypervisor) -> Result<GuestMem> {
         // We only get maps once. This information could get all if the
@@ -84,7 +134,13 @@ impl GuestMem {
         // To make the design sound we try to allocate memory near the 4 Peta
         // byte limit in the hope that VMs are not getting close to this limit
         // any time soon.
-        let maps = try_with!(hv.get_maps(), "cannot vm memory allocations");
+        let mut mappings = try_with!(hv.get_maps(), "cannot vm memory allocations");
+        mappings.sort_by_key(|m| m.phys_addr);
+
+        let maps =
+            Arc::new(PhysHostMap::new(mappings.iter().map(|m| {
+                (m.phys_addr..m.phys_end() - 1, m.phys_to_host_offset())
+            })));
         let first_core = &hv.vcpus[0];
         let regs = try_with!(hv.get_regs(first_core), "failed to get vcpu registers");
         let sregs = try_with!(
@@ -96,20 +152,11 @@ impl GuestMem {
 
         debug!("pml4: {:#x}\n", pt_addr);
 
-        let (idx, pt_mapping) = require_with!(
-            maps.iter()
-                .enumerate()
-                .find(|(_, m)| { m.phys_addr <= pt_addr && pt_addr < m.phys_end() }),
-            "cannot find page table memory"
-        );
-
-        let host_offset = pt_mapping.phys_to_host_offset();
+        let host_offset = require_with!(maps.get(pt_addr), "cannot find page table memory");
 
         Ok(GuestMem {
             maps,
             regs,
-            sregs,
-            page_table_mapping_idx: idx,
             pml4: PhysAddr {
                 value: pt_addr,
                 host_offset,
@@ -117,18 +164,8 @@ impl GuestMem {
         })
     }
 
-    pub fn last_mapping(&self) -> Option<&Mapping> {
-        self.maps.iter().max_by_key(|m| m.phys_addr + m.size())
-    }
-
-    fn kernel_mapping(&self) -> Option<&Mapping> {
-        self.maps
-            .iter()
-            .find(|m| m.phys_addr == KERNEL_PHYS_LOAD_ADDR)
-    }
-
-    fn page_table_mapping(&self) -> &Mapping {
-        &self.maps[self.page_table_mapping_idx]
+    pub fn last_memslot_range(&self) -> Option<Range<usize>> {
+        self.maps.last_range()
     }
 
     pub fn map_memory(
@@ -137,7 +174,7 @@ impl GuestMem {
         phys_mem: PhysMem<u8>,
         map: &[MappedMemory],
     ) -> Result<VirtMem> {
-        page_table::map_memory(hv, phys_mem, &mut self.pml4, map)
+        page_table::map_memory(hv, phys_mem, &mut self.pml4, map, &self.maps)
     }
 
     pub fn find_kernel_sections(
@@ -150,26 +187,23 @@ impl GuestMem {
             bail!("program stopped in userspace. Linux kernel might be not mapped in thise mode");
         }
 
-        let kernel_mapping = require_with!(self.kernel_mapping(), "cannot find kernel memory");
-        let pt_mapping = self.page_table_mapping();
-        let pt_addr = get_page_table_addr(&self.sregs);
-        if kernel_mapping != pt_mapping {
-            bail!("kernel memory and page table ({:#x}) is not in the same physical memory block: {:#x}-{:#x} vs {:#x}-{:#x}", pt_addr, kernel_mapping.phys_addr, kernel_mapping.phys_end(), pt_mapping.phys_addr, pt_mapping.phys_end());
-        }
-
         // level/virt_addr is wrong, but does not matter
         let pml4 = try_with!(
             PageTable::read(hv, &self.pml4, 0, 0),
             "cannot read pml4 page table"
         );
 
-        let mut iter = pml4.iter(hv, range.clone());
+        let mut iter = pml4.iter(hv, Arc::clone(&self.maps), range.clone());
         let mut sections: Vec<_> = vec![];
-        let host_offset = pt_mapping.phys_to_host_offset();
         for e in &mut iter {
             let entry = try_with!(e, "cannot read page table");
             if entry.virt_addr as usize > range.start {
                 //info!("{:#x}/{:#x}: {:?}", entry.entry.addr(), entry.virt_addr, &entry.entry.flags());
+                let addr = entry.entry.addr();
+                let host_offset = require_with!(
+                    self.maps.get(addr as usize),
+                    "no memslot of physical address {} of page table"
+                );
                 sections.push(mapped_memory(&entry, host_offset));
                 break;
             }
@@ -187,9 +221,28 @@ impl GuestMem {
             if last.prot == prot_flags(entry.entry.flags()) {
                 last.len += huge_page_size(entry.level);
             } else {
+                let addr = entry.entry.addr();
+                let host_offset = require_with!(
+                    self.maps.get(addr as usize),
+                    "no memslot of physical address {} of page table"
+                );
                 sections.push(mapped_memory(&entry, host_offset));
             }
         }
         Ok(sections)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::guest_mem::PhysHostMap;
+
+    #[test]
+    fn range_lookup() {
+        let m = PhysHostMap::new(vec![(1..9, 1), (10..15, 2)].into_iter());
+        assert_eq!(m.get(1), Some(1));
+        assert_eq!(m.get(2), Some(1));
+        assert_eq!(m.get(11), Some(2));
+        assert_eq!(m.get(16), None);
     }
 }
