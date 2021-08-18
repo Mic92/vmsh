@@ -271,7 +271,7 @@ def spawn_qemu(
 ) -> Iterator[QemuVm]:
     with TemporaryDirectory() as tempdir:
         qmp_socket = Path(tempdir).joinpath("qmp.sock")
-        cmd = extra_args_pre
+        cmd = extra_args_pre.copy()
         cmd += qemu_command(image, qmp_socket)
         cmd += extra_args
 
