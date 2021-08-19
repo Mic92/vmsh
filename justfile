@@ -325,6 +325,15 @@ attach-qemu-img: nixos-image
 attach-qemu: vmsh-image
   cargo run -- attach -f "{{linux_dir}}/vmsh-image.ext4" "{{qemu_pid}}" -- /nix/var/nix/profiles/system/sw/bin/ls -la
 
+attach-cloud-hypervisor: vmsh-image
+  cargo run -- attach -f "{{linux_dir}}/vmsh-image.ext4" $(pgrep -f -u $(id -u) cloud-hypervisor | awk '{print $1}') -- /nix/var/nix/profiles/system/sw/bin/ls -la
+
+attach-crosvm: vmsh-image
+  cargo run -- attach -f "{{linux_dir}}/vmsh-image.ext4" $(pgrep -f -u $(id -u) crosvm | awk '{print $1}') -- /nix/var/nix/profiles/system/sw/bin/ls -la
+
+attach-firecracker: vmsh-image
+  cargo run -- attach -f "{{linux_dir}}/vmsh-image.ext4" $(pgrep -u $(id -u) firecracker | awk '{print $1}') -- /nix/var/nix/profiles/system/sw/bin/ls -la
+
 measure:
   rm tests/measurements/stats.json || true
   rm tests/measurements/fio-stats.json || true
