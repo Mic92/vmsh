@@ -142,8 +142,8 @@ nixos-image:
   #!/usr/bin/env bash
   set -eux -o pipefail
   if [[ nix/nixos-image.nix -nt {{linux_dir}}/nixos.ext4 ]] || [[ flake.lock -nt {{linux_dir}}/nixos.ext4 ]]; then
-     nix build --out-link {{nix_results}}/nixos-image --builders '' .#nixos-image --out-link nixos-image
-     install -m600 "nixos-image/nixos.img" {{linux_dir}}/nixos.ext4
+     nix build --out-link {{nix_results}}/nixos-image --builders '' .#nixos-image
+     install -m600 "{{nix_results}}/nixos-image/nixos.img" {{linux_dir}}/nixos.ext4
   fi
 
 # Build kernel/disk image for not os
@@ -159,12 +159,12 @@ nested-nixos-image: nixos-image
     cp -a --reflink=auto "{{linux_dir}}/nixos.ext4" {{linux_dir}}/nixos-nested.ext4
   fi
 
-vmsh-image: nixos-image
+busybox-image:
   #!/usr/bin/env bash
   set -eux -o pipefail
-  if [[ ! -e {{linux_dir}}/vmsh-image.ext4 ]] || [[ {{linux_dir}}/nixos.ext4 -nt {{linux_dir}}/vmsh-image.ext4 ]]; then
-      cp -a --reflink=auto "{{linux_dir}}/nixos.ext4" "{{linux_dir}}/vmsh-image.ext4"
-      touch -r "{{linux_dir}}/nixos.ext4" "{{linux_dir}}/vmsh-image.ext4"
+  if [[ nix/busybox-image.nix -nt {{nix_results}}/busybox.ext4 ]] || [[ flake.lock -nt {{nix_results}}/busybox.ext4 ]]; then
+     nix build --out-link {{nix_results}}/busybox-image --builders '' .#busybox-image
+     install -m600 "{{nix_results}}/busybox-image" "{{linux_dir}}/busybox.ext4"
   fi
 
 mkramdisk SRC="/dev/zero" NAME="ramdisk" SIZEG="2":
@@ -325,17 +325,20 @@ attach-qemu-img: nixos-image
   "{{qemu_pid}}" -f {{virtio_blk_img}}
 
 # Attach block device to first qemu vm found by pidof and owned by our own user
-attach-qemu: vmsh-image
-  cargo run -- attach -f "{{linux_dir}}/vmsh-image.ext4" "{{qemu_pid}}" -- /nix/var/nix/profiles/system/sw/bin/ls -la
+attach-qemu: busybox-image
+  cargo run -- attach -f "{{linux_dir}}/busybox.ext4" "{{qemu_pid}}" -- /bin/ls -la
 
-attach-cloud-hypervisor: vmsh-image
-  cargo run -- attach -f "{{linux_dir}}/vmsh-image.ext4" $(pgrep -f -u $(id -u) cloud-hypervisor | awk '{print $1}') -- /nix/var/nix/profiles/system/sw/bin/ls -la
+attach-cloud-hypervisor: busybox-image
+  cargo run -- attach -f "{{linux_dir}}/busybox.ext4" $(pgrep -f -u $(id -u) cloud-hypervisor | awk '{print $1}') -- /bin/ls -la
 
-attach-crosvm: vmsh-image
-  cargo run -- attach -f "{{linux_dir}}/vmsh-image.ext4" $(pgrep -f -u $(id -u) crosvm | awk '{print $1}') -- /nix/var/nix/profiles/system/sw/bin/ls -la
+attach-crosvm: busybox-image
+  cargo run -- attach -f "{{linux_dir}}/busybox.ext4" $(pgrep -f -u $(id -u) crosvm | awk '{print $1}') -- /bin/ls -la
 
-attach-firecracker: vmsh-image
-  cargo run -- attach -f "{{linux_dir}}/vmsh-image.ext4" $(pgrep -u $(id -u) firecracker | awk '{print $1}') -- /nix/var/nix/profiles/system/sw/bin/ls -la
+attach-firecracker: busybox-image
+  cargo run -- attach -f "{{linux_dir}}/busybox.ext4" $(pgrep -u $(id -u) firecracker | awk '{print $1}') -- /bin/ls -la
+
+attach-kvmtool: busybox-image
+  cargo run -- attach -f "{{linux_dir}}/busybox.ext4" $(pgrep -o -u $(id -u) -f kvmtool | awk '{print $1}') -- /bin/ls -la
 
 measure: passwordless_sudo
   rm tests/measurements/stats.json || true
@@ -435,7 +438,7 @@ gnuplot:
 attach-qemu-ramdisk: mkramdisk
   cargo run --release -- -l warn attach -f "/tmp/ramdisk/raw" "{{qemu_pid}}" --ssh-args " -i {{invocation_directory()}}/nix/ssh_key -p {{qemu_ssh_port}} root@localhost" -- /nix/var/nix/profiles/system/sw/bin/ls -la
 
-attach-nested-qemu: vmsh-image
+attach-nested-qemu: busybox-image
   cargo build
   just ssh-qemu '/mnt/vmsh/target/debug/vmsh -l info,vmsh::devices::virtio::block::threads=trace,vmsh::kvm::hypervisor=info attach -f "/linux/vmsh-image.ext4" $(pgrep qemu) -- /nix/var/nix/profiles/system/sw/bin/ls -la'
 
