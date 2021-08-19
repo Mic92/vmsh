@@ -8,6 +8,7 @@ linux_dir := justfile_directory() + "/../linux"
 linux_repo := "https://github.com/Mic92/linux"
 nix_results := justfile_directory() + "/.git/nix-results/" + rev
 kernel_shell := "nix develop " + justfile_directory() + "#kernel-deps --command"
+hypervisor_socket := justfile_directory() + "/.git/cloud-hypervisor-socket"
 
 virtio_blk_img := justfile_directory() + "/../linux/nixos.ext4"
 
@@ -218,8 +219,11 @@ cloud-hypervisor: build-linux nixos-image
       --kernel {{linux_dir}}/vmlinux \
       --cmdline "console=hvc0 root=/dev/vda" \
       --seccomp false \
-      --disk path={{linux_dir}}/nixos.ext4
+      --disk path={{linux_dir}}/nixos.ext4 \
+      --api-socket {{hypervisor_socket}}
 
+stop-cloud-hypervisor:
+  curl --unix-socket {{hypervisor_socket}} -X PUT http://localhost/api/v1/vm.power-button
 
 qemu-ramdisk EXTRA_CMDLINE="nokalsr": build-linux nixos-image
   just mkramdisk {{linux_dir}}/nixos.ext4 nixos.ext4 4
@@ -354,7 +358,7 @@ attach-qemu: busybox-image
   cargo run -- attach -f "{{linux_dir}}/busybox.ext4" "{{qemu_pid}}" -- /bin/ls -la
 
 attach-cloud-hypervisor: busybox-image
-  cargo run -- attach -f "{{linux_dir}}/busybox.ext4" $(pgrep -f -u $(id -u) cloud-hypervisor | awk '{print $1}') -- /bin/ls -la
+  cargo run -- attach -f "{{linux_dir}}/busybox.ext4" $(pgrep -o -f -u $(id -u) cloud-hypervisor | awk '{print $1}') -- /bin/ls -la
 
 attach-crosvm: busybox-image
   cargo run -- attach -f "{{linux_dir}}/busybox.ext4" $(pgrep -f -u $(id -u) crosvm | awk '{print $1}') -- /bin/ls -la
