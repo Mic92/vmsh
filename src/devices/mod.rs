@@ -114,12 +114,12 @@ impl DeviceContext {
 
         let block_mmio_cfg = MmioConfig {
             range: allocator.alloc_mmio_range(0x1000)?,
-            gsi: 5,
+            gsi: 6,
         };
 
         let console_mmio_cfg = MmioConfig {
             range: allocator.alloc_mmio_range(0x1000)?,
-            gsi: 5,
+            gsi: 6,
         };
 
         let first_mmio_addr = console_mmio_cfg.range.base().0;

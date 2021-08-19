@@ -214,7 +214,7 @@ impl KvmRunWrapper {
             "cannot attach KvmRunWrapper to all threads of {} via ptrace",
             pid
         );
-        let threads: Vec<Thread> = threads.into_iter().map(|t| Thread::new(t)).collect();
+        let threads: Vec<Thread> = threads.into_iter().map(Thread::new).collect();
 
         Ok(KvmRunWrapper {
             process_idx,

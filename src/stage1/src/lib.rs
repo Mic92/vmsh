@@ -14,7 +14,10 @@ use ffi::loff_t;
 
 // used by our driver
 const MMIO_SIZE: usize = 0x1000;
-const MMIO_IRQ: usize = 5;
+// XXX we should allocate our own unique IRQ here.
+// According to wikipedia IRQ 6 is for floppy disk controller:
+// https://en.wikipedia.org/wiki/Interrupt_request_(PC_architecture)#Master_PICk
+const MMIO_IRQ: usize = 6;
 // chosen randomly, hopefully unused
 const MMIO_DEVICE_ID: i32 = 1863406883;
 
