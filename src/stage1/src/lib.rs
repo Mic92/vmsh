@@ -268,6 +268,7 @@ unsafe extern "C" fn spawn_stage2(_arg: *mut c_void) -> c_int {
         printkln!("stage1: device is in undefined state, stopping...");
         return 0;
     }
+    let mut retries = 0;
     while VMSH_STAGE1_ARGS.device_status == DeviceState::Initializing {
         printkln!(
             "current value: %d, %llx",
@@ -275,6 +276,12 @@ unsafe extern "C" fn spawn_stage2(_arg: *mut c_void) -> c_int {
             &VMSH_STAGE1_ARGS.device_status
         );
         ffi::usleep_range(100, 1000);
+        retries += 1;
+        if retries == 20 {
+            printkln!("stage1: timeout waiting for device to be initialized");
+            VMSH_STAGE1_ARGS.driver_status = DeviceState::Error;
+            return 0;
+        }
     }
     VMSH_STAGE1_ARGS.driver_status = DeviceState::Initializing;
     if VMSH_STAGE1_ARGS.device_status == DeviceState::Error {
