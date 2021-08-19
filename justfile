@@ -131,6 +131,7 @@ configure-linux: clone-linux
        --enable SQUASHFS \
        --enable SQUASHFS_XZ \
        --enable SQUASHFS_FILE_DIRECT \
+       --enable PVH \
        --disable SQUASHFS_FILE_CACHE \
        --enable SQUASHFS_DECOMP_MULTI \
        --disable SQUASHFS_DECOMP_SINGLE \
@@ -209,6 +210,16 @@ qemu EXTRA_CMDLINE="nokalsr": build-linux nixos-image
     -chardev stdio,mux=on,id=char0,signal=off \
     -mon chardev=char0,mode=readline \
     -device virtconsole,chardev=char0,id=vmsh,nr=0
+
+cloud-hypervisor: build-linux nixos-image
+  cloud-hypervisor \
+      --memory size=500M,mergeable=on,shared=on \
+      --cpus boot=1 --rng --watchdog --console tty \
+      --kernel {{linux_dir}}/vmlinux \
+      --cmdline "console=hvc0 root=/dev/vda" \
+      --seccomp false \
+      --disk path={{linux_dir}}/nixos.ext4
+
 
 qemu-ramdisk EXTRA_CMDLINE="nokalsr": build-linux nixos-image
   just mkramdisk {{linux_dir}}/nixos.ext4 nixos.ext4 4
