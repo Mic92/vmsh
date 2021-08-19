@@ -225,6 +225,12 @@ cloud-hypervisor: build-linux nixos-image
 stop-cloud-hypervisor:
   curl --unix-socket {{hypervisor_socket}} -X PUT http://localhost/api/v1/vm.power-button
 
+crosvm: build-linux nixos-image
+  crosvm run -m500 -c1 --rwdisk {{linux_dir}}/nixos.ext4 \
+    --serial type=stdout,console=true,stdin=true \
+    -p "console=ttyS0 root=/dev/vda" \
+    {{linux_dir}}/vmlinux
+
 qemu-ramdisk EXTRA_CMDLINE="nokalsr": build-linux nixos-image
   just mkramdisk {{linux_dir}}/nixos.ext4 nixos.ext4 4
   qemu-system-x86_64 \
