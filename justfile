@@ -227,7 +227,7 @@ stop-cloud-hypervisor:
 
 crosvm: build-linux nixos-image
   crosvm run -m500 -c1 --rwdisk {{linux_dir}}/nixos.ext4 \
-    --serial type=stdout,console=true,stdin=true \
+    --disable-sandbox --serial type=stdout,console=true,stdin=true \
     -p "console=ttyS0 root=/dev/vda" \
     {{linux_dir}}/vmlinux
 
@@ -367,7 +367,7 @@ attach-cloud-hypervisor: busybox-image
   cargo run -- attach -f "{{linux_dir}}/busybox.ext4" $(pgrep -n -u $(id -u) cloud-hyperviso | awk '{print $1}') -- /bin/ls -la
 
 attach-crosvm: busybox-image
-  cargo run -- attach -f "{{linux_dir}}/busybox.ext4" $(pgrep -f -u $(id -u) crosvm | awk '{print $1}') -- /bin/ls -la
+  cargo run -- attach -f "{{linux_dir}}/busybox.ext4" $(pgrep -u $(id -u) crosvm | awk '{print $1}') -- /bin/ls -la
 
 attach-firecracker: busybox-image
   cargo run -- attach -f "{{linux_dir}}/busybox.ext4" $(pgrep -u $(id -u) firecracker | awk '{print $1}') -- /bin/ls -la
