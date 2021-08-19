@@ -69,6 +69,20 @@ stress-test DEV="/dev/vda":
   [ $(sha256sum {{virtio_blk_img}} | cut -c'1-64') == $(just ssh-qemu "sha256sum {{DEV}}" | cut -c'1-64') ] || echo "ok"
   echo "stress test ok"
 
+reliability-attach:
+  #!/usr/bin/env python3
+  import sys, os
+  sys.path.insert(0, os.path.join("{{justfile_directory()}}", "tests"))
+  from test_attach import test_attach
+  from conftest import Helpers
+  helpers = Helpers()
+
+  test_attach(helpers, attach_repetitions=100, vcpus=2, mmio="wrap_syscall") 
+  # rep 36, 1, 4, 3, 0, 13
+  
+  #test_attach(helpers, attach_repetitions=100, vcpus=2, mmio="ioregionfd") 
+  # rep 4, 15, 3, 45, 34, 2
+
 # Git clone linux kernel
 clone-linux:
   [[ -d {{linux_dir}} ]] || \
