@@ -5,7 +5,7 @@ use kvm_bindings as kvmb;
 use libc::c_int;
 use log::*;
 use nix::unistd::Pid;
-use simple_error::{simple_error, bail, try_with};
+use simple_error::{bail, simple_error, try_with};
 use std::ffi::OsStr;
 use std::marker::PhantomData;
 use std::mem::size_of;
@@ -26,7 +26,7 @@ use crate::tracer::proc::{openpid, Mapping, PidHandle};
 use crate::tracer::wrap_syscall::KvmRunWrapper;
 
 #[allow(clippy::upper_case_acronyms)]
-#[derive(Debug,Clone)]
+#[derive(Debug, Clone)]
 pub struct VCPU {
     /// The idx as used in the inode name: anon_inode:kvm-vcpu:0
     pub idx: usize,
@@ -36,18 +36,23 @@ pub struct VCPU {
 }
 
 impl VCPU {
-    pub fn match_maps(vcpus: &mut Vec<VCPU>, vcpu_maps: &Vec<Mapping>) {
+    pub fn match_maps(vcpus: &mut Vec<VCPU>, vcpu_maps: &[Mapping]) {
         for vcpu in vcpus {
             let name = format!("{}{}", VCPUFD_INODE_NAME_STARTS_WITH, vcpu.idx);
             match vcpu_maps.iter().find(|map| map.pathname == name) {
                 Some(map) => vcpu.vcpu_map = Some(map.clone()),
-                None => warn!("no mapped memory of vcpu fd {} found called {}", vcpu.fd_num, name),
+                None => warn!(
+                    "no mapped memory of vcpu fd {} found called {}",
+                    vcpu.fd_num, name
+                ),
             }
         }
     }
 
     pub fn map(&self) -> Result<&Mapping> {
-        self.vcpu_map.as_ref().ok_or(simple_error!("vcpu_map must be initialized before use (programming error)"))
+        self.vcpu_map.as_ref().ok_or_else(|| {
+            simple_error!("vcpu_map must be initialized before use (programming error)")
+        })
     }
 }
 

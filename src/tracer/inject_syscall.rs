@@ -9,9 +9,9 @@ use std::thread::{current, ThreadId};
 
 use super::ptrace::attach_seize;
 use crate::cpu::{self, Regs};
+use crate::kvm::hypervisor::VCPU;
 use crate::result::Result;
 use crate::tracer::{ptrace, Tracer};
-use crate::kvm::hypervisor::{VCPU};
 
 #[derive(Debug)]
 pub struct Process {

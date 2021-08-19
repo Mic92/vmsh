@@ -12,8 +12,8 @@ pub mod ptrace;
 pub mod ptrace_syscall_info;
 pub mod wrap_syscall;
 
-use std::thread::ThreadId;
 use crate::kvm::hypervisor::VCPU;
+use std::thread::ThreadId;
 
 /// Traces syscalls in a process
 pub struct Tracer {

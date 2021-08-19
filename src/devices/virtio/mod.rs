@@ -203,10 +203,8 @@ pub fn register_ioeventfd(
         let mut tracee = vmm.tracee_write_guard()?;
         // we may unwrap because we just attached it.
         let injector = tracee.detach().unwrap();
-        let wrapper = KvmRunWrapper::from_tracer(inject_syscall::into_tracer(
-            injector,
-            vmm.vcpus.clone(),
-        )?)?;
+        let wrapper =
+            KvmRunWrapper::from_tracer(inject_syscall::into_tracer(injector, vmm.vcpus.clone())?)?;
         let _ = wrapper_go.replace(wrapper);
     }
     Ok(ioeventfd)

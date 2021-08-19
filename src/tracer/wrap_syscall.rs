@@ -214,12 +214,7 @@ impl KvmRunWrapper {
             "cannot attach KvmRunWrapper to all threads of {} via ptrace",
             pid
         );
-        let threads: Vec<Thread> = threads
-            .into_iter()
-            .map(|t| {
-                Thread::new(t)
-            })
-            .collect();
+        let threads: Vec<Thread> = threads.into_iter().map(|t| Thread::new(t)).collect();
 
         Ok(KvmRunWrapper {
             process_idx,
@@ -259,11 +254,7 @@ impl KvmRunWrapper {
 
     pub fn from_tracer(tracer: Tracer) -> Result<Self> {
         let pid = tracer.main_thread().tid;
-        let threads: Vec<Thread> = tracer
-            .threads
-            .into_iter()
-            .map(|t| Thread::new(t))
-            .collect();
+        let threads: Vec<Thread> = tracer.threads.into_iter().map(Thread::new).collect();
 
         Ok(KvmRunWrapper {
             process_idx: tracer.process_idx,
@@ -421,12 +412,16 @@ impl KvmRunWrapper {
         }
 
         // fulfilled precondition: ioctl(KVM_RUN) just returned
-        let vcpu = match self.vcpus.iter().find(|vcpu| vcpu.fd_num == ioctl_fd as i32) {
+        let vcpu = match self
+            .vcpus
+            .iter()
+            .find(|vcpu| vcpu.fd_num == ioctl_fd as i32)
+        {
             Some(vcpu) => vcpu,
             None => {
                 warn!("Caught ioctl(KVM_RUN) for unknown vcpu_fd {}.", ioctl_fd);
                 return Ok(None);
-            },
+            }
         };
         let map_ptr = vcpu.map()?.start as *const kvm_bindings::kvm_run;
         let kvm_run: kvm_bindings::kvm_run =
