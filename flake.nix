@@ -84,7 +84,7 @@
 
           # used in .drone.yml
           ci-shell = pkgs.mkShell {
-            inherit (vmsh) buildInputs KERNELDIR;
+            inherit (vmsh) buildInputs;
             nativeBuildInputs = ciDeps;
           };
 
