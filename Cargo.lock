@@ -361,13 +361,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8ccb82d61f80a663efe1f787a51b16b5a51e3314d6ac365b08639f52387b33f3"
 
 [[package]]
-name = "virtio"
-version = "0.1.0"
-dependencies = [
- "vm-virtio",
-]
-
-[[package]]
 name = "virtio-blk"
 version = "0.1.0"
 source = "git+https://github.com/Mic92/vm-virtio.git?rev=d90ac73e369824ddc577f47c59e9303b1c7c8e7d#d90ac73e369824ddc577f47c59e9303b1c7c8e7d"
@@ -416,18 +409,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "vm-virtio"
-version = "0.1.0"
-source = "git+https://github.com/Mic92/vm-virtio.git?rev=8a8270924ad691232f9f9b3157e66fddd7ba9975#8a8270924ad691232f9f9b3157e66fddd7ba9975"
-dependencies = [
- "byteorder",
- "libc",
- "log",
- "vm-memory",
- "vmm-sys-util",
-]
-
-[[package]]
 name = "vmm-sys-util"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -460,7 +441,6 @@ dependencies = [
  "simple-error",
  "stage1-interface",
  "tempfile",
- "virtio",
  "virtio-blk",
  "virtio-device",
  "virtio-queue",

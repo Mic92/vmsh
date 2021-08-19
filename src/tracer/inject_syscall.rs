@@ -9,8 +9,8 @@ use std::thread::{current, ThreadId};
 
 use super::ptrace::attach_seize;
 use crate::cpu::{self, Regs};
+use crate::kvm::hypervisor::VCPU;
 use crate::result::Result;
-use crate::tracer::proc::Mapping;
 use crate::tracer::{ptrace, Tracer};
 
 #[derive(Debug)]
@@ -76,13 +76,13 @@ pub fn from_tracer(t: Tracer) -> Result<Process> {
     })
 }
 
-pub fn into_tracer(mut p: Process, vcpu_map: Mapping) -> Result<Tracer> {
+pub fn into_tracer(mut p: Process, vcpus: Vec<VCPU>) -> Result<Tracer> {
     let process_idx = p.process_idx;
     let threads = deinit(&mut p).expect("Process was deinited before it was dropped!");
     Ok(Tracer {
         process_idx,
         threads,
-        vcpu_map,
+        vcpus,
         owner: p.owner,
     })
 }

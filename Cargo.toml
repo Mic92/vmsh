@@ -17,7 +17,7 @@ tempfile = "3"
 build-utils = { path = "src/build-utils" }
 
 [workspace]
-members = ["src/virtio", "src/ioutils"]
+members = ["src/ioutils"]
 exclude = [
   "src/build-utils",
   "src/stage1",
@@ -41,7 +41,6 @@ stage1-interface = { path = "src/stage1-interface" }
 bcc = { git = "https://github.com/rust-bpf/rust-bcc.git", rev = "f456aa57cd969c241773b872219ea54f1d43bd3b" }
 simple-error = "0.2.*"
 kvm-bindings = "0.4.*"
-virtio = { path = "src/virtio" }
 env_logger = { version = "0.9.*", default-features = false }
 lazy_static = "*"
 container-pid = "0.1.0"

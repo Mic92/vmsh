@@ -37,8 +37,11 @@ fmt:
 watch:
   cargo watch -x build
 
+passwordless_sudo:
+  sudo echo "Our some compenents require passwordless sudo."
+
 # Run unit and integration tests
-test:
+test: passwordless_sudo
   cargo test
   pytest -n $(nproc --ignore=2) -s tests
 
@@ -334,7 +337,7 @@ attach-crosvm: vmsh-image
 attach-firecracker: vmsh-image
   cargo run -- attach -f "{{linux_dir}}/vmsh-image.ext4" $(pgrep -u $(id -u) firecracker | awk '{print $1}') -- /nix/var/nix/profiles/system/sw/bin/ls -la
 
-measure:
+measure: passwordless_sudo
   rm tests/measurements/stats.json || true
   rm tests/measurements/fio-stats.json || true
   python3 tests/measure_block.py

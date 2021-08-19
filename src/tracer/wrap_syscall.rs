@@ -15,7 +15,7 @@ use std::{
     thread::{current, ThreadId},
 };
 
-use crate::kvm::hypervisor;
+use crate::kvm::hypervisor::{self, VCPU};
 use crate::kvm::ioctls;
 use crate::result::Result;
 use crate::tracer::proc::Mapping;
@@ -136,18 +136,16 @@ impl fmt::Display for MmioRw {
 #[derive(Debug)]
 struct Thread {
     ptthread: ptrace::Thread,
-    vcpu_map: Mapping,
     is_running: bool,
     in_syscall: bool,
 }
 
 impl Thread {
-    pub fn new(ptthread: ptrace::Thread, vcpu_map: Mapping) -> Thread {
+    pub fn new(ptthread: ptrace::Thread) -> Thread {
         Thread {
             ptthread,
             is_running: false,
             in_syscall: false, // ptrace (in practice) never attaches to a process while it is in a syscall
-            vcpu_map,
         }
     }
 
@@ -187,6 +185,7 @@ pub struct KvmRunWrapper {
     threads: Vec<Thread>,
     process_group: Pid,
     owner: Option<ThreadId>,
+    vcpus: Vec<VCPU>,
 }
 
 impl Drop for KvmRunWrapper {
@@ -209,25 +208,20 @@ fn get_process_group(pid: Pid) -> Result<Pid> {
 }
 
 impl KvmRunWrapper {
-    pub fn attach(pid: Pid, vcpu_maps: &[Mapping]) -> Result<KvmRunWrapper> {
+    pub fn attach(pid: Pid, vcpus: &[VCPU]) -> Result<KvmRunWrapper> {
         let (threads, process_idx) = try_with!(
             ptrace::attach_all_threads(pid),
             "cannot attach KvmRunWrapper to all threads of {} via ptrace",
             pid
         );
-        let threads: Vec<Thread> = threads
-            .into_iter()
-            .map(|t| {
-                let vcpu_map = vcpu_maps[0].clone(); // TODO support more than 1 cpu and respect remaps
-                Thread::new(t, vcpu_map)
-            })
-            .collect();
+        let threads: Vec<Thread> = threads.into_iter().map(|t| Thread::new(t)).collect();
 
         Ok(KvmRunWrapper {
             process_idx,
             threads,
             process_group: get_process_group(pid)?,
             owner: Some(current().id()),
+            vcpus: vcpus.to_vec(),
         })
     }
 
@@ -245,7 +239,6 @@ impl KvmRunWrapper {
 
     /// resume all threads and convert self into tracer.
     pub fn into_tracer(mut self) -> Result<Tracer> {
-        let vcpu_map = self.threads[0].vcpu_map.clone();
         // Because we run the drop routine here,
         self.prepare_detach()?;
         // we may take all here, despite making KvmRunWrapper::drop ineffective.
@@ -254,25 +247,21 @@ impl KvmRunWrapper {
         Ok(Tracer {
             process_idx: self.process_idx,
             threads,
-            vcpu_map,
+            vcpus: self.vcpus.clone(),
             owner: self.owner,
         })
     }
 
     pub fn from_tracer(tracer: Tracer) -> Result<Self> {
         let pid = tracer.main_thread().tid;
-        let vcpu_map = tracer.vcpu_map;
-        let threads: Vec<Thread> = tracer
-            .threads
-            .into_iter()
-            .map(|t| Thread::new(t, vcpu_map.clone()))
-            .collect();
+        let threads: Vec<Thread> = tracer.threads.into_iter().map(Thread::new).collect();
 
         Ok(KvmRunWrapper {
             process_idx: tracer.process_idx,
             process_group: get_process_group(pid)?,
             threads,
             owner: tracer.owner,
+            vcpus: tracer.vcpus,
         })
     }
 
@@ -394,15 +383,12 @@ impl KvmRunWrapper {
         };
 
         let regs = try_with!(thread.ptthread.getregs(), "cannot syscall results");
-        // TODO check for matching ioctlfd
-        let (syscall_nr, _ioctl_fd, ioctl_request, _, _, _, _) = regs.get_syscall_params();
+        let (syscall_nr, ioctl_fd, ioctl_request, _, _, _, _) = regs.get_syscall_params();
         // SYS_ioctl = 16
         if syscall_nr != libc::SYS_ioctl as u64 {
             return Ok(None);
         }
 
-        // TODO check vcpufd and save a mapping for active syscalls from thread to cpu to
-        // support multiple cpus
         thread.toggle_in_syscall();
         // KVM_RUN = 0xae80 = ioctl_io_nr!(KVM_RUN, KVMIO, 0x80)
         if ioctl_request != ioctls::KVM_RUN() {
@@ -426,10 +412,21 @@ impl KvmRunWrapper {
         }
 
         // fulfilled precondition: ioctl(KVM_RUN) just returned
-        let map_ptr = thread.vcpu_map.start as *const kvm_bindings::kvm_run;
+        let vcpu = match self
+            .vcpus
+            .iter()
+            .find(|vcpu| vcpu.fd_num == ioctl_fd as i32)
+        {
+            Some(vcpu) => vcpu,
+            None => {
+                warn!("Caught ioctl(KVM_RUN) for unknown vcpu_fd {}.", ioctl_fd);
+                return Ok(None);
+            }
+        };
+        let map_ptr = vcpu.map()?.start as *const kvm_bindings::kvm_run;
         let kvm_run: kvm_bindings::kvm_run =
             hypervisor::memory::process_read(pid, map_ptr.cast::<libc::c_void>())?;
-        let mmio = MmioRw::from(&kvm_run, thread.ptthread.tid, thread.vcpu_map.clone());
+        let mmio = MmioRw::from(&kvm_run, thread.ptthread.tid, vcpu.map()?.clone());
 
         Ok(mmio)
     }
