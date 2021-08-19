@@ -119,6 +119,7 @@
             # pkgs.libguestfs-with-appliance # needed for just attach-qemu-img and thus stress-test
             pkgs.gnuplot
             pkgs.cloud-hypervisor
+            pkgs.crosvm
           ];
 
           shellHook = ''
