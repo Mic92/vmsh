@@ -364,7 +364,7 @@ attach-qemu: busybox-image
   cargo run -- attach -f "{{linux_dir}}/busybox.ext4" "{{qemu_pid}}" -- /bin/ls -la
 
 attach-cloud-hypervisor: busybox-image
-  cargo run -- attach -f "{{linux_dir}}/busybox.ext4" $(pgrep -o -f -u $(id -u) cloud-hypervisor | awk '{print $1}') -- /bin/ls -la
+  cargo run -- attach -f "{{linux_dir}}/busybox.ext4" $(pgrep -n -u $(id -u) cloud-hyperviso | awk '{print $1}') -- /bin/ls -la
 
 attach-crosvm: busybox-image
   cargo run -- attach -f "{{linux_dir}}/busybox.ext4" $(pgrep -f -u $(id -u) crosvm | awk '{print $1}') -- /bin/ls -la
