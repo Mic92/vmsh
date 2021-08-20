@@ -24,45 +24,54 @@ GUEST_QEMUBLK_MOUNT = "/blk"
 
 @contextmanager
 def testbench(
-    helpers: confmeasure.Helpers, with_vmsh: bool = True, ioregionfd: bool = False
+    helpers: confmeasure.Helpers,
+    with_vmsh: bool = True,
+    ioregionfd: bool = False,
+    mounts: bool = True,
 ) -> Iterator[Any]:
     if ioregionfd:
         mmiomode = "ioregionfd"
     else:
         mmiomode = "wrap_syscall"
 
+    if mounts:
+        virtio_9p: Optional[str] = HOST_DIR
+    else:
+        virtio_9p = None
+
     with helpers.spawn_qemu(
         helpers.notos_image(),
         virtio_blk=HOST_SSD,
-        virtio_9p=HOST_DIR,
+        virtio_9p=virtio_9p,
     ) as vm:
         vm.wait_for_ssh()
-        print(vm.ssh_cmd(["mkdir", "-p", GUEST_QEMU9P]).stdout)
-        print(
-            vm.ssh_cmd(
-                [
-                    "mount",
-                    "-t",
-                    "9p",
-                    "-o",
-                    "trans=virtio,msize=104857600",
-                    "measure9p",
-                    GUEST_QEMU9P,
-                ]
-            ).stdout
-        )
-        # print(vm.ssh_cmd(["ls", "-la", GUEST_QEMU9P]).stdout)
+        if mounts:
+            print(vm.ssh_cmd(["mkdir", "-p", GUEST_QEMU9P]).stdout)
+            print(
+                vm.ssh_cmd(
+                    [
+                        "mount",
+                        "-t",
+                        "9p",
+                        "-o",
+                        "trans=virtio,msize=104857600",
+                        "measure9p",
+                        GUEST_QEMU9P,
+                    ]
+                ).stdout
+            )
+            # print(vm.ssh_cmd(["ls", "-la", GUEST_QEMU9P]).stdout)
 
-        print(vm.ssh_cmd(["mkdir", "-p", GUEST_QEMUBLK_MOUNT]).stdout)
-        print(
-            vm.ssh_cmd(
-                [
-                    "mount",
-                    GUEST_QEMUBLK,
-                    GUEST_QEMUBLK_MOUNT,
-                ]
-            ).stdout
-        )
+            print(vm.ssh_cmd(["mkdir", "-p", GUEST_QEMUBLK_MOUNT]).stdout)
+            print(
+                vm.ssh_cmd(
+                    [
+                        "mount",
+                        GUEST_QEMUBLK,
+                        GUEST_QEMUBLK_MOUNT,
+                    ]
+                ).stdout
+            )
 
         if not with_vmsh:
             yield vm
@@ -89,18 +98,20 @@ def testbench(
                         lambda l: "stage1 driver started" in l,
                     )
                 finally:
-                    print(vm.ssh_cmd(["mkdir", "-p", GUEST_JAVDEV_MOUNT]).stdout)
-                    print(
-                        vm.ssh_cmd(
-                            [
-                                "mount",
-                                GUEST_JAVDEV,
-                                GUEST_JAVDEV_MOUNT,
-                            ]
-                        ).stdout
-                    )
+                    if mounts:
+                        print(vm.ssh_cmd(["mkdir", "-p", GUEST_JAVDEV_MOUNT]).stdout)
+                        print(
+                            vm.ssh_cmd(
+                                [
+                                    "mount",
+                                    GUEST_JAVDEV,
+                                    GUEST_JAVDEV_MOUNT,
+                                ]
+                            ).stdout
+                        )
                     yield vm
-                    print(vm.ssh_cmd(["umount", GUEST_JAVDEV_MOUNT]).stdout)
+                    if mounts:
+                        print(vm.ssh_cmd(["umount", GUEST_JAVDEV_MOUNT]).stdout)
 
             try:
                 os.kill(vmsh.pid, 0)
@@ -108,8 +119,9 @@ def testbench(
                 pass
             else:
                 assert False, "vmsh was not terminated properly"
-        print(vm.ssh_cmd(["umount", GUEST_QEMUBLK_MOUNT]).stdout)
-        print(vm.ssh_cmd(["umount", GUEST_QEMU9P]).stdout)
+        if mounts:
+            print(vm.ssh_cmd(["umount", GUEST_QEMUBLK_MOUNT]).stdout)
+            print(vm.ssh_cmd(["umount", GUEST_QEMU9P]).stdout)
 
 
 def run(
@@ -139,12 +151,16 @@ def run(
     )
 
 
+def blkdiscard() -> Any:
+    run(["sudo", "blkdiscard", "-f", HOST_SSD])
+
+
 @contextmanager
-def fresh_ssd() -> Iterator[Any]:
+def fresh_fs_ssd() -> Iterator[Any]:
     while "target is busy" in run(["sudo", "umount", HOST_SSD], check=False).stderr:
         print("umount: waiting for target not to be busy")
         time.sleep(1)
-    run(["sudo", "blkdiscard", "-f", HOST_SSD])
+    blkdiscard()
     run(["sudo", "mkfs.ext4", HOST_SSD])
     Path(HOST_DIR).mkdir(exist_ok=True)
     run(["sudo", "mount", HOST_SSD, HOST_DIR])

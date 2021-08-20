@@ -1,22 +1,21 @@
 """
 # Compare block devices:
 
-- qemu virtio blk
-- qemu virtio 9p
-- vmsh virtio blk ws
-- vmsh virtio blk ioregionfd
+- qemu virtio blk (detached_qemublk, direct_detached_qemublk)
+- qemu virtio 9p (detached_qemu9p)
+- vmsh virtio blk ws (attached_ws_javdev, direct_ws_javdev)
+- vmsh virtio blk ioregionfd (attached_iorefd_javdev, direct_iorefd_javdev)
 
 for each:
-- best case bw read
-- best case bw write
-- worst case iops
+- best case bw read & write
+- worst case iops read & write
 
 # Compare guest performance under vmsh
 
-- native
-- detached
-- vmsh ws
-- vmsh ioregionfd
+- native (direct_host)
+- detached (direct_detached_qemublk)
+- vmsh ws (direct_ws_qemublk)
+- vmsh ioregionfd (direct_iorefd_qemublk)
 - run via vmsh (in container in vm)
 - run via ssh (no container in vm)
 
@@ -48,6 +47,7 @@ from enum import Enum
 
 
 # overwrite the number of samples to take to a minimum
+# TODO turn this to False for releases. Results look very different.
 QUICK = True
 
 
@@ -141,7 +141,7 @@ def fio(
         "--eta-newline=1",
     ]
 
-    if rw == Rw.r:
+    if not file and rw == Rw.r:
         cmd += ["--readonly"]
 
     cmd += ["--output-format=json"]
@@ -246,48 +246,36 @@ def fio_suite(
         print(f"skip {name}")
         return
 
+    if not file:
+        util.blkdiscard()
+
+    bw = fio_read_write(
+        vm,
+        device,
+        random=False,
+        iops=False,
+        file=file,
+    )
+
+    if not file:
+        util.blkdiscard()
+
+    iops = fio_read_write(
+        vm,
+        device,
+        random=True,
+        iops=True,
+        file=file,
+    )
+
     results = [
         (
-            "best-case-bw-mixed",
-            fio(
-                vm,
-                device,
-                random=False,
-                rw=Rw.rw,
-                iops=False,
-                file=file,
-            ),
-        ),
-        (
             "best-case-bw-seperate",
-            fio_read_write(
-                vm,
-                device,
-                random=False,
-                iops=False,
-                file=file,
-            ),
-        ),
-        (
-            "worst-case-iops-mixed",
-            fio(
-                vm,
-                device,
-                random=True,
-                rw=Rw.rw,
-                iops=True,
-                file=file,
-            ),
+            bw,
         ),
         (
             "worst-case-iops-seperate",
-            fio_read_write(
-                vm,
-                device,
-                random=True,
-                iops=True,
-                file=file,
-            ),
+            iops,
         ),
     ]
     for benchmark, result in results:
@@ -310,37 +298,32 @@ def main() -> None:
 
     fio_stats = util.read_stats(STATS_PATH)
 
-    # fresh ssd, unmount and fio_suite(HOST_SSD)
-    with util.fresh_ssd():
-        pass
     fio_suite(None, fio_stats, HOST_SSD, "direct_host1", file=False)
     fio_suite(None, fio_stats, HOST_SSD, "direct_host2", file=False)
 
-    with util.fresh_ssd():
-        with util.testbench(helpers, with_vmsh=False, ioregionfd=False) as vm:
-            fio_suite(
-                vm, fio_stats, GUEST_QEMUBLK, "direct_detached_qemublk", file=False
-            )
-    # testbench wants to mount again -> restore fs via fresh_ssd()
-    with util.fresh_ssd():
-        with util.testbench(helpers, with_vmsh=True, ioregionfd=False) as vm:
-            fio_suite(vm, fio_stats, GUEST_QEMUBLK, "direct_ws_qemublk", file=False)
-            fio_suite(vm, fio_stats, GUEST_JAVDEV, "direct_ws_javdev", file=False)
-    with util.fresh_ssd():
-        with util.testbench(helpers, with_vmsh=True, ioregionfd=True) as vm:
-            fio_suite(vm, fio_stats, GUEST_QEMUBLK, "direct_iorefd_qemublk", file=False)
-            fio_suite(vm, fio_stats, GUEST_JAVDEV, "direct_iorefd_javdev", file=False)
+    with util.testbench(helpers, with_vmsh=False, ioregionfd=False, mounts=False) as vm:
+        fio_suite(vm, fio_stats, GUEST_QEMUBLK, "direct_detached_qemublk", file=False)
+    with util.testbench(helpers, with_vmsh=True, ioregionfd=False, mounts=False) as vm:
+        fio_suite(vm, fio_stats, GUEST_QEMUBLK, "direct_ws_qemublk", file=False)
+        fio_suite(vm, fio_stats, GUEST_JAVDEV, "direct_ws_javdev", file=False)
+    with util.testbench(helpers, with_vmsh=True, ioregionfd=True, mounts=False) as vm:
+        fio_suite(vm, fio_stats, GUEST_QEMUBLK, "direct_iorefd_qemublk", file=False)
+        fio_suite(vm, fio_stats, GUEST_JAVDEV, "direct_iorefd_javdev", file=False)
 
-    # we just wrote randomly to the disk -> fresh_ssd() required
-    with util.fresh_ssd():
+    # file based benchmarks don't blkdiscard on their own, so we do it as often as possible
+    with util.fresh_fs_ssd():
         with util.testbench(helpers, with_vmsh=False, ioregionfd=False) as vm:
             lsblk(vm)
             fio_suite(vm, fio_stats, GUEST_QEMUBLK_MOUNT, "detached_qemublk")
+    with util.fresh_fs_ssd():
+        with util.testbench(helpers, with_vmsh=False, ioregionfd=False) as vm:
             fio_suite(vm, fio_stats, GUEST_QEMU9P, "detached_qemu9p")
 
+    with util.fresh_fs_ssd():
         with util.testbench(helpers, with_vmsh=True, ioregionfd=False) as vm:
             fio_suite(vm, fio_stats, GUEST_JAVDEV_MOUNT, "attached_ws_javdev")
 
+    with util.fresh_fs_ssd():
         with util.testbench(helpers, with_vmsh=True, ioregionfd=True) as vm:
             fio_suite(vm, fio_stats, GUEST_JAVDEV_MOUNT, "attached_iorefd_javdev")
 
