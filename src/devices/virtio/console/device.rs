@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR BSD-3-Clause
 
 use std::borrow::{Borrow, BorrowMut};
-use std::fs::OpenOptions;
+use std::fs::{self, OpenOptions};
 use std::ops::DerefMut;
 use std::sync::{Arc, Mutex};
 use virtio_device::{VirtioDevice, VirtioDeviceType};
@@ -32,6 +32,9 @@ use crate::kvm::hypervisor::{
 //use super::queue_handler::QueueHandler;
 use super::{build_config_space, ConsoleArgs, Error, Result, CONSOLE_DEVICE_ID};
 use simple_error::map_err_with;
+
+pub(super) const RX_QUEUE_IDX: u16 = 0;
+pub(super) const TX_QUEUE_IDX: u16 = 1;
 
 pub struct Console<M: GuestAddressSpace> {
     virtio_cfg: VirtioConfig<M>,
@@ -139,24 +142,28 @@ where
         };
 
         // FIXME replace with actual console
+        // stat /proc/self/fd/0 to get /dev/pts/X
+        let abspath = map_err_with!(fs::read_link("/proc/self/fd/0"), "cannot find pseudo terminal for self").map_err(Error::Simple)?;
+        log::warn!("terminal is {:?}", abspath);
         let console = map_err_with!(
             OpenOptions::new()
                 .read(true)
                 .write(true)
-                .open("/proc/self/fd/0"),
+                .open(abspath),
             "could not open console"
         )
         .map_err(Error::Simple)?;
 
-        //let rx_fd = register_ioeventfd(&self.vmm, &self.mmio_cfg, 0).map_err(Error::Simple)?;
-        let tx_fd = IoEvent::register(&self.vmm, &mut self.uioefd, &self.mmio_cfg, 1)
+        //let rx_fd = IoEvent::register(&self.vmm, &mut self.uioefd, &self.mmio_cfg, RX_QUEUE_IDX as u64)
+            //.map_err(Error::Simple)?;
+        let tx_fd = IoEvent::register(&self.vmm, &mut self.uioefd, &self.mmio_cfg, TX_QUEUE_IDX as u64)
             .map_err(Error::Simple)?;
 
         let handler = Arc::new(Mutex::new(LogQueueHandler {
             driver_notify,
             tx_fd,
-            rxq: self.virtio_cfg.queues[0].clone(),
-            txq: self.virtio_cfg.queues[1].clone(),
+            rxq: self.virtio_cfg.queues[RX_QUEUE_IDX as usize].clone(),
+            txq: self.virtio_cfg.queues[TX_QUEUE_IDX as usize].clone(),
             console,
         }));
 
