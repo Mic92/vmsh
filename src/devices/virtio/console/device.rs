@@ -143,21 +143,27 @@ where
 
         // FIXME replace with actual console
         // stat /proc/self/fd/0 to get /dev/pts/X
-        let abspath = map_err_with!(fs::read_link("/proc/self/fd/0"), "cannot find pseudo terminal for self").map_err(Error::Simple)?;
-        log::warn!("terminal is {:?}", abspath);
+        let abspath = map_err_with!(
+            fs::read_link("/proc/self/fd/0"),
+            "cannot find pseudo terminal for self"
+        )
+        .map_err(Error::Simple)?;
+        log::info!("terminal is {:?}", abspath);
         let console = map_err_with!(
-            OpenOptions::new()
-                .read(true)
-                .write(true)
-                .open(abspath),
+            OpenOptions::new().read(true).write(true).open(abspath),
             "could not open console"
         )
         .map_err(Error::Simple)?;
 
         //let rx_fd = IoEvent::register(&self.vmm, &mut self.uioefd, &self.mmio_cfg, RX_QUEUE_IDX as u64)
-            //.map_err(Error::Simple)?;
-        let tx_fd = IoEvent::register(&self.vmm, &mut self.uioefd, &self.mmio_cfg, TX_QUEUE_IDX as u64)
-            .map_err(Error::Simple)?;
+        //.map_err(Error::Simple)?;
+        let tx_fd = IoEvent::register(
+            &self.vmm,
+            &mut self.uioefd,
+            &self.mmio_cfg,
+            TX_QUEUE_IDX as u64,
+        )
+        .map_err(Error::Simple)?;
 
         let handler = Arc::new(Mutex::new(LogQueueHandler {
             driver_notify,

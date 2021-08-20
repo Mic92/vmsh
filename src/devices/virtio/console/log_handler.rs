@@ -14,11 +14,10 @@ use log::error;
 use virtio_queue::{DescriptorChain, Queue};
 use vm_memory::Bytes;
 use vm_memory::{self, GuestAddressSpace};
-use vmm_sys_util::eventfd::EventFd;
 
+use super::device::{RX_QUEUE_IDX, TX_QUEUE_IDX};
 use crate::devices::virtio::SignalUsedQueue;
 use crate::kvm::hypervisor::ioevent::IoEvent;
-use super::device::{RX_QUEUE_IDX, TX_QUEUE_IDX};
 
 #[derive(Debug)]
 pub enum Error {
@@ -105,17 +104,32 @@ where
     /// Guest console reads (rx), we read from self.console fd
     fn process_rx_chain(&mut self, mut chain: DescriptorChain<M>) -> result::Result<(), Error> {
         log::debug!("process_chain");
+        const LEN: usize = 128;
+        let mut count = 0;
 
-        let mut i = 0;
         if let Some(desc) = chain.next() {
-            log::warn!("reading {}", 1); //  desc.len());
+            log::debug!("reading bytes");
             let mem = chain.memory();
-            if let Err(e) = mem.read_from(desc.addr(), &mut self.console, 1) {
+            let mut buf = [0u8; LEN];
+            count = match self.console.read(&mut buf) {
+                Ok(count) => {
+                    log::debug!("read {}", count);
+                    count
+                }
+                Err(e) => {
+                    log::error!("error reading from console: {}", e);
+                    0
+                }
+            };
+            let buf = &mut buf[..count];
+            log::debug!("buf {:?} count {}", buf, count);
+            if let Err(e) = mem.write_slice(buf, desc.addr()) {
                 error!("error logging console rx TODO: {}", e)
             }
-            i += 1;
+            mem.read_slice(buf, desc.addr()).expect("TODO");
+            log::debug!("desc {:?}", buf);
         }
-        self.rxq.add_used(chain.head_index(), i as u32)?;
+        self.rxq.add_used(chain.head_index(), count as u32)?;
 
         if self.rxq.needs_notification()? {
             log::debug!("notification needed: yes");
@@ -131,17 +145,17 @@ where
         // To see why this is done in a loop, please look at the `Queue::enable_notification`
         // comments in `vm_virtio`.
         //loop {
-            log::debug!("loop");
-            self.rxq.disable_notification()?;
+        log::debug!("loop");
+        self.rxq.disable_notification()?;
 
-            if let Some(chain) = self.rxq.iter()?.next() {
-                self.process_rx_chain(chain)?;
-            }
+        if let Some(chain) = self.rxq.iter()?.next() {
+            self.process_rx_chain(chain)?;
+        }
 
-            if !self.rxq.enable_notification()? {
-                log::debug!("loop break");
-                //break;
-            }
+        if !self.rxq.enable_notification()? {
+            log::debug!("loop break");
+            //break;
+        }
         //}
         Ok(())
     }
@@ -156,11 +170,10 @@ impl<M: GuestAddressSpace, S: SignalUsedQueue> MutEventSubscriber for LogQueueHa
 
         match events.data() as u16 {
             RX_QUEUE_IDX => {
-                log::warn!("rx");
                 if let Err(e) = self.process_rxq() {
                     self.handle_error(format!("Process rx error {:?}", e), ops);
                 }
-            },
+            }
             TX_QUEUE_IDX => {
                 if self.tx_fd.read().is_err() {
                     self.handle_error("Tx ioevent read", ops);
@@ -168,22 +181,20 @@ impl<M: GuestAddressSpace, S: SignalUsedQueue> MutEventSubscriber for LogQueueHa
                 if let Err(e) = self.process_txq() {
                     self.handle_error(format!("Process tx error {:?}", e), ops);
                 }
-            },
-            _ => self.handle_error("Unexpected data", ops)
+            }
+            _ => self.handle_error("Unexpected data", ops),
         }
     }
 
     fn init(&mut self, ops: &mut EventOps) {
-        ops
-        .add(Events::with_data(
+        ops.add(Events::with_data(
             &self.console,
             RX_QUEUE_IDX as u32,
             EventSet::IN,
         ))
         .expect("Failed to register rx ioeventfd for console queue handler");
 
-        ops
-        .add(Events::with_data(
+        ops.add(Events::with_data(
             &self.tx_fd,
             TX_QUEUE_IDX as u32,
             EventSet::IN,
