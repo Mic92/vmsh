@@ -376,10 +376,14 @@ attach-firecracker: busybox-image
 attach-kvmtool: busybox-image
   cargo run -- attach -f "{{linux_dir}}/busybox.ext4" $(pgrep -o -u $(id -u) -f kvmtool | awk '{print $1}') -- /bin/ls -la
 
-measure: passwordless_sudo
+measure-block: passwordless_sudo
   rm tests/measurements/stats.json || true
   rm tests/measurements/fio-stats.json || true
   python3 tests/measure_block.py
+
+measure-console: passwordless_sudo
+  rm tests/measurements/console-stats.json || true
+  python3 tests/measure_console.py
 
 # mom says we already have a benchmark at home
 benchmark-qemu-at-home DISK="/dev/vda": 
