@@ -2,6 +2,7 @@ mod device;
 mod log_handler;
 
 use std::io;
+use std::path::PathBuf;
 
 use event_manager::Error as EvmgrError;
 use vm_device::bus;
@@ -98,4 +99,6 @@ fn build_config_space() -> Vec<u8> {
 // Arguments required when building a console device.
 pub struct ConsoleArgs<'a, M, B> {
     pub common: CommonArgs<'a, M, B>,
+    /// None shall be interpreted as "sane default".
+    pub pts: Option<PathBuf>,
 }

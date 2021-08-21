@@ -7,6 +7,7 @@ use std::fs::{self, OpenOptions};
 use std::ops::DerefMut;
 use std::sync::{Arc, Mutex};
 use virtio_device::{VirtioDevice, VirtioDeviceType};
+use std::path::PathBuf;
 
 use event_manager::{MutEventSubscriber, RemoteEndpoint, Result as EvmgrResult, SubscriberId};
 use virtio_device::{VirtioConfig, VirtioDeviceActions, VirtioMmioDevice, VirtioQueueNotifiable};
@@ -47,6 +48,7 @@ pub struct Console<M: GuestAddressSpace> {
     pub uioefd: UserspaceIoEventFd,
     /// only used when ioregionfd != None
     sub_id: Option<SubscriberId>,
+    pts: PathBuf,
 
     // Before resetting we return the handler to the mmio thread for cleanup
     #[allow(dead_code)]
@@ -103,6 +105,19 @@ where
             );
         }
 
+        let pts = match args.pts {
+            Some(pts) => pts,
+            None => {
+                // stat /proc/self/fd/0 to get /dev/pts/X
+                map_err_with!(
+                    fs::read_link("/proc/self/fd/0"),
+                    "cannot find pseudo terminal for self"
+                )
+                .map_err(Error::Simple)?
+            },
+        };
+        log::info!("pts is {:?}", pts);
+
         let console = Arc::new(Mutex::new(Console {
             virtio_cfg,
             mmio_cfg,
@@ -114,6 +129,7 @@ where
             uioefd: UserspaceIoEventFd::default(),
             sub_id: None,
             handler: None,
+            pts,
         }));
 
         // Register the device on the MMIO bus.
@@ -141,16 +157,8 @@ where
             ack_handler: self.irq_ack_handler.clone(),
         };
 
-        // FIXME replace with actual console
-        // stat /proc/self/fd/0 to get /dev/pts/X
-        let abspath = map_err_with!(
-            fs::read_link("/proc/self/fd/0"),
-            "cannot find pseudo terminal for self"
-        )
-        .map_err(Error::Simple)?;
-        log::info!("terminal is {:?}", abspath);
         let console = map_err_with!(
-            OpenOptions::new().read(true).write(true).open(abspath),
+            OpenOptions::new().read(true).write(true).open(&self.pts),
             "could not open console"
         )
         .map_err(Error::Simple)?;

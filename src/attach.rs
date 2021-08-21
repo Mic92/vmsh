@@ -16,6 +16,7 @@ pub struct AttachOptions {
     pub pid: Pid,
     pub command: Vec<String>,
     pub backing: PathBuf,
+    pub pts: Option<PathBuf>,
 }
 
 pub fn attach(opts: &AttachOptions) -> Result<()> {
@@ -38,7 +39,7 @@ pub fn attach(opts: &AttachOptions) -> Result<()> {
     );
 
     let devices = try_with!(
-        DeviceSet::new(&vm, &mut allocator, &opts.backing),
+        DeviceSet::new(&vm, &mut allocator, &opts.backing, opts.pts.clone()),
         "cannot create devices"
     );
 

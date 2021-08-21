@@ -14,7 +14,7 @@ use crate::result::Result;
 use crate::tracer::proc::Mapping;
 use libc::pid_t;
 use simple_error::{bail, try_with};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
@@ -105,6 +105,7 @@ impl DeviceContext {
         allocator: &mut PhysMemAllocator,
         event_mgr: &mut SubscriberEventManager,
         backing: &Path,
+        pts: Option<PathBuf>,
     ) -> Result<DeviceContext> {
         let guest_memory = try_with!(vmm.get_maps(), "cannot get guests memory");
         let mem = Arc::new(try_with!(
@@ -161,7 +162,7 @@ impl DeviceContext {
                 mmio_mgr: guard,
                 mmio_cfg: console_mmio_cfg,
             };
-            let args = ConsoleArgs { common };
+            let args = ConsoleArgs { common, pts };
 
             match Console::new(args) {
                 Ok(v) => v,

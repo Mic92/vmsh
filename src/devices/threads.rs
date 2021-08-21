@@ -7,7 +7,7 @@ use log::error;
 use log::{debug, info, log_enabled, trace, Level};
 use simple_error::{bail, require_with, simple_error, try_with};
 use stage1_interface::DeviceState;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::SyncSender;
 use std::sync::Arc;
@@ -390,12 +390,13 @@ impl DeviceSet {
         vm: &Arc<Hypervisor>,
         allocator: &mut PhysMemAllocator,
         backing_file: &Path,
+        pts: Option<PathBuf>,
     ) -> Result<DeviceSet> {
         let mut event_manager =
             try_with!(SubscriberEventManager::new(), "cannot create event manager");
         // instantiate blkdev
         let context = Arc::new(try_with!(
-            DeviceContext::new(vm, allocator, &mut event_manager, backing_file),
+            DeviceContext::new(vm, allocator, &mut event_manager, backing_file, pts),
             "cannot create vm"
         ));
         Ok(DeviceSet {
