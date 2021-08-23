@@ -68,5 +68,20 @@ pub fn inspect(opts: &InspectOptions) -> Result<()> {
         Err(e) => info!("could not find kernel: {}", e),
     }
 
+    let pic1 = vm.get_irqchip(0)?;
+    info!("pic1: {:?}", unsafe { pic1.chip.pic });
+    let pic2 = vm.get_irqchip(1)?;
+    info!("pic2: {:?}", unsafe { pic2.chip.pic });
+    let ioapic = vm.get_irqchip(2)?;
+    let ioa = unsafe { ioapic.chip.ioapic };
+    info!(
+        "ioapic: base_address={:x} ioregsel={:x} id={:x} irr={:x}",
+        ioa.base_address, ioa.ioregsel, ioa.id, ioa.irr
+    );
+    // this is quite verbose
+    //for (i, field) in ioa.redirtbl.iter().enumerate() {
+    //    info!("ioapic[{}]=bits={:x}: fields={:?}", i, unsafe { field.bits }, unsafe { field.fields });
+    //}
+
     Ok(())
 }
