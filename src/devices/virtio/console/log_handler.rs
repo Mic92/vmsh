@@ -66,7 +66,7 @@ where
             log::debug!("chain.next()");
             let mem = chain.memory();
             if let Err(e) = mem.write_to(desc.addr(), &mut self.console, desc.len() as usize) {
-                error!("error logging console tx TODO: {}", e)
+                error!("error logging console tx (stdout/err): {}", e)
             }
             i += 1;
         }
@@ -86,7 +86,6 @@ where
         // To see why this is done in a loop, please look at the `Queue::enable_notification`
         // comments in `vm_virtio`.
         loop {
-            //log::warn!("loop");
             self.txq.disable_notification()?;
 
             while let Some(chain) = self.txq.iter()?.next() {
@@ -94,7 +93,6 @@ where
             }
 
             if !self.txq.enable_notification()? {
-                //log::warn!("loop break");
                 break;
             }
         }
@@ -124,10 +122,8 @@ where
             let buf = &mut buf[..count];
             log::debug!("buf {:?} count {}", buf, count);
             if let Err(e) = mem.write_slice(buf, desc.addr()) {
-                error!("error logging console rx TODO: {}", e)
+                error!("error logging console rx (stdin): {}", e)
             }
-            mem.read_slice(buf, desc.addr()).expect("TODO");
-            log::debug!("desc {:?}", buf);
         }
         self.rxq.add_used(chain.head_index(), count as u32)?;
 

@@ -48,7 +48,7 @@ pub fn setup() -> Result<()> {
     let monitor_console = find_vmsh_consoles()?;
     try_with!(
         unistd::dup2(monitor_console.as_raw_fd(), libc::STDIN_FILENO),
-        "cannot replace stdout with monitor connection"
+        "cannot replace stdin with monitor connection"
     );
     try_with!(
         unistd::dup2(monitor_console.as_raw_fd(), libc::STDOUT_FILENO),
