@@ -283,6 +283,7 @@ def expect(fd: int, timeout: int, until: Optional[str] = None) -> bool:
         if len(out) == 0:
             break
     print(buf.replace("\n", "\n[readall] "), end="")
+    # print(list(buf))
     if not buf.endswith("\n"):
         print("")
     # if until == "\hello world\n":
@@ -290,11 +291,8 @@ def expect(fd: int, timeout: int, until: Optional[str] = None) -> bool:
     return ret
 
 
-def assertline(ptmfd: int, ptm: Any, value: str) -> None:
-    # line = ptm.readline().strip()
+def assertline(ptmfd: int, value: str) -> None:
     assert expect(ptmfd, 2, f"\n{value}\r")  # not sure why and when how many \r's occur.
-    # print("[assertline]", line)
-    # assert line == value
 
 
 def writeall(fd: int, content: str) -> None:
@@ -304,18 +302,17 @@ def writeall(fd: int, content: str) -> None:
         raise Exception("TODO implement writeall")
 
 
-def echo(ptmfd: int, ptm: io.TextIOWrapper) -> float:
+def echo(ptmfd: int, prompt: str, cp1: str) -> float:
     sw = time.monotonic()
     writeall(ptmfd, "echo hello world\n")
 
-    # assertline(ptmfd, ptm, "echo hello world")
-    # assertline(ptmfd, ptm, "echo hello world")
-    # assertline(ptmfd, ptm, "")
-    assertline(ptmfd, ptm, "hello world")
+    # assert expect(ptmfd, 2, cp1)
+    # sw = time.monotonic() - sw
+    assertline(ptmfd, "hello world")
     # assert ptm.readline().strip() == "hello world"
     sw = time.monotonic() - sw
 
-    assert expect(ptmfd, 2, "~ #")
+    assert expect(ptmfd, 2, prompt)
     time.sleep(0.5)
     return sw
 
@@ -330,19 +327,30 @@ def main() -> None:
     console_stats = util.read_stats(STATS_PATH)
 
     (ptmfd, ptsfd) = openpty()
+    import subprocess
+    sh = subprocess.Popen(["/bin/sh"], stdin=ptsfd, stdout=ptsfd, stderr=ptsfd)
+    assert expect(ptmfd, 2, "sh-4.4$")
+    samples = sample(lambda: echo(ptmfd, "sh-4.4$", " echo hello world\r"), size=2)
+    print("samples:", samples)
+    sh.kill()
+    sh.wait()
+    os.close(ptmfd)
+    os.close(ptsfd)
+
+    (ptmfd, ptsfd) = openpty()
     pts = os.readlink(f"/proc/self/fd/{ptsfd}")
     os.close(ptsfd)
     # pts = "/proc/self/fd/1"
     print("pts: ", pts)
-    # with os.fdopen(ptmfd, mode='r') as ptm:
-    ptm = None
     cmd = ["/bin/sh"]
     with util.testbench_console(helpers, pts, guest_cmd=cmd) as _:
         # breakpoint()
         assert expect(ptmfd, 2, "~ #")
-        samples = sample(lambda: echo(ptmfd, ptm), size=2)
+        samples = sample(lambda: echo(ptmfd, "~ #", "\necho hello world\r"), size=2)
         print("samples:", samples)
         # print(f"echo: {echo(ptmfd, ptm)}s")
+
+    os.close(ptmfd)
 
     util.export_fio("console", console_stats)  # TODO rename
 
