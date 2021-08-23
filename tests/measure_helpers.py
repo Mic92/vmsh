@@ -23,6 +23,52 @@ GUEST_QEMUBLK_MOUNT = "/blk"
 
 
 @contextmanager
+def testbench_console(
+    helpers: confmeasure.Helpers, 
+    pts: str,
+    guest_cmd: List[str] = [
+        "/bin/sh",
+        "-c",
+        "echo works",
+    ],
+    mmio: str = "wrap_syscall"
+) -> Iterator[Any]:
+    with helpers.busybox_image() as img, helpers.spawn_qemu(
+        helpers.notos_image(),
+    ) as vm:
+        vm.wait_for_ssh()
+        vmshcmd = [
+            "attach",
+            "--backing-file",
+            str(img),
+            "--mmio",
+            mmio,
+            "--pts",
+            pts,
+            str(vm.pid),
+            "--",
+        ]
+        vmshcmd += guest_cmd
+        vmsh = helpers.spawn_vmsh_command(vmshcmd)
+
+        with vmsh:
+            try:
+                vmsh.wait_until_line(
+                    "stage1 driver started",
+                    lambda l: "stage1 driver started" in l,
+                )
+            finally:
+                yield vm
+
+        try:
+            os.kill(vmsh.pid, 0)
+        except ProcessLookupError:
+            pass
+        else:
+            assert False, "vmsh was not terminated properly"
+
+
+@contextmanager
 def testbench(
     helpers: confmeasure.Helpers,
     with_vmsh: bool = True,
@@ -215,7 +261,9 @@ def export_barplot(name: str, data: Dict[str, List[float]]) -> None:
 
 
 def export_fio(name: str, data: Dict[str, List[float]]) -> None:
+    os.makedirs(MEASURE_RESULTS, exist_ok=True)
     df = pd.DataFrame(data)
+    print(df.describe())
     path = f"{MEASURE_RESULTS}/{name}-{NOW}.tsv"
     print(path)
     df.to_csv(path, index=True, sep="\t")

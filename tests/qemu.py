@@ -148,6 +148,35 @@ class QemuVm:
                 break
             time.sleep(0.1)
 
+    def ssh_Popen(
+        self,
+        stdout: Optional[int] = subprocess.PIPE,
+        stderr: Optional[int] = None,
+        stdin: Optional[int] = None,
+    ) -> subprocess.Popen:
+        """
+        opens a background process with an interactive ssh session
+        """
+        key_path = TEST_ROOT.joinpath("..", "nix", "ssh_key")
+        key_path.chmod(0o400)
+        return subprocess.Popen(
+            [
+                "ssh",
+                "-i",
+                str(key_path),
+                "-p",
+                str(self.ssh_port),
+                "-oBatchMode=yes",
+                "-oStrictHostKeyChecking=no",
+                "-oConnectTimeout=5",
+                "-oUserKnownHostsFile=/dev/null",
+                "root@127.0.1",
+            ],
+            stdout=stdout,
+            stderr=stderr,
+            stdin=stdin,
+        )
+
     def ssh_cmd(
         self,
         argv: List[str],

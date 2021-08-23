@@ -5,6 +5,7 @@
 use std::borrow::{Borrow, BorrowMut};
 use std::fs::OpenOptions;
 use std::ops::DerefMut;
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use virtio_device::{VirtioDevice, VirtioDeviceType};
 
@@ -33,6 +34,9 @@ use crate::kvm::hypervisor::{
 use super::{build_config_space, ConsoleArgs, Error, Result, CONSOLE_DEVICE_ID};
 use simple_error::map_err_with;
 
+pub(super) const RX_QUEUE_IDX: u16 = 0;
+pub(super) const TX_QUEUE_IDX: u16 = 1;
+
 pub struct Console<M: GuestAddressSpace> {
     virtio_cfg: VirtioConfig<M>,
     pub mmio_cfg: MmioConfig,
@@ -44,6 +48,7 @@ pub struct Console<M: GuestAddressSpace> {
     pub uioefd: UserspaceIoEventFd,
     /// only used when ioregionfd != None
     sub_id: Option<SubscriberId>,
+    pts: PathBuf,
 
     // Before resetting we return the handler to the mmio thread for cleanup
     #[allow(dead_code)]
@@ -100,6 +105,12 @@ where
             );
         }
 
+        let pts = match args.pts {
+            Some(pts) => pts,
+            None => PathBuf::from("/proc/self/fd/1"),
+        };
+        log::info!("pts is {:?}", pts);
+
         let console = Arc::new(Mutex::new(Console {
             virtio_cfg,
             mmio_cfg,
@@ -111,6 +122,7 @@ where
             uioefd: UserspaceIoEventFd::default(),
             sub_id: None,
             handler: None,
+            pts,
         }));
 
         // Register the device on the MMIO bus.
@@ -138,25 +150,27 @@ where
             ack_handler: self.irq_ack_handler.clone(),
         };
 
-        // FIXME replace with actual console
         let console = map_err_with!(
-            OpenOptions::new()
-                .read(true)
-                .write(true)
-                .open("/proc/self/fd/0"),
+            OpenOptions::new().read(true).write(true).open(&self.pts),
             "could not open console"
         )
         .map_err(Error::Simple)?;
 
-        //let rx_fd = register_ioeventfd(&self.vmm, &self.mmio_cfg, 0).map_err(Error::Simple)?;
-        let tx_fd = IoEvent::register(&self.vmm, &mut self.uioefd, &self.mmio_cfg, 1)
-            .map_err(Error::Simple)?;
+        //let rx_fd = IoEvent::register(&self.vmm, &mut self.uioefd, &self.mmio_cfg, RX_QUEUE_IDX as u64)
+        //.map_err(Error::Simple)?;
+        let tx_fd = IoEvent::register(
+            &self.vmm,
+            &mut self.uioefd,
+            &self.mmio_cfg,
+            TX_QUEUE_IDX as u64,
+        )
+        .map_err(Error::Simple)?;
 
         let handler = Arc::new(Mutex::new(LogQueueHandler {
             driver_notify,
             tx_fd,
-            rxq: self.virtio_cfg.queues[0].clone(),
-            txq: self.virtio_cfg.queues[1].clone(),
+            rxq: self.virtio_cfg.queues[RX_QUEUE_IDX as usize].clone(),
+            txq: self.virtio_cfg.queues[TX_QUEUE_IDX as usize].clone(),
             console,
         }));
 

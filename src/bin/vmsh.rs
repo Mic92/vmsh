@@ -53,6 +53,7 @@ fn attach(args: &ArgMatches) {
         pid: parse_pid_arg(args),
         command,
         backing: PathBuf::from(value_t!(args, "backing-file", String).unwrap_or_else(|e| e.exit())),
+        pts: value_t!(args, "pts", String).ok().map(PathBuf::from),
     };
 
     USE_IOREGIONFD.store(
@@ -129,7 +130,13 @@ fn main() {
                 .takes_value(true)
                 .possible_values(&["wrap_syscall", "ioregionfd"])
                 .default_value("wrap_syscall")
-                .help("Backend used to serve Virtio MMIO memory of devices."),
+                .long_help("Backend used to serve Virtio MMIO memory of devices."),
+        )
+        .arg(
+            Arg::with_name("pts")
+                .long("pts")
+                .takes_value(true)
+                .help("Pseudoterminal seat to use for the command run in the VM. Use this when interactivity is required. "),
         );
 
     let coredump_command = SubCommand::with_name("coredump")
