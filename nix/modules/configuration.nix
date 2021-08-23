@@ -45,6 +45,8 @@ in
     and `quit` to stop the VM.
   '';
 
+  services.getty.autologinUser = lib.mkDefault "root";
+
   documentation.doc.enable = false;
   documentation.man.enable = false;
   documentation.nixos.enable = false;
