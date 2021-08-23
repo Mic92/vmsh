@@ -7,7 +7,7 @@ in
 {
   imports = [
     (modulesPath + "/profiles/qemu-guest.nix")
-    ./nested-qemu.nix
+    ./nested-vms.nix
   ];
   boot.loader.grub.enable = false;
   boot.initrd.enable = false;
@@ -45,6 +45,8 @@ in
     and `quit` to stop the VM.
   '';
 
+  services.getty.autologinUser = lib.mkDefault "root";
+
   documentation.doc.enable = false;
   documentation.man.enable = false;
   documentation.nixos.enable = false;
@@ -56,5 +58,6 @@ in
     pkgs.busybox
     pkgs.devmem2
     pkgs.sysbench
+    pkgs.cloud-hypervisor
   ];
 }

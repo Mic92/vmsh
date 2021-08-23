@@ -261,3 +261,6 @@ pub struct kvm_cpuid2 {
     pub entries: [kvmb::kvm_cpuid_entry2; KVM_MAX_CPUID_ENTRIES],
 }
 ioctl_iowr_nr!(KVM_GET_CPUID2, KVMIO, 0x91, kvmb::kvm_cpuid2);
+
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+ioctl_iowr_nr!(KVM_GET_IRQCHIP, KVMIO, 0x62, kvmb::kvm_irqchip);

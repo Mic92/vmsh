@@ -7,17 +7,13 @@ mod printk;
 use core::include_bytes;
 use core::panic::PanicInfo;
 use core::ptr;
-use stage1_interface::{DeviceState, Stage1Args, MAX_ARGV, MAX_DEVICES};
+use stage1_interface::{DeviceState, Stage1Args, IRQ_NUM, MAX_ARGV, MAX_DEVICES};
 
 use chlorine::{c_char, c_int, c_long, c_void, size_t};
 use ffi::loff_t;
 
 // used by our driver
 const MMIO_SIZE: usize = 0x1000;
-// XXX we should allocate our own unique IRQ here.
-// According to wikipedia IRQ 6 is for floppy disk controller:
-// https://en.wikipedia.org/wiki/Interrupt_request_(PC_architecture)#Master_PICk
-const MMIO_IRQ: usize = 6;
 // chosen randomly, hopefully unused
 const MMIO_DEVICE_ID: i32 = 1863406883;
 
@@ -195,7 +191,7 @@ unsafe fn run_stage2() -> Result<(), ()> {
             MMIO_DEVICE_ID + (i as i32),
             *addr as usize,
             MMIO_SIZE,
-            MMIO_IRQ,
+            IRQ_NUM, //irq as usize,
         ) {
             Ok(v) => {
                 if let Some(elem) = DEVICES.get_mut(i) {

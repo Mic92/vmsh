@@ -407,6 +407,23 @@ impl Hypervisor {
     }
 
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    pub fn get_irqchip(&self, chip_id: u32) -> Result<kvmb::kvm_irqchip> {
+        let mem = self.alloc_mem()?;
+        let tracee = try_with!(
+            self.tracee.write(),
+            "cannot obtain tracee write lock: poinsoned"
+        );
+        try_with!(
+            mem.write(&kvmb::kvm_irqchip {
+                chip_id,
+                ..Default::default()
+            }),
+            "cannot update kvm_irqchip structure"
+        );
+        tracee.get_irqchip(&mem)
+    }
+
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     pub fn get_sregs(&self, vcpu: &VCPU) -> Result<kvmb::kvm_sregs> {
         let mem = self.alloc_mem()?;
         let tracee = try_with!(
