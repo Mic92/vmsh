@@ -359,6 +359,19 @@ attach-qemu-img: nixos-image
   -l info,vmsh::device::virtio::block::inorder_handler=warn,vm_memory::mmap=warn,vm_memory::remote_mem=warn,vmsh::device::threads=debug attach \
   "{{qemu_pid}}" -f {{virtio_blk_img}}
 
+# Use this to get a pts for use with `just attach-qemu-sh` or `vmsh attach --pts`
+pts:
+  #!/usr/bin/env python3
+  import time
+  import os
+  pts = os.readlink(f"/proc/self/fd/0")
+  print(f"--pts {pts}")
+  while True:
+    time.sleep(1)
+
+attach-qemu-sh pts: busybox-image
+  cargo run -- attach -f "{{linux_dir}}/busybox.ext4" --pts {{pts}} "{{qemu_pid}}" -- /bin/sh
+
 # Attach block device to first qemu vm found by pidof and owned by our own user
 attach-qemu: busybox-image
   #cargo run -- attach -f "{{linux_dir}}/busybox.ext4" "{{qemu_pid}}" -- /bin/ls -la /proc/self/fd/
