@@ -20,6 +20,10 @@ qemu_ssh_remote := "root@localhost"
 default:
   @just --choose
 
+# build vmsh
+build:
+   cargo build
+
 # Linux python and rust code
 lint:
   flake8 tests
@@ -114,7 +118,6 @@ configure-linux: clone-linux
        --disable NFS_FS \
        --disable ETHERNET \
        --disable NETFILTER \
-       --enable DEBUG_INFO_DWARF5 \
        --enable DEBUG \
        --enable GDB_SCRIPTS \
        --enable DEBUG_DRIVER \
@@ -212,6 +215,7 @@ qemu EXTRA_CMDLINE="nokalsr": build-linux nixos-image
     -mon chardev=char0,mode=readline \
     -device virtconsole,chardev=char0,id=vmsh,nr=0
 
+alias cl := cloud-hypervisor
 cloud-hypervisor: build-linux nixos-image
   cloud-hypervisor \
       --memory size=500M,mergeable=on,shared=on \
@@ -297,11 +301,11 @@ strace:
 
 # SSH into vm started by `just qemu`
 ssh-qemu $COMMAND="":
-  ssh -i {{justfile_directory()}}/nix/ssh_key \
+  ssh -v -i {{justfile_directory()}}/nix/ssh_key \
       -o StrictHostKeyChecking=no \
       -o UserKnownHostsFile=/dev/null \
       {{qemu_ssh_remote}} \
-      -p {{qemu_ssh_port}} "$COMMAND"
+      -p {{qemu_ssh_port}} -- "$COMMAND"
 
 qemu-wait-for-ssh: 
   #!/usr/bin/env bash
@@ -336,6 +340,10 @@ scp-qemu $SRC="" $DST="":
 # Start qemu in qemu based on nixos image
 nested-qemu: nested-nixos-image
   just ssh-qemu qemu-nested
+
+# Start cloud-hypervisor in qemu based on nixos image
+nested-cloud-hypervisor: nested-nixos-image
+  just ssh-qemu cloud-hypervisor-nested
 
 # Copy programs from the host store to the guest nix store
 qemu-copy STORE_PATH:
@@ -374,11 +382,10 @@ attach-qemu-sh pts: busybox-image
 
 # Attach block device to first qemu vm found by pidof and owned by our own user
 attach-qemu: busybox-image
-  #cargo run -- attach -f "{{linux_dir}}/busybox.ext4" "{{qemu_pid}}" -- /bin/ls -la /proc/self/fd/
   cargo run -- attach -f "{{linux_dir}}/busybox.ext4" "{{qemu_pid}}" -- /bin/sh -c 'while true; do echo Enter your name:; read IN; echo hello $IN; done'
 
 attach-cloud-hypervisor: busybox-image
-  cargo run -- attach -f "{{linux_dir}}/busybox.ext4" $(pgrep -n -u $(id -u) cloud-hyperviso | awk '{print $1}') -- /bin/ls -la
+  cargo run -- attach --mmio=ioregionfd -f "{{linux_dir}}/busybox.ext4" $(pgrep -n -u $(id -u) cloud-hyperviso | awk '{print $1}') -- /bin/ls -la
 
 attach-crosvm: busybox-image
   cargo run -- attach -f "{{linux_dir}}/busybox.ext4" $(pgrep -u $(id -u) crosvm | awk '{print $1}') -- /bin/ls -la
@@ -489,15 +496,26 @@ gnuplot:
   gnuplot -e "set terminal dumb; set key autotitle columnhead;" -
 
 attach-qemu-ramdisk: mkramdisk
-  cargo run --release -- -l warn attach -f "/tmp/ramdisk/raw" "{{qemu_pid}}" --ssh-args " -i {{invocation_directory()}}/nix/ssh_key -p {{qemu_ssh_port}} root@localhost" -- /nix/var/nix/profiles/system/sw/bin/ls -la
+  cargo run --release -- \
+    -l warn attach -f "/tmp/ramdisk/raw" "{{qemu_pid}}" \
+    --ssh-args " -i {{invocation_directory()}}/nix/ssh_key -p {{qemu_ssh_port}} root@localhost" \
+    -- /bin/ls -la
 
-attach-nested-qemu: busybox-image
-  cargo build
-  just ssh-qemu '/mnt/vmsh/target/debug/vmsh -l info,vmsh::devices::virtio::block::threads=trace,vmsh::kvm::hypervisor=info attach -f "/linux/vmsh-image.ext4" $(pgrep qemu) -- /nix/var/nix/profiles/system/sw/bin/ls -la'
+
+BLOCK_DEV_LOG_FILTER := "info,vmsh::devices::virtio::block::threads=trace,vmsh::kvm::hypervisor=info"
+
+attach-nested-qemu: busybox-image build
+  just ssh-qemu 'exec /mnt/vmsh/target/debug/vmsh -l {{BLOCK_DEV_LOG_FILTER}} attach -f "/linux/busybox.ext4" $(pgrep qemu) -- /bin/ls -la'
+
+attach-nested-cloud-hypervisor: busybox-image build
+  just ssh-qemu 'exec /mnt/vmsh/target/debug/vmsh -l {{BLOCK_DEV_LOG_FILTER}} attach -f "/linux/busybox.ext4" $(pgrep cloud-hyperviso) -- /bin/ls -la'
 
 # Inspect first qemu vm found by pidof and owned by our own user
 inspect-qemu:
   cargo run -- inspect "{{qemu_pid}}"
+
+inspect-cl:
+  cargo run -- inspect $(pgrep cloud-hyperviso)
 
 # Generate a core dump of the first qemu vm found by pidof and owned by our own user
 coredump-qemu:
