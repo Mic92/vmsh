@@ -236,6 +236,18 @@ impl Tracee {
     }
 
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    pub fn get_irqchip(&self, irqchip: &HvMem<kvmb::kvm_irqchip>) -> Result<kvmb::kvm_irqchip> {
+        use crate::kvm::ioctls::KVM_GET_IRQCHIP;
+
+        try_with!(
+            self.vm_ioctl(KVM_GET_IRQCHIP(), irqchip.ptr as c_ulong),
+            "vcpu_ioctl failed"
+        );
+        let irqchip = try_with!(irqchip.read(), "cannot read cpuid");
+        Ok(irqchip)
+    }
+
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     pub fn get_sregs(
         &self,
         vcpu: &VCPU,
