@@ -5,6 +5,8 @@ use chlorine::{c_char, c_ulonglong};
 /// Holds the device we create by this code, so we can unregister it later
 pub const MAX_DEVICES: usize = 3;
 pub const MAX_ARGV: usize = 256;
+/// ideally we could have our own IRQ here... 6 seems so far shareable with other devices
+pub const IRQ_NUM: usize = 6;
 
 #[derive(PartialEq, Copy, Clone, Debug)]
 #[repr(C)]
