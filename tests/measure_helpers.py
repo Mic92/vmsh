@@ -263,6 +263,7 @@ def export_barplot(name: str, data: Dict[str, List[float]]) -> None:
 def export_fio(name: str, data: Dict[str, List[float]]) -> None:
     os.makedirs(MEASURE_RESULTS, exist_ok=True)
     df = pd.DataFrame(data)
+    print(df.describe())
     path = f"{MEASURE_RESULTS}/{name}-{NOW}.tsv"
     print(path)
     df.to_csv(path, index=True, sep="\t")

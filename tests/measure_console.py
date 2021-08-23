@@ -20,7 +20,7 @@ import os
 
 # overwrite the number of samples to take to a minimum
 # TODO turn this to False for releases. Results look very different.
-QUICK = True
+QUICK = False
 
 
 def lsblk(vm: QemuVm) -> None:
@@ -153,7 +153,7 @@ def fio(
         )
 
 
-SIZE = 16
+SIZE = 32
 WARMUP = 0
 if QUICK:
     WARMUP = 0
@@ -264,13 +264,15 @@ def expect(fd: int, timeout: int, until: Optional[str] = None) -> bool:
     """
     @return true if terminated because of until
     """
-    print("begin readall until", until)
+    if QUICK:
+        print("begin readall until", until)
     import select
     buf = ""
     ret = False
     (r, _, _) = select.select([fd], [], [], timeout)
     # print("selected")
-    print("[readall] ", end="")
+    if QUICK:
+        print("[readall] ", end="")
     while fd in r:
         # print("reading")
         out = os.read(fd, 1).decode()
@@ -282,9 +284,10 @@ def expect(fd: int, timeout: int, until: Optional[str] = None) -> bool:
         (r, _, _) = select.select([fd], [], [], timeout)
         if len(out) == 0:
             break
-    print(buf.replace("\n", "\n[readall] "), end="")
+    if QUICK:
+        print(buf.replace("\n", "\n[readall] "), end="")
     # print(list(buf))
-    if not buf.endswith("\n"):
+    if QUICK and not buf.endswith("\n"):
         print("")
     # if until == "\hello world\n":
         # print(list(buf))
@@ -296,13 +299,15 @@ def assertline(ptmfd: int, value: str) -> None:
 
 
 def writeall(fd: int, content: str) -> None:
-    print("[writeall]", content.strip())
+    if QUICK:
+        print("[writeall]", content.strip())
     c = os.write(fd, str.encode(content))
     if c != len(content):
         raise Exception("TODO implement writeall")
 
 
 def echo(ptmfd: int, prompt: str, cp1: str) -> float:
+    print("measuring echo")
     sw = time.monotonic()
     writeall(ptmfd, "echo hello world\n")
 
@@ -317,25 +322,11 @@ def echo(ptmfd: int, prompt: str, cp1: str) -> float:
     return sw
 
 
-def main() -> None:
-    """
-    not quick: 5 * fio_suite(5min) + 2 * sample(5min) = 35min
-    """
-    util.check_system()
-    helpers = confmeasure.Helpers()
-
-    console_stats = util.read_stats(STATS_PATH)
-
-    (ptmfd, ptsfd) = openpty()
-    import subprocess
-    sh = subprocess.Popen(["/bin/sh"], stdin=ptsfd, stdout=ptsfd, stderr=ptsfd)
-    assert expect(ptmfd, 2, "sh-4.4$")
-    samples = sample(lambda: echo(ptmfd, "sh-4.4$", " echo hello world\r"), size=2)
-    print("samples:", samples)
-    sh.kill()
-    sh.wait()
-    os.close(ptmfd)
-    os.close(ptsfd)
+def vmsh_console(helpers: confmeasure.Helpers, stats: Any) -> None:
+    name = "vmsh-console"
+    if name in stats.keys():
+        print(f"skip {name}")
+        return
 
     (ptmfd, ptsfd) = openpty()
     pts = os.readlink(f"/proc/self/fd/{ptsfd}")
@@ -346,13 +337,47 @@ def main() -> None:
     with util.testbench_console(helpers, pts, guest_cmd=cmd) as _:
         # breakpoint()
         assert expect(ptmfd, 2, "~ #")
-        samples = sample(lambda: echo(ptmfd, "~ #", "\necho hello world\r"), size=2)
+        samples = sample(lambda: echo(ptmfd, "~ #", "\necho hello world\r"))
         print("samples:", samples)
         # print(f"echo: {echo(ptmfd, ptm)}s")
 
     os.close(ptmfd)
 
-    util.export_fio("console", console_stats)  # TODO rename
+    stats[name] = samples
+
+
+def native(helpers: confmeasure.Helpers, stats: Any) -> None:
+    name = "native"
+    if name in stats.keys():
+        print(f"skip {name}")
+        return
+    (ptmfd, ptsfd) = openpty()
+    import subprocess
+    sh = subprocess.Popen(["/bin/sh"], stdin=ptsfd, stdout=ptsfd, stderr=ptsfd)
+    assert expect(ptmfd, 2, "sh-4.4$")
+    samples = sample(lambda: echo(ptmfd, "sh-4.4$", " echo hello world\r"))
+    print("samples:", samples)
+    sh.kill()
+    sh.wait()
+    os.close(ptmfd)
+    os.close(ptsfd)
+
+    stats[name] = samples
+
+
+def main() -> None:
+    """
+    not quick: 5 * fio_suite(5min) + 2 * sample(5min) = 35min
+    """
+    util.check_system()
+    helpers = confmeasure.Helpers()
+
+    stats = util.read_stats(STATS_PATH)
+
+    native(helpers, stats)
+    vmsh_console(helpers, stats)
+
+    util.export_fio("console", stats)  # TODO rename
 
 
 if __name__ == "__main__":
