@@ -20,7 +20,7 @@ import os
 
 # overwrite the number of samples to take to a minimum
 # TODO turn this to False for releases. Results look very different.
-QUICK = False
+QUICK = True
 
 
 def lsblk(vm: QemuVm) -> None:
@@ -286,6 +286,7 @@ def expect(fd: int, timeout: int, until: Optional[str] = None) -> bool:
             break
     if QUICK:
         print(buf.replace("\n", "\n[readall] "), end="")
+        print('\x1b[0m')
     # print(list(buf))
     if QUICK and not buf.endswith("\n"):
         print("")
@@ -344,6 +345,7 @@ def vmsh_console(helpers: confmeasure.Helpers, stats: Any) -> None:
     os.close(ptmfd)
 
     stats[name] = samples
+    util.write_stats(STATS_PATH, stats)
 
 
 def native(helpers: confmeasure.Helpers, stats: Any) -> None:
@@ -363,6 +365,33 @@ def native(helpers: confmeasure.Helpers, stats: Any) -> None:
     os.close(ptsfd)
 
     stats[name] = samples
+    util.write_stats(STATS_PATH, stats)
+
+
+def ssh(helpers: confmeasure.Helpers, stats: Any) -> None:
+    name = "ssh"
+    if name in stats.keys():
+        print(f"skip {name}")
+        return
+    (ptmfd, ptsfd) = openpty()
+    (ptmfd_stub, ptsfd_stub) = openpty()
+    pts_stub = os.readlink(f"/proc/self/fd/{ptsfd_stub}")
+    os.close(ptsfd_stub)
+    with util.testbench_console(helpers, pts_stub, guest_cmd=["/bin/ls"]) as vm:
+        # breakpoint()
+        sh = vm.ssh_Popen(stdin=ptsfd, stdout=ptsfd, stderr=ptsfd)
+        assert expect(ptmfd, 2, "~]$")
+        samples = sample(lambda: echo(ptmfd, "~]$", "\necho hello world\r"))
+        sh.kill()
+        sh.wait()
+        print("samples:", samples)
+
+    os.close(ptmfd_stub)
+    os.close(ptsfd)
+    os.close(ptmfd)
+
+    stats[name] = samples
+    util.write_stats(STATS_PATH, stats)
 
 
 def main() -> None:
@@ -375,6 +404,7 @@ def main() -> None:
     stats = util.read_stats(STATS_PATH)
 
     native(helpers, stats)
+    ssh(helpers, stats)
     vmsh_console(helpers, stats)
 
     util.export_fio("console", stats)  # TODO rename
