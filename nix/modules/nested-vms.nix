@@ -14,5 +14,15 @@
         -nographic -enable-kvm \
         "$@"
     '')
+    (pkgs.writeShellScriptBin "cloud-hypervisor-nested" ''
+      exec ${pkgs.cloud-hypervisor}/bin/cloud-hypervisor \
+        --memory size=500M,shared=on \
+        --cpus boot=1 --rng --watchdog --console tty \
+        --kernel /linux/vmlinux \
+        --cmdline "console=hvc0 root=/dev/vda" \
+        --seccomp false \
+        --disk path=/linux/nixos-nested.ext4 \
+        "$@"
+    '')
   ];
 }

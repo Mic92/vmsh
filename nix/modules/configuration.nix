@@ -7,7 +7,7 @@ in
 {
   imports = [
     (modulesPath + "/profiles/qemu-guest.nix")
-    ./nested-qemu.nix
+    ./nested-vms.nix
   ];
   boot.loader.grub.enable = false;
   boot.initrd.enable = false;
@@ -56,5 +56,6 @@ in
     pkgs.busybox
     pkgs.devmem2
     pkgs.sysbench
+    pkgs.cloud-hypervisor
   ];
 }
