@@ -5,9 +5,9 @@
 use std::borrow::{Borrow, BorrowMut};
 use std::fs::{self, OpenOptions};
 use std::ops::DerefMut;
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use virtio_device::{VirtioDevice, VirtioDeviceType};
-use std::path::PathBuf;
 
 use event_manager::{MutEventSubscriber, RemoteEndpoint, Result as EvmgrResult, SubscriberId};
 use virtio_device::{VirtioConfig, VirtioDeviceActions, VirtioMmioDevice, VirtioQueueNotifiable};
@@ -107,14 +107,7 @@ where
 
         let pts = match args.pts {
             Some(pts) => pts,
-            None => {
-                // stat /proc/self/fd/0 to get /dev/pts/X
-                map_err_with!(
-                    fs::read_link("/proc/self/fd/0"),
-                    "cannot find pseudo terminal for self"
-                )
-                .map_err(Error::Simple)?
-            },
+            None => PathBuf::from("/proc/self/fd/1"),
         };
         log::info!("pts is {:?}", pts);
 

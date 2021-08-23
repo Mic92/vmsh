@@ -136,7 +136,7 @@ fn main() {
             Arg::with_name("pts")
                 .long("pts")
                 .takes_value(true)
-                .help("Pseudoterminal seat to use for the command run in the VM."),
+                .help("Pseudoterminal seat to use for the command run in the VM. Use this when interactivity is required. "),
         );
 
     let coredump_command = SubCommand::with_name("coredump")
