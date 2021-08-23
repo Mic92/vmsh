@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR BSD-3-Clause
 
 use std::borrow::{Borrow, BorrowMut};
-use std::fs::{self, OpenOptions};
+use std::fs::OpenOptions;
 use std::ops::DerefMut;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};

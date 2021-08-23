@@ -53,7 +53,7 @@ fn attach(args: &ArgMatches) {
         pid: parse_pid_arg(args),
         command,
         backing: PathBuf::from(value_t!(args, "backing-file", String).unwrap_or_else(|e| e.exit())),
-        pts: value_t!(args, "pts", String).ok().map(|s| PathBuf::from(s)),
+        pts: value_t!(args, "pts", String).ok().map(PathBuf::from),
     };
 
     USE_IOREGIONFD.store(

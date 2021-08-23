@@ -1,19 +1,9 @@
 from root import MEASURE_RESULTS
 import confmeasure
 import measure_helpers as util
-from measure_helpers import (
-    run,
-)
-from qemu import QemuVm
-from dataclasses import dataclass
 
-from typing import List, Any, Optional, Callable, DefaultDict
-import io
-import re
-import json
+from typing import List, Any, Optional, Callable
 import time
-import timeit
-from enum import Enum
 from pty import openpty
 import os
 
@@ -55,6 +45,7 @@ def expect(fd: int, timeout: int, until: Optional[str] = None) -> bool:
     if QUICK:
         print("begin readall until", until)
     import select
+
     buf = ""
     ret = False
     (r, _, _) = select.select([fd], [], [], timeout)
@@ -74,17 +65,19 @@ def expect(fd: int, timeout: int, until: Optional[str] = None) -> bool:
             break
     if QUICK:
         print(buf.replace("\n", "\n[readall] "), end="")
-        print('\x1b[0m')
+        print("\x1b[0m")
     # print(list(buf))
     if QUICK and not buf.endswith("\n"):
         print("")
     # if until == "\hello world\n":
-        # print(list(buf))
+    # print(list(buf))
     return ret
 
 
 def assertline(ptmfd: int, value: str) -> None:
-    assert expect(ptmfd, 2, f"\n{value}\r")  # not sure why and when how many \r's occur.
+    assert expect(
+        ptmfd, 2, f"\n{value}\r"
+    )  # not sure why and when how many \r's occur.
 
 
 def writeall(fd: int, content: str) -> None:
@@ -143,6 +136,7 @@ def native(helpers: confmeasure.Helpers, stats: Any) -> None:
         return
     (ptmfd, ptsfd) = openpty()
     import subprocess
+
     sh = subprocess.Popen(["/bin/sh"], stdin=ptsfd, stdout=ptsfd, stderr=ptsfd)
     assert expect(ptmfd, 2, "sh-4.4$")
     samples = sample(lambda: echo(ptmfd, "sh-4.4$", " echo hello world\r"))
