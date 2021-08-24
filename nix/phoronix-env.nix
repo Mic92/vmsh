@@ -1,18 +1,30 @@
 { pkgs ? import <nixpkgs> {} }:
 
-pkgs.stdenv.mkDerivation {
+(pkgs.buildFHSUserEnv {
   name = "phoronix-env";
-  buildInputs = with pkgs; [
+  targetPkgs = pkgs: with pkgs; [
     php
-    autoreconfHook
+    bash
+    coreutils
+    binutils
+    automake
+    autoconf
+    m4
     popt
     libaio
     perl
     gcc7
     pcre
-    glibc.out
+    glibc
     glibc.static
     bc
+    openmpi
+    python3
   ];
-  hardeningDisable = [ "all" ];
-}
+  runScript = "bash";
+  multiPkgs = null;
+  extraOutputsToInstall = [ "dev" ];
+  profile = ''
+    export hardeningDisable=all
+  '';
+}).env
