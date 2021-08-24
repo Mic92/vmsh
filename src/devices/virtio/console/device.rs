@@ -5,6 +5,7 @@
 use std::borrow::{Borrow, BorrowMut};
 use std::fs::OpenOptions;
 use std::io;
+use std::io::Write;
 use std::ops::DerefMut;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -148,15 +149,29 @@ where
             ack_handler: self.irq_ack_handler.clone(),
         };
 
-        let console_in = match &self.pts {
-            Some(pts) => Some(
-                map_err_with!(
-                    OpenOptions::new().read(true).write(true).open(pts),
-                    "could not open console"
-                )
-                .map_err(Error::Simple)?,
-            ),
-            None => None,
+        let console_in;
+        let console_out: Box<dyn Write + Send>;
+        match &self.pts {
+            Some(pts) => {
+                console_in = Some(
+                    map_err_with!(
+                        OpenOptions::new().read(true).open(pts),
+                        "could not open read console"
+                    )
+                    .map_err(Error::Simple)?,
+                );
+                console_out = Box::new(
+                    map_err_with!(
+                        OpenOptions::new().write(true).open(pts),
+                        "could not open write console"
+                    )
+                    .map_err(Error::Simple)?,
+                );
+            }
+            None => {
+                console_in = None;
+                console_out = Box::new(io::stdout());
+            }
         };
 
         //let rx_fd = IoEvent::register(&self.vmm, &mut self.uioefd, &self.mmio_cfg, RX_QUEUE_IDX as u64)
@@ -174,7 +189,7 @@ where
             tx_fd,
             rxq: self.virtio_cfg.queues[RX_QUEUE_IDX as usize].clone(),
             txq: self.virtio_cfg.queues[TX_QUEUE_IDX as usize].clone(),
-            console_out: Box::new(io::stdout()),
+            console_out,
             console_in,
         }));
 
