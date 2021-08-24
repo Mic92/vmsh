@@ -385,21 +385,25 @@ pts:
 attach-qemu-sh pts: busybox-image
   cargo run -- attach -f "{{linux_dir}}/busybox.ext4" --pts {{pts}} "{{qemu_pid}}" -- /bin/sh
 
-# Attach block device to first qemu vm found by pidof and owned by our own user
-attach-qemu: busybox-image
-  cargo run -- attach -f "{{linux_dir}}/busybox.ext4" "{{qemu_pid}}" -- /bin/ls -la
+# Attach hypervisor matched by name
+attach TARGET="qemu": busybox-image
+  cargo run -- attach -f "{{linux_dir}}/busybox.ext4" $(pgrep -n -u $(id -u) {{TARGET}}) -- /bin/ls -la
 
-attach-cloud-hypervisor: busybox-image
-  cargo run -- attach --mmio=ioregionfd -f "{{linux_dir}}/busybox.ext4" $(pgrep -n -u $(id -u) cloud-hyperviso | awk '{print $1}') -- /bin/ls -la
+# Attach block device to first qemu vm found by pidof and owned by our own user
+attach-qemu: attach
+
+# Attach to cloud-hypervisor (not working yet)
+attach-cloud-hypervisor:
+  just attach TARGET=cloud-hyperviso
 
 attach-crosvm: busybox-image
-  cargo run -- attach -f "{{linux_dir}}/busybox.ext4" $(pgrep -u $(id -u) crosvm | awk '{print $1}') -- /bin/ls -la
+  just attach TARGET=crosvm
 
 attach-firecracker: busybox-image
-  cargo run -- attach -f "{{linux_dir}}/busybox.ext4" $(pgrep -u $(id -u) firecracker | awk '{print $1}') -- /bin/ls -la
+  just attach TARGET=firecracker
 
 attach-kvmtool: busybox-image
-  cargo run -- attach -f "{{linux_dir}}/busybox.ext4" $(pgrep -o -u $(id -u) -f kvmtool | awk '{print $1}') -- /bin/ls -la
+  just attach TARGET=kvmtool
 
 measure-block: passwordless_sudo
   rm tests/measurements/stats.json || true
