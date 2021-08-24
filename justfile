@@ -387,7 +387,7 @@ attach-qemu-sh pts: busybox-image
 
 # Attach block device to first qemu vm found by pidof and owned by our own user
 attach-qemu: busybox-image
-  cargo run -- attach -f "{{linux_dir}}/busybox.ext4" "{{qemu_pid}}" -- /bin/sh -c 'while true; do echo Enter your name:; read IN; echo hello $IN; done'
+  cargo run -- attach -f "{{linux_dir}}/busybox.ext4" "{{qemu_pid}}" -- /bin/ls -la
 
 attach-cloud-hypervisor: busybox-image
   cargo run -- attach --mmio=ioregionfd -f "{{linux_dir}}/busybox.ext4" $(pgrep -n -u $(id -u) cloud-hyperviso | awk '{print $1}') -- /bin/ls -la

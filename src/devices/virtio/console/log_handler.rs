@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR BSD-3-Clause
 
 use std::fs::File;
-use std::io::Read;
+use std::io::{Read, Write};
 use std::result;
 
 use event_manager::EventOps;
@@ -43,7 +43,8 @@ pub(crate) struct LogQueueHandler<M: GuestAddressSpace, S: SignalUsedQueue> {
     #[allow(unused)]
     pub rxq: Queue<M>,
     pub txq: Queue<M>,
-    pub console: File,
+    pub console_out: Box<dyn Write + Send>,
+    pub console_in: Option<File>,
 }
 
 impl<M, S> LogQueueHandler<M, S>
@@ -57,7 +58,7 @@ where
             .expect("Failed to remove tx ioevent");
     }
 
-    /// Guest console sends (tx), we write to self.console fd
+    /// Guest console sends (tx), we write to self.console_out fd
     fn process_tx_chain(&mut self, mut chain: DescriptorChain<M>) -> result::Result<(), Error> {
         log::debug!("process_chain");
 
@@ -65,7 +66,7 @@ where
         while let Some(desc) = chain.next() {
             log::debug!("chain.next()");
             let mem = chain.memory();
-            if let Err(e) = mem.write_to(desc.addr(), &mut self.console, desc.len() as usize) {
+            if let Err(e) = mem.write_to(desc.addr(), &mut self.console_out, desc.len() as usize) {
                 error!("error logging console tx (stdout/err): {}", e)
             }
             i += 1;
@@ -99,7 +100,7 @@ where
         Ok(())
     }
 
-    /// Guest console reads (rx), we read from self.console fd
+    /// Guest console reads (rx), we read from self.console_in fd
     fn process_rx_chain(&mut self, mut chain: DescriptorChain<M>) -> result::Result<(), Error> {
         log::debug!("process_chain");
         const LEN: usize = 128;
@@ -109,7 +110,11 @@ where
             log::debug!("reading bytes");
             let mem = chain.memory();
             let mut buf = [0u8; LEN];
-            count = match self.console.read(&mut buf) {
+            let pts = &mut self
+                .console_in
+                .as_mut()
+                .expect("programming error: rx chain cannot be processed if no pts is connected");
+            count = match pts.read(&mut buf) {
                 Ok(count) => {
                     log::debug!("read {}", count);
                     count
@@ -183,12 +188,14 @@ impl<M: GuestAddressSpace, S: SignalUsedQueue> MutEventSubscriber for LogQueueHa
     }
 
     fn init(&mut self, ops: &mut EventOps) {
-        ops.add(Events::with_data(
-            &self.console,
-            RX_QUEUE_IDX as u32,
-            EventSet::IN,
-        ))
-        .expect("Failed to register rx ioeventfd for console queue handler");
+        if let Some(console) = &self.console_in {
+            ops.add(Events::with_data(
+                console,
+                RX_QUEUE_IDX as u32,
+                EventSet::IN,
+            ))
+            .expect("Failed to register rx ioeventfd for console queue handler");
+        }
 
         ops.add(Events::with_data(
             &self.tx_fd,
