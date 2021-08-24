@@ -90,13 +90,16 @@ reliability-attach:
 
 # Git clone linux kernel
 clone-linux:
-  [[ -d {{linux_dir}} ]] || \
+  set -euo pipefail
+  if [[ -d {{linux_dir}} ]] ||; then
     git clone {{linux_repo}} {{linux_dir}}
-  set -x; commit="$(nix eval --raw .#linux_ioregionfd.src.rev)"; \
-  if [[ $(git -C {{linux_dir}} rev-parse HEAD) != "$commit" ]]; then \
-     git -C {{linux_dir}} fetch {{linux_repo}} HEAD:Mic92; \
-     git -C {{linux_dir}} checkout "$commit"; \
-     rm -f {{linux_dir}}/.config; \
+  fi
+
+  set -x; commit="$(nix eval --raw .#linux_ioregionfd.src.rev)";
+  if [[ $(git -C {{linux_dir}} rev-parse HEAD) != "$commit" ]]; then
+     git -C {{linux_dir}} fetch {{linux_repo}} $commit;
+     git -C {{linux_dir}} checkout "$commit";
+     rm -f {{linux_dir}}/.config;
   fi
 
 # Configure linux kernel build
