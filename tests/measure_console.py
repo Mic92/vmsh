@@ -180,7 +180,7 @@ def main() -> None:
     """
     not quick: 5 * fio_suite(5min) + 2 * sample(5min) = 35min
     """
-    util.check_system()
+    util.check_intel_turbo()
     helpers = confmeasure.Helpers()
 
     stats = util.read_stats(STATS_PATH)

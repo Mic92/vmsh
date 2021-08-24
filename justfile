@@ -161,14 +161,26 @@ build-linux-shell:
 build-linux: configure-linux
   yes \n | {{kernel_shell}} make -C {{linux_dir}} -j$(nproc)
 
-# Build kernel-less disk image for NixOS
-nixos-image:
+# Build a disk image
+image NAME="nixos" IMAGE_PATH="/{{NAME}}.img":
   #!/usr/bin/env bash
   set -eux -o pipefail
-  if [[ nix/nixos-image.nix -nt {{linux_dir}}/nixos.ext4 ]] || [[ flake.lock -nt {{linux_dir}}/nixos.ext4 ]]; then
-     nix build --out-link {{nix_results}}/nixos-image --builders '' .#nixos-image
-     install -m600 "{{nix_results}}/nixos-image/nixos.img" {{linux_dir}}/nixos.ext4
+  if [[ nix/{{NAME}}-image.nix -nt {{linux_dir}}/{{NAME}}.ext4 ]] \
+     || [[ flake.lock -nt {{linux_dir}}/{{NAME}}.ext4 ]]; then
+     nix build --out-link {{nix_results}}/{{NAME}}-image --builders '' .#{{NAME}}-image
+     install -m600 "{{nix_results}}/{{NAME}}-image{{IMAGE_PATH}}" {{linux_dir}}/{{NAME}}.ext4
   fi
+
+# Build kernel-less disk image for NixOS
+nixos-image: image
+
+# Build disk image with busybox
+busybox-image:
+  just image busybox ""
+
+# Build disk image with passwd from shadow
+passwd-image:
+  just image passwd ""
 
 # Build kernel/disk image for not os
 notos-image:
@@ -181,14 +193,6 @@ nested-nixos-image: nixos-image
   set -eux -o pipefail
   if [[ ! -e {{linux_dir}}/nixos-nested.ext4 ]] || [[ {{linux_dir}}/nixos.ext4 -nt {{linux_dir}}/nixos-nested.ext4 ]]; then
     cp -a --reflink=auto "{{linux_dir}}/nixos.ext4" {{linux_dir}}/nixos-nested.ext4
-  fi
-
-busybox-image:
-  #!/usr/bin/env bash
-  set -eux -o pipefail
-  if [[ nix/busybox-image.nix -nt {{nix_results}}/busybox.ext4 ]] || [[ flake.lock -nt {{nix_results}}/busybox.ext4 ]]; then
-     nix build --out-link {{nix_results}}/busybox-image --builders '' .#busybox-image
-     install -m600 "{{nix_results}}/busybox-image" "{{linux_dir}}/busybox.ext4"
   fi
 
 mkramdisk SRC="/dev/zero" NAME="ramdisk" SIZEG="2":
@@ -385,21 +389,25 @@ pts:
 attach-qemu-sh pts: busybox-image
   cargo run -- attach -f "{{linux_dir}}/busybox.ext4" --pts {{pts}} "{{qemu_pid}}" -- /bin/sh
 
-# Attach block device to first qemu vm found by pidof and owned by our own user
-attach-qemu: busybox-image
-  cargo run -- attach -f "{{linux_dir}}/busybox.ext4" "{{qemu_pid}}" -- /bin/ls -la
+# Attach hypervisor matched by name
+attach TARGET="qemu": busybox-image
+  cargo run -- attach -f "{{linux_dir}}/busybox.ext4" $(pgrep -n -u $(id -u) {{TARGET}}) -- /bin/ls -la
 
-attach-cloud-hypervisor: busybox-image
-  cargo run -- attach --mmio=ioregionfd -f "{{linux_dir}}/busybox.ext4" $(pgrep -n -u $(id -u) cloud-hyperviso | awk '{print $1}') -- /bin/ls -la
+# Attach block device to first qemu vm found by pidof and owned by our own user
+attach-qemu: attach
+
+# Attach to cloud-hypervisor (not working yet)
+attach-cloud-hypervisor:
+  just attach TARGET=cloud-hyperviso
 
 attach-crosvm: busybox-image
-  cargo run -- attach -f "{{linux_dir}}/busybox.ext4" $(pgrep -u $(id -u) crosvm | awk '{print $1}') -- /bin/ls -la
+  just attach TARGET=crosvm
 
 attach-firecracker: busybox-image
-  cargo run -- attach -f "{{linux_dir}}/busybox.ext4" $(pgrep -u $(id -u) firecracker | awk '{print $1}') -- /bin/ls -la
+  just attach TARGET=firecracker
 
 attach-kvmtool: busybox-image
-  cargo run -- attach -f "{{linux_dir}}/busybox.ext4" $(pgrep -o -u $(id -u) -f kvmtool | awk '{print $1}') -- /bin/ls -la
+  just attach TARGET=kvmtool
 
 measure-block: passwordless_sudo
   rm tests/measurements/stats.json || true
@@ -506,7 +514,6 @@ attach-qemu-ramdisk: mkramdisk
     --ssh-args " -i {{invocation_directory()}}/nix/ssh_key -p {{qemu_ssh_port}} root@localhost" \
     -- /bin/ls -la
 
-
 BLOCK_DEV_LOG_FILTER := "info,vmsh::devices::virtio::block::threads=trace,vmsh::kvm::hypervisor=info"
 
 attach-nested-qemu: busybox-image build
@@ -518,6 +525,10 @@ attach-nested-cloud-hypervisor: busybox-image build
 # Inspect first qemu vm found by pidof and owned by our own user
 inspect-qemu:
   cargo run -- inspect "{{qemu_pid}}"
+
+# Set root password in qemu VM
+change-password pts TARGET="qemu": passwd-image
+  cargo run -- attach --pts {{pts}} -f "{{linux_dir}}/passwd.ext4" $(pgrep -n -u $(id -u) {{TARGET}}) -- /bin/strace -f /bin/passwd -R /var/lib/vmsh
 
 inspect-cl:
   cargo run -- inspect $(pgrep cloud-hyperviso)

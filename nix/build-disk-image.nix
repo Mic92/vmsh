@@ -2,7 +2,7 @@
 , e2fsprogs, lkl, lib
 }:
 
-{ packages
+{ packages ? []
 , extraFiles ? {}
 , extraCommands ? ""
 , diskSize ? "1G"
@@ -32,7 +32,7 @@ in stdenv.mkDerivation {
     mkdir -p root/{nix/store,tmp,etc}
     root=$(readlink -f root)
 
-    xargs -P $NIX_BUILD_CORES cp --reflink=auto -r -t "$root/nix/store" < ${closure}/store-paths
+    xargs --no-run-if-empty -P $NIX_BUILD_CORES cp --reflink=auto -r -t "$root/nix/store" < ${closure}/store-paths
 
     ${lib.concatMapStrings (file: ''
       dir="$root/$(dirname ${file})"

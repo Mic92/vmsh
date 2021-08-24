@@ -24,14 +24,14 @@ GUEST_QEMUBLK_MOUNT = "/blk"
 
 @contextmanager
 def testbench_console(
-    helpers: confmeasure.Helpers, 
+    helpers: confmeasure.Helpers,
     pts: str,
     guest_cmd: List[str] = [
         "/bin/sh",
         "-c",
         "echo works",
     ],
-    mmio: str = "wrap_syscall"
+    mmio: str = "wrap_syscall",
 ) -> Iterator[Any]:
     with helpers.busybox_image() as img, helpers.spawn_qemu(
         helpers.notos_image(),
@@ -230,16 +230,15 @@ def check_ssd() -> None:
         exit(1)
 
 
-def check_system() -> None:
-    try:
-        with open("/sys/devices/system/cpu/intel_pstate/no_turbo") as f:
+def check_intel_turbo() -> None:
+    path = "/sys/devices/system/cpu/intel_pstate/no_turbo"
+    if os.path.exists(path):
+        with open(path) as f:
             if f.readline() != "1\n":
                 print(
                     """Please run: sudo su -c 'echo "1" > /sys/devices/system/cpu/intel_pstate/no_turbo'"""
                 )
                 exit(1)
-    finally:
-        return
 
 
 # look at those caches getting warm
