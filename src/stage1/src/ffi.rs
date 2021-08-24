@@ -57,6 +57,7 @@ pub type resource_size_t = phys_addr_t;
 pub type umode_t = c_ushort;
 pub type loff_t = c_longlong;
 pub type ssize_t = isize;
+pub type clockid_t = c_int;
 
 // We omit some kernel structs here, that we don't need
 pub type device = c_void;
@@ -66,6 +67,7 @@ pub type property_entry = c_void;
 /// same as struct file
 pub type file = c_void;
 pub type task_struct = c_void;
+pub type lock_class_key = c_void;
 
 // from the linux kernel, see `struct resource`
 #[repr(C)]
@@ -100,6 +102,61 @@ pub struct platform_device_info {
     pub properties: *const property_entry,
 }
 
+//type hlist_node = *mut c_void;
+
+//#[repr(C)]
+//pub struct timer_list {
+//    // We don't need the actual fields here since we just provide the storage.
+//    // Last time I checked it needed 40 bytes
+//    //pub padding: [c_char; 256]
+//    pub entry: hlist_node,
+//    pub expires: c_ulong,
+//    //pub function: unsafe extern "C" fn(list: *mut timer_list),
+//    pub function: *const c_void,
+//    pub flags: u32,
+//}
+
+#[repr(C)]
+pub struct rb_node {
+    pub __rb_parent_color: c_ulong,
+    pub rb_right: *mut rb_node,
+    pub rb_left: *mut rb_node,
+}
+// The alignment might seem pointless, but allegedly CRIS needs it
+#[repr(C)]
+pub struct timerqueue_node {
+    pub node: rb_node,
+    pub expires: ktime_t,
+}
+type ktime_t = i64;
+type hrtimer_clock_base = c_void;
+
+#[repr(C)]
+pub enum hrtimer_restart {
+    /// Timer is not restarted
+    HRTIMER_NORESTART,
+    /// Timer must be restarted
+    HRTIMER_RESTART,
+}
+
+#[repr(C)]
+pub struct hrtimer {
+    pub node: timerqueue_node,
+    pub _softexpires: ktime_t,
+    pub function: unsafe extern "C" fn(timer: *mut hrtimer) -> hrtimer_restart,
+    pub base: *mut hrtimer_clock_base,
+    pub state: u8,
+    pub is_rel: u8,
+    pub is_soft: u8,
+    pub is_hard: u8,
+}
+
+/// this enum is incomplete
+#[repr(C)]
+pub enum hrtimer_mode {
+    HRTIMER_MODE_HARD = 0x08,
+}
+
 extern "C" {
     pub fn platform_device_register_full(
         pdevinfo: *const platform_device_info,
@@ -128,4 +185,18 @@ extern "C" {
 
     pub fn wake_up_process(p: *mut task_struct);
     pub fn usleep_range(min: c_ulong, max: c_ulong);
+
+    // All symbols below are optional in case we need the polling fallback hack
+    /// also volatile
+    pub static jiffies: c_ulong;
+
+    pub fn hrtimer_init(timer: *mut hrtimer, clock_id: clockid_t, mode: hrtimer_mode);
+    pub fn hrtimer_start_range_ns(
+        timer: *mut hrtimer,
+        tim: ktime_t,
+        delta_ns: u64,
+        mode: hrtimer_mode,
+    );
+    pub fn hrtimer_cancel(timer: *mut hrtimer) -> c_int;
+    pub fn generic_handle_irq(irq: c_uint) -> c_int;
 }

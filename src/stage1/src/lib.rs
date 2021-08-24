@@ -178,6 +178,42 @@ impl Drop for KFile {
     }
 }
 
+struct Timer {
+    inner: *mut ffi::hrtimer,
+}
+
+/// accoriding POSIX.1b interval timers
+const CLOCK_MONOTONIC: ffi::clockid_t = 1;
+
+impl Timer {
+    pub fn new(
+        inner: *mut ffi::hrtimer,
+        func: unsafe extern "C" fn(timer: *mut ffi::hrtimer) -> ffi::hrtimer_restart,
+    ) -> Timer {
+        unsafe {
+            ffi::hrtimer_init(inner, CLOCK_MONOTONIC, ffi::hrtimer_mode::HRTIMER_MODE_HARD);
+            (*inner).function = func;
+            ffi::hrtimer_start_range_ns(
+                inner,
+                5000000000, /* 0.05s */
+                0,
+                ffi::hrtimer_mode::HRTIMER_MODE_HARD,
+            );
+        };
+        Timer { inner }
+    }
+}
+
+impl Drop for Timer {
+    fn drop(&mut self) {
+        unsafe {
+            if ffi::hrtimer_cancel(self.inner) != 0 {
+                printkln!("stage1: could not stop timer");
+            };
+        }
+    }
+}
+
 // cannot put this onto the stack without stackoverflows?
 static mut DEVICES: [Option<PlatformDevice>; MAX_DEVICES] = [None, None, None];
 
@@ -256,25 +292,45 @@ unsafe fn run_stage2() -> Result<(), ()> {
     Ok(())
 }
 
+static mut POLL_TIMER: ffi::hrtimer = ffi::hrtimer {
+    node: ffi::timerqueue_node {
+        node: ffi::rb_node {
+            __rb_parent_color: 0,
+            rb_right: ptr::null_mut(),
+            rb_left: ptr::null_mut(),
+        },
+        expires: 0,
+    },
+    _softexpires: 0,
+    function: poll_virtqueues,
+    base: ptr::null_mut(),
+    state: 0,
+    is_rel: 0,
+    is_soft: 0,
+    is_hard: 0,
+};
+
+unsafe extern "C" fn poll_virtqueues(_timer: *mut ffi::hrtimer) -> ffi::hrtimer_restart {
+    if ffi::generic_handle_irq(IRQ_NUM as u32) != 0 {
+        printkln!("stage1: failed to inject irq: {}", IRQ_NUM);
+    };
+    ffi::hrtimer_restart::HRTIMER_RESTART
+}
+
 unsafe extern "C" fn spawn_stage2(_arg: *mut c_void) -> c_int {
-    //for (i, a) in VMSH_STAGE1_ARGS.argv.iter().enumerate() {
-    //    if *a == ptr::null_mut() {
-    //        break;
-    //    }
-    //    printkln!("stage1: argv[%d] = %s", i, *a)
-    //}
     if VMSH_STAGE1_ARGS.device_status == DeviceState::Undefined {
         printkln!("stage1: device is in undefined state, stopping...");
         return 0;
     }
     let mut retries = 0;
+
     while VMSH_STAGE1_ARGS.device_status == DeviceState::Initializing {
         printkln!(
             "current value: %d, %llx",
             VMSH_STAGE1_ARGS.device_status,
             &VMSH_STAGE1_ARGS.device_status
         );
-        ffi::usleep_range(100, 1000);
+        ffi::usleep_range(10000, 100000);
         retries += 1;
         if retries == 20 {
             printkln!("stage1: timeout waiting for device to be initialized");
@@ -282,13 +338,26 @@ unsafe extern "C" fn spawn_stage2(_arg: *mut c_void) -> c_int {
             return 0;
         }
     }
+
     VMSH_STAGE1_ARGS.driver_status = DeviceState::Initializing;
+
     if VMSH_STAGE1_ARGS.device_status == DeviceState::Error {
         printkln!("stage1: device error detected, stopping...");
         return 0;
     }
+
     printkln!("stage1: initializing drivers");
+
+    printkln!(
+        "stage1: poll_virtqueues: %lx",
+        poll_virtqueues as *const c_void
+    );
+
+    let timer = Timer::new(&mut POLL_TIMER, poll_virtqueues);
+
+    ffi::usleep_range(10000, 100000);
     let res = run_stage2();
+
     printkln!("stage1: ready");
     if res.is_ok() {
         VMSH_STAGE1_ARGS.driver_status = DeviceState::Ready;
@@ -296,17 +365,19 @@ unsafe extern "C" fn spawn_stage2(_arg: *mut c_void) -> c_int {
         DEVICES.iter_mut().for_each(|d| {
             d.take();
         });
+        drop(timer);
         VMSH_STAGE1_ARGS.driver_status = DeviceState::Error;
         return 0;
     };
 
     while VMSH_STAGE1_ARGS.device_status == DeviceState::Ready {
-        ffi::usleep_range(300, 1000);
+        ffi::usleep_range(50000, 100000);
     }
 
     DEVICES.iter_mut().for_each(|d| {
         d.take();
     });
+    drop(timer);
     VMSH_STAGE1_ARGS.driver_status = DeviceState::Terminating;
     0
 }
