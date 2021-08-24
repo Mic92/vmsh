@@ -4,6 +4,7 @@
 
 use std::borrow::{Borrow, BorrowMut};
 use std::fs::OpenOptions;
+use std::io;
 use std::ops::DerefMut;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -48,7 +49,7 @@ pub struct Console<M: GuestAddressSpace> {
     pub uioefd: UserspaceIoEventFd,
     /// only used when ioregionfd != None
     sub_id: Option<SubscriberId>,
-    pts: PathBuf,
+    pts: Option<PathBuf>,
 
     // Before resetting we return the handler to the mmio thread for cleanup
     #[allow(dead_code)]
@@ -105,10 +106,7 @@ where
             );
         }
 
-        let pts = match args.pts {
-            Some(pts) => pts,
-            None => PathBuf::from("/proc/self/fd/1"),
-        };
+        let pts = args.pts;
         log::info!("pts is {:?}", pts);
 
         let console = Arc::new(Mutex::new(Console {
@@ -150,11 +148,16 @@ where
             ack_handler: self.irq_ack_handler.clone(),
         };
 
-        let console = map_err_with!(
-            OpenOptions::new().read(true).write(true).open(&self.pts),
-            "could not open console"
-        )
-        .map_err(Error::Simple)?;
+        let console_in = match &self.pts {
+            Some(pts) => Some(
+                map_err_with!(
+                    OpenOptions::new().read(true).write(true).open(pts),
+                    "could not open console"
+                )
+                .map_err(Error::Simple)?,
+            ),
+            None => None,
+        };
 
         //let rx_fd = IoEvent::register(&self.vmm, &mut self.uioefd, &self.mmio_cfg, RX_QUEUE_IDX as u64)
         //.map_err(Error::Simple)?;
@@ -171,7 +174,8 @@ where
             tx_fd,
             rxq: self.virtio_cfg.queues[RX_QUEUE_IDX as usize].clone(),
             txq: self.virtio_cfg.queues[TX_QUEUE_IDX as usize].clone(),
-            console,
+            console_out: Box::new(io::stdout()),
+            console_in,
         }));
 
         // Register the queue handler with the `EventManager`. We record the `sub_id`
