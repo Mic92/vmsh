@@ -19,6 +19,7 @@
     glibc.static
     bc
     openmpi
+    python2
     python3
   ];
   runScript = "bash";
