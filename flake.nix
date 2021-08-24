@@ -100,6 +100,7 @@
           # see justfile/nixos-image
           nixos-image = pkgs.callPackage ./nix/nixos-image.nix {};
           busybox-image = pkgs.callPackage ./nix/busybox-image.nix {};
+          passwd-image = pkgs.callPackage ./nix/passwd-image.nix {};
         };
         # used by `nix develop`
         devShell = pkgs.mkShell {
