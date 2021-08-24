@@ -6,32 +6,42 @@ import os
 from queue import Queue
 from pathlib import Path
 from nix import notos_image
-from typing import Union, Any, Callable, List, Optional
+from typing import Union, Any, Callable, List, Optional, Dict
 from root import PROJECT_ROOT
 from shlex import quote
 
 EOF = 1
 
 
-def cargo_build() -> Path:
+def cargo_build(target: Optional[str] = None) -> Path:
     env = os.environ.copy()
     env["KERNELDIR"] = str(notos_image().kerneldir)
+    extra_flags = []
+    if target == "release":
+        extra_flags += ["--release"]
     if not os.environ.get("TEST_NO_REBUILD"):
-        subprocess.run(["cargo", "build"], cwd=PROJECT_ROOT, env=env, check=True)
         subprocess.run(
-            ["cargo", "build", "--examples"], cwd=PROJECT_ROOT, env=env, check=True
+            ["cargo", "build"] + extra_flags, cwd=PROJECT_ROOT, env=env, check=True
+        )
+        subprocess.run(
+            ["cargo", "build", "--examples"] + extra_flags,
+            cwd=PROJECT_ROOT,
+            env=env,
+            check=True,
         )
     return PROJECT_ROOT.joinpath("target", "debug")
 
 
-_build_artifacts: Optional[Path] = None
+_build_artifacts: Dict[str, Path] = {}
 
 
-def build_artifacts() -> Path:
+def build_artifacts(target: str) -> Path:
     global _build_artifacts
-    if _build_artifacts is None:
-        _build_artifacts = cargo_build()
-    return _build_artifacts
+    artifact = _build_artifacts.get(target)
+    if artifact is None:
+        artifact = cargo_build(target)
+        _build_artifacts[target] = artifact
+    return artifact
 
 
 class VmshPopen(subprocess.Popen):
@@ -90,17 +100,25 @@ class VmshPopen(subprocess.Popen):
                 return
 
 
-def spawn_vmsh_command(args: List[str], cargo_executable: str = "vmsh") -> VmshPopen:
+def spawn_vmsh_command(
+    args: List[str],
+    cargo_executable: str = "vmsh",
+    target: str = "debug",
+    pin_cores: Optional[str] = None,
+) -> VmshPopen:
     if not os.path.isdir("/sys/module/kheaders"):
         subprocess.run(["sudo", "modprobe", "kheaders"])
     uid = os.getuid()
     gid = os.getuid()
     groups = ",".join(map(str, os.getgroups()))
-    cmd = [str(build_artifacts().joinpath(cargo_executable))]
+    cmd = [str(build_artifacts(target=target).joinpath(cargo_executable))]
     cmd += args
     cmd_quoted = " ".join(map(quote, cmd))
 
-    cmd = [
+    cmd = []
+    if pin_cores is not None:
+        cmd += ["numactl", "-C", pin_cores]
+    cmd += [
         "sudo",
         "-E",
         "capsh",
