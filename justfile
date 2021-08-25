@@ -378,16 +378,16 @@ attach-qemu: attach
 
 # Attach to cloud-hypervisor (not working yet)
 attach-cloud-hypervisor:
-  just attach TARGET=cloud-hyperviso
+  just attach cloud-hyperviso
 
 attach-crosvm: busybox-image
-  just attach TARGET=crosvm
+  just attach crosvm
 
 attach-firecracker: busybox-image
-  just attach TARGET=firecracker
+  just attach firecracker
 
 attach-kvmtool: busybox-image
-  just attach TARGET=kvmtool
+  just attach kvmtool
 
 measure-block: passwordless_sudo
   rm tests/measurements/stats.json || true
