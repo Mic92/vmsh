@@ -9,6 +9,8 @@ from measure_helpers import (
 )
 
 from typing import Dict
+import os
+from pathlib import Path
 
 
 # when true only a single test is run instead of the full suite
@@ -31,6 +33,9 @@ def format_ssd() -> None:
     run(["sudo", "parted", HOST_SSD, "--", "mkpart", "primary", "50%", "100%"])
     run(["sudo", "mkfs.ext4", HOST_SSDp1])
     run(["sudo", "mkfs.ext4", HOST_SSDp2])
+    Path(HOST_DIR).mkdir(exist_ok=True)
+    run(["sudo", "chown", os.getlogin(), HOST_DIR])
+    run(["sudo", "chown", os.getlogin(), HOST_SSD])
 
 
 def native(stats: Dict[str, str]) -> None:

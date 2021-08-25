@@ -43,7 +43,7 @@ watch:
   cargo watch -x build
 
 passwordless_sudo:
-  sudo echo "Our some compenents require passwordless sudo."
+  sudo echo "Some compenents require passwordless sudo."
 
 # Run unit and integration tests
 test: passwordless_sudo
@@ -51,7 +51,7 @@ test: passwordless_sudo
   pytest -n $(nproc --ignore=2) -s tests
 
 # stress test the host, guest-qemu-blk and vmsh-blk device
-xfstests:
+xfstests: passwordless_sudo
   python3 tests/xfstests.py
 
 # Fuzz - or rather stress test the blkdev (run `just qemu` and `just attach-qemu-img` before)
