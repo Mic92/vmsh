@@ -4,38 +4,28 @@
 , libuuid, libxfs, lvm2, openssl, perl, procps, quota
 , time, util-linux, which, writeScript, xfsprogs, runtimeShell, mktemp, hostname, gnused, diffutils, findutils }:
 
-let 
-  busyBoxExtraDeps = [
-    coreutils
-    # and some stuff not available in not-os:
-    hostname
-    gnused
-    diffutils
-    findutils
-  ];
-in
 stdenv.mkDerivation {
-  name = "xfstests-2019-09-08";
+  name = "xfstests-2021-08-22";
 
   src = fetchgit {
     url = "git://git.kernel.org/pub/scm/fs/xfs/xfstests-dev.git";
-    rev = "0837e907988a5f410cae0ae714f42f9c4242e072";
-    sha256 = "1f5cv0vwc1g9difzp69k49rc5nfd08y72vdg318j25nv3rwv7wc9";
+    rev = "5f8179ce8b001327e0811744dbfdb90a8e934f9c";
+    sha256 = "sha256-VV1h3BXaTVeSHfsxGRYzUCo2RcRhOp12xK9od/zaFBo=";
+
   };
 
   nativeBuildInputs = [
     autoconf automake libtool
   ];
   buildInputs = [
-    acl attr gawk libaio libuuid libxfs openssl perl
+    acl attr gawk libaio libuuid libxfs openssl perl bc
   ];
 
   hardeningDisable = [ "format" ];
   enableParallelBuilding = true;
 
   patchPhase = ''
-    sed -i '53icustom build for vmsh' check
-    # Patch an incompatible awk script with sed. Genious. 
+    # Patch an incompatible awk script with sed. Genious.
     sed -i 's/\/\^\\#\//\/\^#\//' tests/generic/001
 
     substituteInPlace Makefile \
@@ -99,7 +89,7 @@ stdenv.mkDerivation {
     #!${runtimeShell}
     set -e
     export RESULT_BASE="$(pwd)/results"
-    export PATH=${ lib.makeBinPath [ mktemp ] }:$PATH
+    export PATH=${ lib.makeBinPath [ mktemp ]}:$PATH
 
     dir=$(mktemp --tmpdir -d xfstests.XXXXXX)
     trap "rm -rf $dir" EXIT
@@ -112,7 +102,16 @@ stdenv.mkDerivation {
 
     export PATH=${lib.makeBinPath ([acl attr bc e2fsprogs fio gawk keyutils
                                    libcap lvm2 perl procps killall quota
-                                   util-linux which xfsprogs] ++ busyBoxExtraDeps) }:$PATH
+                                   coreutils
+                                   # and some stuff not available in not-os:
+                                   hostname
+                                   gnused
+                                   diffutils
+                                   findutils
+                                   util-linux
+                                   which
+                                   xfsprogs
+                                   ])}:$PATH
     exec ./check "$@"
   '';
 
