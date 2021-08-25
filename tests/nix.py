@@ -40,7 +40,10 @@ def busybox_image() -> Iterator[Path]:
         yield Path(n.name)
 
 
-def notos_image(nix: str = ".#not-os-image.json") -> VmImage:
+NOTOS_IMAGE = ".#not-os-image.json"
+
+
+def notos_image(nix: str = NOTOS_IMAGE) -> VmImage:
     data = nix_build(nix)
     with open(data[0]["outputs"]["out"]) as f:
         data = json.load(f)
@@ -53,12 +56,12 @@ def notos_image(nix: str = ".#not-os-image.json") -> VmImage:
         )
 
 
-def notos_image_custom_kernel() -> VmImage:
+def notos_image_custom_kernel(nix: str = NOTOS_IMAGE) -> VmImage:
     """
     This is useful for debugging.
     Make sure to use the same kernel version in your kernel as used in notos
     """
-    image = notos_image()
+    image = notos_image(nix)
     image.kerneldir = PROJECT_ROOT.joinpath("..", "linux")
     image.kernel = image.kerneldir.joinpath("arch", "x86", "boot")
     return image
