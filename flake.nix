@@ -75,6 +75,7 @@
           inherit not-os;
           notos-config = ./nix/modules/measurement-config.nix;
         };
+        myxfstests = pkgs.callPackage ./nix/xfstests.nix { };
       in
       rec {
         # default target for `nix build`
@@ -123,6 +124,7 @@
             pkgs.gnuplot
             pkgs.cloud-hypervisor
             pkgs.crosvm
+            myxfstests
           ];
 
           shellHook = ''

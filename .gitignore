@@ -13,6 +13,8 @@
 
 # measurement results
 tests/measurements/
+# xfstests results
+results/
 
 # coredumps
 core.*
