@@ -2,8 +2,18 @@
 { stdenv, acl, attr, autoconf, automake, bash, bc, coreutils, e2fsprogs
 , fetchgit, fio, gawk, keyutils, killall, lib, libaio, libcap, libtool
 , libuuid, libxfs, lvm2, openssl, perl, procps, quota
-, time, util-linux, which, writeScript, xfsprogs, runtimeShell }:
+, time, util-linux, which, writeScript, xfsprogs, runtimeShell, mktemp, hostname, gnused, diffutils, findutils }:
 
+let 
+  busyBoxExtraDeps = [
+    coreutils
+    # and some stuff not available in not-os:
+    hostname
+    gnused
+    diffutils
+    findutils
+  ];
+in
 stdenv.mkDerivation {
   name = "xfstests-2019-09-08";
 
@@ -89,6 +99,7 @@ stdenv.mkDerivation {
     #!${runtimeShell}
     set -e
     export RESULT_BASE="$(pwd)/results"
+    export PATH=${ lib.makeBinPath [ mktemp ] }:$PATH
 
     dir=$(mktemp --tmpdir -d xfstests.XXXXXX)
     trap "rm -rf $dir" EXIT
@@ -99,9 +110,9 @@ stdenv.mkDerivation {
       cp -r @out@/lib/xfstests/$f $f
     done
 
-    export PATH=${lib.makeBinPath [acl attr bc e2fsprogs fio gawk keyutils
+    export PATH=${lib.makeBinPath ([acl attr bc e2fsprogs fio gawk keyutils
                                    libcap lvm2 perl procps killall quota
-                                   util-linux which xfsprogs]}:$PATH
+                                   util-linux which xfsprogs] ++ busyBoxExtraDeps) }:$PATH
     exec ./check "$@"
   '';
 
