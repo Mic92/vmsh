@@ -166,13 +166,13 @@ build-linux: configure-linux
   yes \n | {{kernel_shell}} make -C {{linux_dir}} -j$(nproc)
 
 # Build a disk image
-image NAME="nixos" IMAGE_PATH="/{{NAME}}.img":
+image NAME="nixos":
   #!/usr/bin/env bash
   set -eux -o pipefail
   if [[ nix/{{NAME}}-image.nix -nt {{linux_dir}}/{{NAME}}.ext4 ]] \
      || [[ flake.lock -nt {{linux_dir}}/{{NAME}}.ext4 ]]; then
      nix build --out-link {{nix_results}}/{{NAME}}-image --builders '' .#{{NAME}}-image
-     install -m600 "{{nix_results}}/{{NAME}}-image{{IMAGE_PATH}}" {{linux_dir}}/{{NAME}}.ext4
+     install -m600 "{{nix_results}}/{{NAME}}-image/{{NAME}}.img" {{linux_dir}}/{{NAME}}.ext4
   fi
 
 # Build kernel-less disk image for NixOS
@@ -180,11 +180,11 @@ nixos-image: image
 
 # Build disk image with busybox
 busybox-image:
-  just image busybox ""
+  just image busybox
 
 # Build disk image with passwd from shadow
 passwd-image:
-  just image passwd ""
+  just image passwd
 
 # Build kernel/disk image for not os
 notos-image:
@@ -294,7 +294,7 @@ strace:
 
 # SSH into vm started by `just qemu`
 ssh-qemu $COMMAND="":
-  ssh -v -i {{justfile_directory()}}/nix/ssh_key \
+  ssh -i {{justfile_directory()}}/nix/ssh_key \
       -o StrictHostKeyChecking=no \
       -o UserKnownHostsFile=/dev/null \
       {{qemu_ssh_remote}} \
