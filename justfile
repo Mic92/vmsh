@@ -50,6 +50,10 @@ test: passwordless_sudo
   cargo test
   pytest -n $(nproc --ignore=2) -s tests
 
+# stress test the host, guest-qemu-blk and vmsh-blk device
+xfstests:
+  python3 tests/xfstests.py
+
 # Fuzz - or rather stress test the blkdev (run `just qemu` and `just attach-qemu-img` before)
 stress-test DEV="/dev/vda":
   just ssh-qemu "head -c 10 {{DEV}}"

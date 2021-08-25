@@ -124,7 +124,10 @@
             pkgs.gnuplot
             pkgs.cloud-hypervisor
             pkgs.crosvm
+            
+            # for xfstests:
             myxfstests
+            pkgs.parted
           ];
 
           shellHook = ''
