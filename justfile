@@ -263,42 +263,22 @@ qemu-ramdisk EXTRA_CMDLINE="nokalsr": build-linux nixos-image
     -device virtconsole,chardev=char0,id=vmsh,nr=0
 
 # run qemu with filesystem/kernel from notos (same as in tests)
-qemu-notos:
+qemu-notos image="not-os-image":
   #!/usr/bin/env python3
   import sys, os, subprocess
   sys.path.insert(0, os.path.join("{{justfile_directory()}}", "tests"))
   from nix import notos_image, notos_image_custom_kernel
   from qemu import qemu_command
   #image = notos_image()
-  image = notos_image_custom_kernel()
+  print("run {{image}}")
+  image = notos_image_custom_kernel(".#{{image}}.json")
   cmd = qemu_command(image, "qmp.sock", ssh_port={{qemu_ssh_port}})
   print(" ".join(cmd))
   subprocess.run(cmd)
 
-qemu-measurement:
-  #!/usr/bin/env python3
-  import sys, os, subprocess
-  sys.path.insert(0, os.path.join("{{justfile_directory()}}", "tests"))
-  from nix import notos_image, notos_image_custom_kernel
-  from qemu import qemu_command
-  import measure_helpers as util
-  import confmeasure
-  from measure_block import lsblk
-
-  util.check_ssd()
-  util.check_system()
-  helpers = confmeasure.Helpers()
-  
-  with util.fresh_ssd():
-    with util.testbench(helpers, with_vmsh=True, ioregionfd=False) as vm:
-      lsblk(vm)
-      print(f"ssh running on {vm.ssh_port}")
-      input("stop?")
-      util.run(["ssh", "-i", "{{justfile_directory()}}/nix/ssh_key",
-      "-o", "StrictHostKeyChecking=no",
-      "-o", "UserKnownHostsFile=/dev/null",
-      "{{qemu_ssh_remote}}",
-      "-p", str(vm.ssh_port), "bash" ], stdin=subprocess.PIPE)
+# run qemu with measurement image
+qemu-measurement-image:
+  just qemu-notos measurement-image
 
 # Attach gdb to vmsh
 gdb:
