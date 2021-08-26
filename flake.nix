@@ -75,13 +75,15 @@
           inherit not-os;
           notos-config = ./nix/modules/measurement-config.nix;
         };
-        myxfstests = pkgs.callPackage ./nix/xfstests.nix { };
       in
       rec {
         # default target for `nix build`
         defaultPackage = vmsh;
         packages = rec {
           inherit vmsh;
+
+          # used in tests/xfstests.py
+          xfstests = pkgs.callPackage ./nix/xfstests.nix { };
 
           # used in .drone.yml
           ci-shell = pkgs.mkShell {
@@ -126,7 +128,6 @@
             pkgs.crosvm
             
             # for xfstests:
-            myxfstests
             pkgs.parted
           ];
 
