@@ -3,6 +3,7 @@
 let
   keys = map (key: "${builtins.getEnv "HOME"}/.ssh/${key}")
     [ "id_rsa.pub" "id_ecdsa.pub" "id_ed25519.pub" ];
+  myxfstests = pkgs.callPackage ../xfstests.nix { };
 in
 {
   imports = [
@@ -59,5 +60,6 @@ in
     pkgs.devmem2
     pkgs.sysbench
     pkgs.cloud-hypervisor
+    myxfstests
   ];
 }

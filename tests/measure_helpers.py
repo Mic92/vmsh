@@ -173,8 +173,8 @@ def testbench(
 def run(
     cmd: List[str],
     extra_env: Dict[str, str] = {},
-    stdout: int = subprocess.PIPE,
-    stderr: int = subprocess.PIPE,
+    stdout: Optional[int] = subprocess.PIPE,
+    stderr: Optional[int] = subprocess.PIPE,
     input: Optional[str] = None,
     stdin: Optional[int] = None,
     check: bool = True,

@@ -43,12 +43,16 @@ watch:
   cargo watch -x build
 
 passwordless_sudo:
-  sudo echo "Our some compenents require passwordless sudo."
+  sudo echo "Some compenents require passwordless sudo."
 
 # Run unit and integration tests
 test: passwordless_sudo
   cargo test
   pytest -n $(nproc --ignore=2) -s tests
+
+# stress test the host, guest-qemu-blk and vmsh-blk device
+xfstests: passwordless_sudo
+  python3 tests/xfstests.py
 
 # Fuzz - or rather stress test the blkdev (run `just qemu` and `just attach-qemu-img` before)
 stress-test DEV="/dev/vda":
@@ -162,13 +166,13 @@ build-linux: configure-linux
   yes \n | {{kernel_shell}} make -C {{linux_dir}} -j$(nproc)
 
 # Build a disk image
-image NAME="nixos" IMAGE_PATH="/{{NAME}}.img":
+image NAME="nixos":
   #!/usr/bin/env bash
   set -eux -o pipefail
   if [[ nix/{{NAME}}-image.nix -nt {{linux_dir}}/{{NAME}}.ext4 ]] \
      || [[ flake.lock -nt {{linux_dir}}/{{NAME}}.ext4 ]]; then
      nix build --out-link {{nix_results}}/{{NAME}}-image --builders '' .#{{NAME}}-image
-     install -m600 "{{nix_results}}/{{NAME}}-image{{IMAGE_PATH}}" {{linux_dir}}/{{NAME}}.ext4
+     install -m600 "{{nix_results}}/{{NAME}}-image/{{NAME}}.img" {{linux_dir}}/{{NAME}}.ext4
   fi
 
 # Build kernel-less disk image for NixOS
@@ -176,11 +180,11 @@ nixos-image: image
 
 # Build disk image with busybox
 busybox-image:
-  just image busybox ""
+  just image busybox
 
 # Build disk image with passwd from shadow
 passwd-image:
-  just image passwd ""
+  just image passwd
 
 # Build kernel/disk image for not os
 notos-image:
@@ -263,7 +267,7 @@ qemu-ramdisk EXTRA_CMDLINE="nokalsr": build-linux nixos-image
     -device virtconsole,chardev=char0,id=vmsh,nr=0
 
 # run qemu with filesystem/kernel from notos (same as in tests)
-qemu-notos image="not-os-image":
+qemu-notos image="not-os-image": build-linux
   #!/usr/bin/env python3
   import sys, os, subprocess
   sys.path.insert(0, os.path.join("{{justfile_directory()}}", "tests"))
@@ -290,7 +294,7 @@ strace:
 
 # SSH into vm started by `just qemu`
 ssh-qemu $COMMAND="":
-  ssh -v -i {{justfile_directory()}}/nix/ssh_key \
+  ssh -i {{justfile_directory()}}/nix/ssh_key \
       -o StrictHostKeyChecking=no \
       -o UserKnownHostsFile=/dev/null \
       {{qemu_ssh_remote}} \

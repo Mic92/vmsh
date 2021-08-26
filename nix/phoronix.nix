@@ -1,4 +1,18 @@
-{ lib, fetchurl, stdenv, fetchFromGitHub, buildFHSUserEnv, php, which, gnused, makeWrapper, gnumake, gcc, callPackage, util-linux, strace }:
+{ lib
+, fetchurl
+, stdenv
+, fetchFromGitHub
+, buildFHSUserEnv
+, php
+, which
+, gnused
+, makeWrapper
+, gnumake
+, gcc
+, callPackage
+, util-linux
+, enableBuildDeps ? false
+}:
 let
   pkg = stdenv.mkDerivation rec {
     pname = "phoronix-test-suite";
@@ -35,7 +49,7 @@ let
       url = "https://github.com/Mic92/vmsh/releases/download/assets/phoronix-2021-08-25.tar.gz";
       sha256 = "sha256-0WDEtCHvefGfuN3wFjKY6GOagMdmgo/7ds9Ty+4bIWc=";
     };
-    nativeBuildInputs = [ fhs ];
+    nativeBuildInputs = [ (fhs true) ];
     buildPhase = ''
       runHook preBuild
       # The trailing slash is crucial here :(
@@ -54,25 +68,26 @@ let
       runHook postInstall
     '';
   };
-  fhs = buildFHSUserEnv {
+  fhs = enableBuildDeps': buildFHSUserEnv {
     name = "phoronix-test-suite";
     targetPkgs = pkgs: with pkgs; [
       php
       bash
       coreutils
       util-linux
+      popt
+      libaio
+      pcre
+      glibc
+      glibc.static
+    ] ++ lib.optionals (enableBuildDeps') [
       binutils
       automake
       autoconf
       m4
-      popt
-      libaio
-      perl
-      gcc7
-      pcre
-      glibc
-      glibc.static
       bc
+      perl
+      gcc
       openmpi
       python2
       python3
@@ -85,4 +100,5 @@ let
     '';
     runScript = "${pkg}/bin/phoronix-test-suite";
   };
-in fhs
+in
+fhs enableBuildDeps
