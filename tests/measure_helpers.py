@@ -252,7 +252,7 @@ def check_intel_turbo() -> None:
         with open(path) as f:
             if f.readline() != "1\n":
                 print(
-                    """Please run: sudo su -c 'echo "1" > /sys/devices/system/cpu/intel_pstate/no_turbo'"""
+                    """Please run: echo 1 | sudo tee /sys/devices/system/cpu/intel_pstate/no_turbo"""
                 )
                 exit(1)
 
