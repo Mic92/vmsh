@@ -202,12 +202,28 @@ def blkdiscard() -> Any:
 
 
 @contextmanager
-def fresh_fs_ssd() -> Iterator[Any]:
+def fresh_fs_ssd(image: Optional[Path]) -> Iterator[Any]:
     while "target is busy" in run(["sudo", "umount", HOST_SSD], check=False).stderr:
         print("umount: waiting for target not to be busy")
         time.sleep(1)
     blkdiscard()
-    run(["sudo", "mkfs.ext4", HOST_SSD])
+    if image:
+        run(
+            [
+                "sudo",
+                "dd",
+                "status=progress",
+                "bs=128M",
+                "iflag=direct",
+                "oflag=direct",
+                "conv=fdatasync",
+                str(image),
+                HOST_SSD,
+            ]
+        )
+        run(["sudo", "resize2fs", HOST_SSD])
+    else:
+        run(["sudo", "mkfs.ext4", HOST_SSD])
     Path(HOST_DIR).mkdir(exist_ok=True)
     run(["sudo", "mount", HOST_SSD, HOST_DIR])
     run(["sudo", "chown", os.getlogin(), HOST_DIR])
