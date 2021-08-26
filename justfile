@@ -267,7 +267,7 @@ qemu-ramdisk EXTRA_CMDLINE="nokalsr": build-linux nixos-image
     -device virtconsole,chardev=char0,id=vmsh,nr=0
 
 # run qemu with filesystem/kernel from notos (same as in tests)
-qemu-notos image="not-os-image":
+qemu-notos image="not-os-image": build-linux
   #!/usr/bin/env python3
   import sys, os, subprocess
   sys.path.insert(0, os.path.join("{{justfile_directory()}}", "tests"))
