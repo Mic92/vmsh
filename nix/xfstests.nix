@@ -2,7 +2,8 @@
 { stdenv, acl, attr, autoconf, automake, bash, bc, coreutils, e2fsprogs
 , fetchgit, fio, gawk, keyutils, killall, lib, libaio, libcap, libtool
 , libuuid, libxfs, lvm2, openssl, perl, procps, quota
-, time, util-linux, which, writeScript, xfsprogs, runtimeShell, mktemp, hostname, gnused, diffutils, findutils }:
+, time, util-linux, which, writeScript, xfsprogs, runtimeShell, mktemp
+, hostname, gnused, diffutils, findutils, glibc }:
 
 stdenv.mkDerivation {
   name = "xfstests-2021-08-22";
@@ -11,7 +12,6 @@ stdenv.mkDerivation {
     url = "git://git.kernel.org/pub/scm/fs/xfs/xfstests-dev.git";
     rev = "5f8179ce8b001327e0811744dbfdb90a8e934f9c";
     sha256 = "sha256-VV1h3BXaTVeSHfsxGRYzUCo2RcRhOp12xK9od/zaFBo=";
-
   };
 
   nativeBuildInputs = [
@@ -111,6 +111,7 @@ stdenv.mkDerivation {
                                    util-linux
                                    which
                                    xfsprogs
+                                   glibc # for getconf
                                    ])}:$PATH
     exec ./check "$@"
   '';
