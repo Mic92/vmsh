@@ -1,4 +1,4 @@
-{ lib, pkgs, ... }:
+{ lib, pkgs, config, ... }:
 {
   environment.systemPackages = [
     pkgs.utillinux
@@ -42,6 +42,12 @@
     mount -t 9p vmsh /vmsh -o trans=virtio,msize=104857600
   '';
 
+  # FIXME investigate why not-os no longer can create this file...
+  #system.activationScripts.ssh-keys = ''
+  #  install -m700 -D ${config.environment.etc."ssh/ssh_host_rsa_key".source} /etc/ssh/ssh_host_rsa_key
+  #  install -m700 -D ${config.environment.etc."ssh/ssh_host_ed25519_key".source} /etc/ssh/ssh_host_ed25519_key
+  #'';
+
   environment.etc = {
     "hosts".text = ''
       127.0.0.1 localhost
@@ -50,7 +56,7 @@
       ::1 nixos
     '';
     "ssh/authorized_keys.d/root" = {
-      source = ../ssh_key.pub;
+      source = pkgs.writeText "ssh_key" (builtins.readFile ../ssh_key.pub);
       mode = "444";
     };
     "service/shell/run".source = pkgs.writeScript "shell" ''

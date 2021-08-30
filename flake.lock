@@ -55,15 +55,16 @@
     "not-os": {
       "flake": false,
       "locked": {
-        "lastModified": 1615586706,
-        "narHash": "sha256-Qe0hbUL2sByHGN0uP+nFzAi8gVsk8lZXSgzuZ0pj3Mc=",
-        "owner": "cleverca22",
+        "lastModified": 1630336741,
+        "narHash": "sha256-s5l9Zj175Vayp8ubUqjJB9UXiSVrx9odA5ebs7qjdSA=",
+        "owner": "Mic92",
         "repo": "not-os",
-        "rev": "97186fc3ca8bfed153920353d4e54b46c145dd07",
+        "rev": "645c55834cced8ba414a88d3ce71b913a35b6e00",
         "type": "github"
       },
       "original": {
-        "owner": "cleverca22",
+        "owner": "Mic92",
+        "ref": "bug-fix",
         "repo": "not-os",
         "type": "github"
       }

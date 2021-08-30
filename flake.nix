@@ -3,7 +3,9 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
-    not-os.url = "github:cleverca22/not-os";
+    # TODO: switch back when https://github.com/cleverca22/not-os/pull/17 is merged
+    #not-os.url = "github:cleverca22/not-os";
+    not-os.url = "github:Mic92/not-os/bug-fix";
     not-os.flake = false;
     flake-utils.url = "github:numtide/flake-utils";
     fenix = {
