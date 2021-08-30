@@ -81,11 +81,27 @@ fn get_ksymtab_start(mem: &[u8], strings_range: &Range<usize>) -> Option<usize> 
     let step_size = size_of::<u32>();
     let sym_size = size_of::<kernel_symbol>();
     for ii in (0..strings_range.start + 1).rev().step_by(step_size) {
+        println!("len {:?}", mem.len());
         //let sym = unsafe { cast_ref::<kernel_symbol>(&mem[ii - sym_size..ii]) };
+        println!("ii=0x{:x} sym_size=0x{:x}", ii, sym_size);
         let sym = unsafe { cast_kernel_sym(&mem[ii - sym_size..ii]) };
         let field_offset =
             &sym.name_offset as *const i32 as usize - sym as *const kernel_symbol as usize;
-        let name_idx = ii + (sym.name_offset as usize) + field_offset;
+        let magic: u64 = sym.name_offset as u64;
+        println!("sym: 0x{:x} 0x{:x} 0x{:x}", sym.value_offset, sym.name_offset, sym.namespace_offset);
+        println!("name_offset u64 0x{:x}", magic);
+        let magic2: u32 = sym.name_offset as u32;
+        println!("name_offset u32 0x{:x}", magic2);
+        let a = size_of::<usize>();
+        let b = size_of::<libc::c_int>();
+        println!("sizeof usize {}", a);
+        println!("sizeof cint {}", b);
+        //assert!(a == 4);
+        println!("0x{:x} + 0x{:x} + 0x{:x}", ii, magic2, field_offset);
+        let big: i128 = ii as i128 + magic2 as i128 + field_offset as i128;
+        println!("= 0x{:x}", big);
+        println!("magic2 as usize 0x{:x}", magic2 as usize);
+        let name_idx = ii + (big as usize) + field_offset;
         if strings_range.contains(&name_idx) && ii > size_of::<kernel_symbol>() {
             let name_idx_2 = ii + (sym.name_offset as usize) + field_offset - sym_size;
             if strings_range.contains(&name_idx_2) {
@@ -94,6 +110,28 @@ fn get_ksymtab_start(mem: &[u8], strings_range: &Range<usize>) -> Option<usize> 
         }
     }
 
+    // 0x15ab60 + 0x9133089a + 0x4 = 0xffffffff9148b3fe
+    // 18446744072967491081
+    // sizeof usize 8
+    // sizeof cint 4
+    // 0x15ab5c + 0xd3c50e09 + 0x4
+    // = 0xffffffffd3dab969
+    // 1428844371
+    // sizeof usize 8
+    // sizeof cint 4
+    // 0x15ab58 + 0x552a6f53 + 0x4
+    // = 0x55401aaf
+    // 1285367984
+    // sizeof usize 8
+    // sizeof cint 4
+    // 0x15ab54 + 0x4c9d28b0 + 0x4
+    // = 0x4cb2d408
+    // 18446744073708634848
+    // sizeof usize 8
+    // sizeof cint 4
+    // 0x15ab50 + 0xfff202e0 + 0x4
+    // = 0x1000000000007ae34
+    //
     None
 }
 

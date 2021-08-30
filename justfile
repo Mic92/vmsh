@@ -109,7 +109,7 @@ clone-linux:
   fi
 
 # Configure linux kernel build
-configure-linux: clone-linux
+configure-linux: # clone-linux
   #!/usr/bin/env bash
   set -xeuo pipefail
   if [[ ! -f {{linux_dir}}/.config ]]; then
@@ -211,9 +211,10 @@ mkramdisk SRC="/dev/zero" NAME="ramdisk" SIZEG="2":
   fi
 
 # run qemu with kernel build by `build-linux` and filesystem image build by `nixos-image`
-qemu EXTRA_CMDLINE="nokalsr": build-linux nixos-image
+#-kernel {{linux_dir}}/arch/x86/boot/bzImage \
+qemu EXTRA_CMDLINE="nokalsr": nixos-image #build-linux 
   qemu-system-x86_64 \
-    -kernel {{linux_dir}}/arch/x86/boot/bzImage \
+    -kernel /nix/store/8dm4jf4yhxj512zng53s35wnw93h6gr6-linux-4.14.245/vmlinux \
     -drive format=raw,file={{linux_dir}}/nixos.ext4 \
     -append "root=/dev/sda console=hvc0 {{EXTRA_CMDLINE}}" \
     -net nic,netdev=user.0,model=virtio \
