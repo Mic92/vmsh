@@ -239,18 +239,27 @@ unsafe fn run_stage2() -> Result<(), ()> {
         }
     }
     drop(file);
-    ffi::flush_delayed_fput();
 
     let mut envp: [*mut c_char; 1] = [ptr::null_mut()];
 
-    let res = ffi::call_usermodehelper(
-        VMSH_STAGE1_ARGS.argv[0],
-        VMSH_STAGE1_ARGS.argv.as_mut_ptr(),
-        envp.as_mut_ptr(),
-        ffi::UMH_WAIT_EXEC,
-    );
-    if res != 0 {
-        printkln!("stage1: failed to spawn stage2: %d", res);
+    loop {
+        let res = ffi::call_usermodehelper(
+            VMSH_STAGE1_ARGS.argv[0],
+            VMSH_STAGE1_ARGS.argv.as_mut_ptr(),
+            envp.as_mut_ptr(),
+            ffi::UMH_WAIT_EXEC,
+        );
+        if res == -ffi::ETXTBSY {
+            // Ideally we could use flush_delayed_fput to close the binary but not
+            // all kernel versions support this.
+            // Hence we just sleep until the file is closed.
+            ffi::usleep_range(100, 1000);
+            continue;
+        }
+        if res != 0 {
+            printkln!("stage1: failed to spawn stage2: %d", res);
+        }
+        break;
     }
 
     Ok(())
