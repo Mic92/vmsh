@@ -6,8 +6,9 @@
 rev := `nix eval --raw .#lib.nixpkgsRev`
 linux_dir := justfile_directory() + "/../linux"
 linux_repo := "https://github.com/Mic92/linux"
+kernel_shell := "$(nix build --out-link " + nix_results + "/kernel-fhs --json '.#kernel-deps' | jq -r '.[] | .outputs | .out')/bin/linux-kernel-build"
 nix_results := justfile_directory() + "/.git/nix-results/" + rev
-kernel_shell := "nix develop " + justfile_directory() + "#kernel-deps --command"
+#kernel_shell := "nix develop " + justfile_directory() + "#kernel-deps --command"
 hypervisor_socket := justfile_directory() + "/.git/cloud-hypervisor-socket"
 
 virtio_blk_img := justfile_directory() + "/../linux/nixos.ext4"
@@ -109,13 +110,12 @@ clone-linux:
   fi
 
 # Configure linux kernel build
-configure-linux: clone-linux
+configure-linux: #clone-linux
   #!/usr/bin/env bash
   set -xeuo pipefail
   if [[ ! -f {{linux_dir}}/.config ]]; then
-    cd {{linux_dir}}
-    {{kernel_shell}} make defconfig kvm_guest.config
-    {{kernel_shell}} scripts/config \
+    {{kernel_shell}} "make -C {{linux_dir}} defconfig kvm_guest.config"
+    {{kernel_shell}} "cd {{linux_dir}} && scripts/config \
        --disable DRM \
        --disable USB \
        --disable WIRELESS \
@@ -148,7 +148,7 @@ configure-linux: clone-linux
        --disable SQUASHFS_FILE_CACHE \
        --enable SQUASHFS_DECOMP_MULTI \
        --disable SQUASHFS_DECOMP_SINGLE \
-       --disable SQUASHFS_DECOMP_MULTI_PERCPU
+       --disable SQUASHFS_DECOMP_MULTI_PERCPU"
   fi
 
 # Sign drone ci configuration
@@ -161,18 +161,22 @@ sign-drone:
 build-linux-shell:
   nix develop '.#kernel-deps'
 
+# Clean build directory of linux
+clean-linux: configure-linux
+  {kernel_shell}} "make -C {{linux_dir}} mrproper"
+
 # Build linux kernel
 build-linux: configure-linux
-  yes \n | {{kernel_shell}} make -C {{linux_dir}} -j$(nproc)
+  yes \n | {{kernel_shell}} "make -C {{linux_dir}} -j$(nproc)"
 
 # Build a disk image
-image NAME="nixos":
+image NAME="nixos" PATH="/nixos.img":
   #!/usr/bin/env bash
   set -eux -o pipefail
   if [[ nix/{{NAME}}-image.nix -nt {{linux_dir}}/{{NAME}}.ext4 ]] \
      || [[ flake.lock -nt {{linux_dir}}/{{NAME}}.ext4 ]]; then
      nix build --out-link {{nix_results}}/{{NAME}}-image --builders '' .#{{NAME}}-image
-     install -m600 "{{nix_results}}/{{NAME}}-image/{{NAME}}.img" {{linux_dir}}/{{NAME}}.ext4
+     install -m600 "{{nix_results}}/{{NAME}}-image{{PATH}}" {{linux_dir}}/{{NAME}}.ext4
   fi
 
 # Build kernel-less disk image for NixOS
@@ -180,11 +184,11 @@ nixos-image: image
 
 # Build disk image with busybox
 busybox-image:
-  just image busybox
+  just image busybox ""
 
 # Build disk image with passwd from shadow
 passwd-image:
-  just image passwd
+  just image passwd ""
 
 # Build kernel/disk image for not os
 notos-image:

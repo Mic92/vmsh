@@ -14,10 +14,12 @@
 , perl
 , hostname
 , cpio
+, buildFHSUserEnv
 }:
-mkShell {
+(buildFHSUserEnv {
+#mkShell {
   name = "linux-kernel-build";
-  buildInputs = [
+  targetPkgs = pkgs: [
     getopt
     flex
     bison
@@ -34,4 +36,5 @@ mkShell {
     openssl
     zlib
   ];
-}
+  runScript = "bash -c";
+})
