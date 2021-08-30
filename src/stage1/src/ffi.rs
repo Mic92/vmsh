@@ -117,7 +117,6 @@ extern "C" {
         wait: c_int,
     ) -> c_int;
 
-    pub fn flush_delayed_fput();
     pub fn kthread_create_on_node(
         threadfn: unsafe extern "C" fn(data: *mut c_void) -> c_int,
         data: *mut c_void,
