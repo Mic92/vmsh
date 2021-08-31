@@ -128,6 +128,7 @@
             # for xfstests:
             myxfstests
             pkgs.parted
+            pkgs.xfsprogs
           ];
 
           shellHook = ''
