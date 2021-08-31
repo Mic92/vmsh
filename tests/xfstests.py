@@ -34,6 +34,9 @@ def excludes() -> List[str]:
     system. Tests which fail on vmsh-blk but succeed on qemu-blk are NOT
     excluded.
     """
+
+    # -g quick on ext4
+
     native_noscratch = [
         # missing SCRATCH_MNT? Test impl error. Works with scratch.
         "generic/628",
@@ -92,7 +95,57 @@ def excludes() -> List[str]:
         "generic/636",
         "generic/641",
     ]
-    return native_scratch + qemu_blk_noscratch + qemu_blk_scratch
+
+    # -g xfs/quick on xfs
+    # Some tests are skipped because xfsdump is missing. I don't think this is
+    # packaged in nixos.
+    native_scratch = [
+        # kernel needs XFS_ONLINE_SCRUB
+        "xfs/506",
+        # this test requires a deprication warning to be absent, but it is present. I dont care about that though.
+        "xfs/539",
+
+
+
+        # works on ext4 but not on xfs
+        # -Block grace time: 00:10; Inode grace time: 00:20
+        # +Block grace time: DEF_TIME; Inode grace time: DEF_TIME
+        "generic/594",
+        # set grace to n but got grace n-2
+        "generic/600",
+
+        # Fixes:
+
+        # as with ext4:
+        "generic/079",
+        # -chgrp: changing group of 'SCRATCH_MNT/dummy/foo': Disk quota exceeded
+        # +chgrp: changing group of 'SCRATCH_MNT/dummy/foo': Operation not permitted
+        "generic/566",
+        # Fixed
+        # +/tmp/xfstests_scratchdev/ls_on_scratch: unknown program 'ls_on_scratch'
+        "generic/452",
+        # Works now: (because of added user?)
+        # -pwrite: Disk quota exceeded
+        # a bunch of the previous ones have that error as well
+        "generic/603",
+        # the rest is mostly disjuct:
+        "generic/230",
+        "generic/328",
+        "generic/355",
+        "generic/382",
+
+        # Ignorable errors:
+        # device or resource busy. This is probably racy because it works when run individually.
+        "generic/261",
+    ]
+    # Failures: 
+    # known
+    # generic/594 generic/600 
+    # xfs/539
+    # xfs/506
+
+    # return native_scratch + qemu_blk_noscratch + qemu_blk_scratch
+    return []
 
 
 def excludes_str() -> str:
