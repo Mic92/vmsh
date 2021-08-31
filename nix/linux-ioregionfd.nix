@@ -15,8 +15,10 @@ buildLinux (args // rec {
   kernelPatches = [{
     name = "enable-kvm-ioregion";
     patch = null;
+    # we need XFS_ONLINE_SCRUB this for xfstests
     extraConfig = ''
       KVM_IOREGION y
+      XFS_ONLINE_SCRUB y
     '';
   # 5.12 patch list has one fix we already have in our branch
   }] ++ linuxPackages_5_13.kernel.kernelPatches;
