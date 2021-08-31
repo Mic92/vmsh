@@ -107,7 +107,7 @@ extern "C" {
     pub fn platform_device_unregister(pdev: *mut platform_device);
     pub fn filp_open(name: *const c_char, flags: c_int, mode: umode_t) -> *mut file;
     pub fn filp_close(filp: *mut file, id: *mut c_void) -> c_int;
-    pub fn kernel_write(file: *mut file, buf: *const c_void, count: size_t, pos: loff_t)
+    pub fn kernel_write(file: *mut file, buf: *const c_void, count: size_t, pos: *mut loff_t)
         -> ssize_t;
     pub fn kernel_read(
         file: *mut file,

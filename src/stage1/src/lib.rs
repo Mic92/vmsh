@@ -168,10 +168,11 @@ impl KFile {
         let mut out: size_t = 0;
         let mut count = data.len();
         let mut p = data.as_ptr();
+        let mut lpos = pos;
 
         /* sys_write only can write MAX_RW_COUNT aka 2G-4K bytes at most */
         while count != 0 {
-            let rv = unsafe { ffi::kernel_write(self.file, p as *const c_void, count, pos) };
+            let rv = unsafe { ffi::kernel_write(self.file, p as *const c_void, count, &mut lpos) };
 
             match -rv as c_int {
                 0 => break,
