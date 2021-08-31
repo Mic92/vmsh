@@ -144,6 +144,7 @@
             
             # for xfstests:
             pkgs.parted
+            pkgs.xfsprogs
           ];
 
           shellHook = ''
