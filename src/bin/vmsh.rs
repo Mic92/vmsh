@@ -14,11 +14,56 @@ use vmsh::devices::USE_IOREGIONFD;
 use vmsh::inspect::InspectOptions;
 use vmsh::{coredump, inspect};
 
+const VM_TYPES: &[&str] = &["process_id", "kubernetes", "vhive", "vhive_fc_vmid"];
+
 fn pid_arg(index: u64) -> Arg<'static, 'static> {
     Arg::with_name("pid")
         .help("Pid of the hypervisor we get the information from")
         .required(true)
         .index(index)
+}
+
+fn parse_pid_arg(args: &ArgMatches) -> Pid {
+    Pid::from_raw(value_t_or_exit!(args, "pid", i32))
+}
+
+fn vmid_arg(index: u64) -> Arg<'static, 'static> {
+    Arg::with_name("id")
+        .help("VM/Hypervisor pid or pod name to target")
+        .required(true)
+        .index(index)
+}
+
+fn vmid_type_arg() -> Arg<'static, 'static> {
+    Arg::with_name("type")
+        .short("t")
+        .long("type")
+        .takes_value(true)
+        .empty_values(false)
+        .require_delimiter(true)
+        .value_name("TYPE")
+        .help("VM id lookups to try (sperated by ','). [default: all]")
+        .possible_values(VM_TYPES)
+}
+
+fn parse_vmid_arg(args: &ArgMatches) -> Pid {
+    let mut container_types = vec![];
+    if args.is_present("type") {
+        let types = values_t!(args.values_of("type"), String).unwrap_or_else(|e| e.exit());
+        container_types = types
+            .into_iter()
+            .filter_map(|t| container_pid::lookup_container_type(&t))
+            .collect();
+    }
+
+    let container_name = args.value_of("id").unwrap().to_string(); // safe, because container id is .required
+    match container_pid::lookup_container_pid(&container_name, &container_types) {
+        Err(e) => {
+            error!("{}", e);
+            std::process::exit(1);
+        }
+        Ok(pid) => Pid::from_raw(pid),
+    }
 }
 
 fn command_args(index: u64) -> Arg<'static, 'static> {
@@ -27,10 +72,6 @@ fn command_args(index: u64) -> Arg<'static, 'static> {
         .multiple(true)
         .required(false)
         .index(index)
-}
-
-fn parse_pid_arg(args: &ArgMatches) -> Pid {
-    Pid::from_raw(value_t_or_exit!(args, "pid", i32))
 }
 
 fn inspect(args: &ArgMatches) {
@@ -50,7 +91,7 @@ fn attach(args: &ArgMatches) {
     command.insert(0, stage2_path);
 
     let opts = AttachOptions {
-        pid: parse_pid_arg(args),
+        pid: parse_vmid_arg(args),
         command,
         backing: PathBuf::from(value_t!(args, "backing-file", String).unwrap_or_else(|e| e.exit())),
         pts: value_t!(args, "pts", String).ok().map(PathBuf::from),
@@ -107,7 +148,8 @@ fn main() {
         .about("Attach (a block device) to a virtual machine.")
         .version(crate_version!())
         .author(crate_authors!("\n"))
-        .arg(pid_arg(1))
+        .arg(vmid_arg(1))
+        .arg(vmid_type_arg())
         .arg(
             Arg::with_name("stage2-path")
                 .long("stage2-path")
@@ -175,5 +217,19 @@ fn main() {
         ("coredump", Some(sub_matches)) => coredump(sub_matches),
         ("", None) => unreachable!(), // beause of AppSettings::SubCommandRequiredElseHelp
         _ => unreachable!(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    use super::VM_TYPES;
+    use container_pid::AVAILABLE_CONTAINER_TYPES;
+
+    #[test]
+    fn test_container_pid_compat() {
+        for t in VM_TYPES {
+            assert!(AVAILABLE_CONTAINER_TYPES.contains(&t));
+        }
     }
 }

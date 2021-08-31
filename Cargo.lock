@@ -74,8 +74,7 @@ dependencies = [
 [[package]]
 name = "container-pid"
 version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9c327b0815d6d05f0de10ba33afad03f42892423756acc2e4c07ba7a7a850c57"
+source = "git+https://github.com/Mic92/container-pid.git?branch=main#b785a42e4e4723d8a4fa3920e502c1c69412fa14"
 dependencies = [
  "libc",
  "simple-error",
