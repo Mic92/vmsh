@@ -34,6 +34,12 @@ stdenv.mkDerivation {
     # fix using coreutils
     sed -i 's/SCRATCH_MNT\/ls_on_scratch/SCRATCH_MNT\/ls/' tests/generic/452 tests/generic/452.out
 
+
+    # needed for qemu-blk. Check if this works natively.
+    sed -i 's/$here\/src\/detached_mounts_propagation/mount $SCRATCH_DEV $SCRATCH_MNT\nmount --make-shared $SCRATCH_MNT\n$here\/src\/detached_mounts_propagation/' tests/generic/632
+    sed -i 's/$DMERROR_DEV/$TEST_DEV/' tests/xfs/006 tests/xfs/264
+
+
     # Fix shell-less fsgqa user
     sed -i 's/su $qa_user/su -s \/bin\/sh $qa_user/' common/rc
 

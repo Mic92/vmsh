@@ -33,6 +33,9 @@
     # ext4
     "crc16" "mbcache" "jbd2" "crc32c_generic" "ext4"
 
+    # xfs
+    "xfs" "libcrc32c"
+
     # 9p over virtio
     "9pnet" "9p" "9pnet_virtio" "fscache"
   ];
@@ -40,7 +43,13 @@
   system.activationScripts.vmsh = ''
     mkdir /vmsh
     mount -t 9p vmsh /vmsh -o trans=virtio,msize=104857600
+    ln -s /proc/self/fd /dev/fd
+    ln -s /proc/mounts /etc/mtab
   '';
+
+  #users.users.daemon.isSystemUser = true;
+  #users.users.daemon.group = "daemon";
+  #users.groups.daemon = {};
 
   environment.etc = {
     "hosts".text = ''
@@ -48,6 +57,23 @@
       ::1 localhost
       127.0.0.1 nixos
       ::1 nixos
+    '';
+    "passwd".text = ''
+      sys:x:993:991::/var/empty:/run/current-system/sw/bin/nologin
+      bin:x:994:992::/var/empty:/run/current-system/sw/bin/nologin
+      daemon:x:995:993::/var/empty:/run/current-system/sw/bin/nologin
+      fsgqa2:x:996:995::/home/fsgqa2:/bin/sh
+      fsgqa:x:997:996::/home/fsgqa:/bin/sh
+      123456-fsgqa:x:998:996::/home/123456-fsgqa:/bin/sh
+      nobody:x:65534:65534:Unprivileged account (don't use!):/var/empty:/run/current-system/sw/bin/nologin
+    '';
+    "group".text = ''
+      sys:x:991:
+      bin:x:992:
+      daemon:x:993:
+      123456-fsgqa:x:994:
+      fsgqa2:x:995:
+      fsgqa:x:996:
     '';
     "ssh/authorized_keys.d/root" = {
       source = ../ssh_key.pub;

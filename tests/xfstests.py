@@ -96,55 +96,67 @@ def excludes() -> List[str]:
         "generic/641",
     ]
 
-    # -g xfs/quick on xfs
+    # -g quick on xfs
     # Some tests are skipped because xfsdump is missing. I don't think this is
     # packaged in nixos.
     native_scratch = [
         # kernel needs XFS_ONLINE_SCRUB
-        "xfs/506",
+        # "xfs/506",
         # this test requires a deprication warning to be absent, but it is present. I dont care about that though.
         "xfs/539",
-
-
-
         # works on ext4 but not on xfs
         # -Block grace time: 00:10; Inode grace time: 00:20
         # +Block grace time: DEF_TIME; Inode grace time: DEF_TIME
         "generic/594",
         # set grace to n but got grace n-2
         "generic/600",
-
-        # Fixes:
-
-        # as with ext4:
-        "generic/079",
-        # -chgrp: changing group of 'SCRATCH_MNT/dummy/foo': Disk quota exceeded
-        # +chgrp: changing group of 'SCRATCH_MNT/dummy/foo': Operation not permitted
-        "generic/566",
-        # Fixed
-        # +/tmp/xfstests_scratchdev/ls_on_scratch: unknown program 'ls_on_scratch'
-        "generic/452",
-        # Works now: (because of added user?)
-        # -pwrite: Disk quota exceeded
-        # a bunch of the previous ones have that error as well
-        "generic/603",
-        # the rest is mostly disjuct:
-        "generic/230",
-        "generic/328",
-        "generic/355",
-        "generic/382",
-
-        # Ignorable errors:
-        # device or resource busy. This is probably racy because it works when run individually.
-        "generic/261",
     ]
-    # Failures: 
-    # known
-    # generic/594 generic/600 
-    # xfs/539
-    # xfs/506
 
-    # return native_scratch + qemu_blk_noscratch + qemu_blk_scratch
+    qemu_blk_scratch = [
+        # works occasionally
+        # kernel prints trace when this is run the first time
+        # looks like an actual kernel bug
+        "generic/623"
+        # wrong error code, probably fine if we used another mount
+        "xfs/154"
+        "xfs/158"
+        # quota stuff
+        "xfs/050"
+        "xfs/144"
+        # see native
+        "xfs/506"
+        "xfs/539"
+        # /mnt shared mountpoint
+        # do we need to make --make-shared the default for all mounts?
+        "generic/632"
+        # Fixed:
+        # acl param issue
+        "generic/079"
+        # files do not match
+        # generic/110 generic/111 generic/115 generic/116 generic/118 generic/119 generic/121 generic/122
+        # generic/134 generic/136 generic/138 generic/139 generic/140 generic/144 generic/516
+        # blkdev names/paths end up wrong
+        "xfs/006"
+        "xfs/264"
+        # xfs* partial
+        "xfs/026"
+        "xfs/027"
+        "xfs/028"
+        "xfs/046"
+        "xfs/056"
+        "xfs/059"
+        "xfs/060"
+        "xfs/063"
+        "xfs/066"
+        "xfs/266"
+        "xfs/281"
+        "xfs/282"
+        "xfs/283"
+        "xfs/296"
+    ]
+    # TEST_DIR=/mnt TEST_DEV=/dev/vdb1 SCRATCH_DEV=/dev/vdb2 SCRATCH_MNT=/scratchmnt xfstests-check
+
+    # return native_scratch
     return []
 
 
@@ -183,7 +195,7 @@ def native(stats: Dict[str, str]) -> None:
         env = dict(env, **env_scratch)
     if QUICK:
         run(
-            ["sudo", "-E", "xfstests-check", "-e", excludes_str(), "ext4/001"],
+            ["sudo", "-E", "xfstests-check", "-e", excludes_str(), "xfs/005"],
             stdout=None,
             stderr=None,
             extra_env=env,
@@ -191,7 +203,7 @@ def native(stats: Dict[str, str]) -> None:
         )
     else:
         run(
-            ["sudo", "-E", "xfstests-check", "-e", excludes_str(), "-g", "quick"],
+            ["sudo", "-E", "xfstests-check", "-e", excludes_str(), "-g", "xfs/quick"],
             stdout=None,
             stderr=None,
             extra_env=env,
@@ -207,6 +219,7 @@ def qemu_blk(helpers: confmeasure.Helpers, stats: Dict[str, str]) -> None:
         # breakpoint()
         vm.ssh_cmd(["mkdir", "-p", "/mnt"], check=True)
         vm.ssh_cmd(["mkdir", "-p", "/scratchmnt"], check=True)
+        breakpoint()
         env = f"TEST_DIR=/mnt TEST_DEV={GUEST_QEMUBLK}1"
         if WITH_SCRATCH:
             env += f" SCRATCH_DEV={GUEST_QEMUBLK}2 SCRATCH_MNT=/scratchmnt"
@@ -271,9 +284,9 @@ def main() -> None:
     format_ssd()
     stats: Dict[str, str] = {}
 
-    native(stats)
+    # native(stats)
     qemu_blk(helpers, stats)
-    vmsh_blk(helpers, stats)
+    # vmsh_blk(helpers, stats)
 
     stats["excluded"] = str(len(excludes()))
     print(stats)
