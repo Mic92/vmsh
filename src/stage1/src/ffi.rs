@@ -100,6 +100,24 @@ pub struct platform_device_info {
     pub properties: *const property_entry,
 }
 
+#[repr(C)]
+pub struct platform_device_info_5_0 {
+    pub parent: *mut device,
+    pub fwnode: *mut fwnode_handle,
+
+    pub name: *const c_char,
+    pub id: c_int,
+
+    pub res: *const resource,
+    pub num_res: c_uint,
+
+    pub data: *const c_void,
+    pub size_data: size_t,
+    pub dma_mask: u64,
+
+    pub properties: *const property_entry,
+}
+
 extern "C" {
     pub fn platform_device_register_full(
         pdevinfo: *const platform_device_info,
@@ -107,8 +125,18 @@ extern "C" {
     pub fn platform_device_unregister(pdev: *mut platform_device);
     pub fn filp_open(name: *const c_char, flags: c_int, mode: umode_t) -> *mut file;
     pub fn filp_close(filp: *mut file, id: *mut c_void) -> c_int;
-    pub fn kernel_write(file: *mut file, buf: *const c_void, count: size_t, pos: loff_t)
-        -> ssize_t;
+    pub fn kernel_write(
+        file: *mut file,
+        buf: *const c_void,
+        count: size_t,
+        pos: *mut loff_t,
+    ) -> ssize_t;
+    pub fn kernel_read(
+        file: *mut file,
+        buf: *mut c_void,
+        count: size_t,
+        pos: *mut loff_t,
+    ) -> ssize_t;
 
     pub fn call_usermodehelper(
         path: *const c_char,
@@ -117,7 +145,6 @@ extern "C" {
         wait: c_int,
     ) -> c_int;
 
-    pub fn flush_delayed_fput();
     pub fn kthread_create_on_node(
         threadfn: unsafe extern "C" fn(data: *mut c_void) -> c_int,
         data: *mut c_void,

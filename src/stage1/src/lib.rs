@@ -7,9 +7,10 @@ mod printk;
 use core::include_bytes;
 use core::panic::PanicInfo;
 use core::ptr;
+use core::str;
 use stage1_interface::{DeviceState, Stage1Args, IRQ_NUM, MAX_ARGV, MAX_DEVICES};
 
-use chlorine::{c_char, c_int, c_long, c_void, size_t};
+use chlorine::{c_char, c_int, c_long, c_uint, c_void, size_t};
 use ffi::loff_t;
 
 // used by our driver
@@ -80,12 +81,29 @@ static mut RESOURCES: [ffi::resource; 2] = [
     },
 ];
 
+static MMIO_DRIVER_NAME: &[u8; 12] = b"virtio-mmio\0";
+
 // we put this in stack to avoid stack overflows
 static mut INFO: ffi::platform_device_info = ffi::platform_device_info {
     parent: ptr::null_mut(),
     fwnode: ptr::null_mut(),
     of_node_reused: false,
-    name: b"virtio-mmio\0".as_ptr() as *const i8,
+    name: MMIO_DRIVER_NAME.as_ptr() as *const i8,
+    id: 0,
+    res: unsafe { RESOURCES.as_ptr() },
+    // not stable yet
+    //num_res: resources.as_slice.size(),
+    num_res: 2,
+    data: ptr::null(),
+    size_data: 0,
+    dma_mask: 0,
+    properties: ptr::null(),
+};
+
+static mut INFO_5_0: ffi::platform_device_info_5_0 = ffi::platform_device_info_5_0 {
+    parent: ptr::null_mut(),
+    fwnode: ptr::null_mut(),
+    name: MMIO_DRIVER_NAME.as_ptr() as *const i8,
     id: 0,
     res: unsafe { RESOURCES.as_ptr() },
     // not stable yet
@@ -102,15 +120,22 @@ unsafe fn register_virtio_mmio(
     base: usize,
     size: usize,
     irq: usize,
+    version: &KernelVersion,
 ) -> Result<PlatformDevice, c_int> {
     // we need to use static here to no got out of stack memory
     RESOURCES[0].start = base;
     RESOURCES[0].end = base + size - 1;
     RESOURCES[1].start = irq;
     RESOURCES[1].end = irq;
-    INFO.id = id;
 
-    let dev = ffi::platform_device_register_full(&INFO);
+    let dev = if version.major < 5 || version.major == 5 && version.minor == 0 {
+        INFO_5_0.id = id;
+        let info = &*core::mem::transmute::<_, *const ffi::platform_device_info>(&INFO_5_0);
+        ffi::platform_device_register_full(info)
+    } else {
+        INFO.id = id;
+        ffi::platform_device_register_full(&INFO)
+    };
     if is_err_value(dev) {
         return Err(err_value(dev) as c_int);
     }
@@ -144,14 +169,35 @@ impl KFile {
         Ok(KFile { file })
     }
 
+    fn read_all(&mut self, data: &mut [u8], pos: loff_t) -> core::result::Result<size_t, c_int> {
+        let mut out: size_t = 0;
+        let mut count = data.len();
+        let mut p = data.as_ptr();
+        let mut lpos = pos;
+        loop {
+            let rv = unsafe { ffi::kernel_read(self.file, p as *mut c_void, count, &mut lpos) };
+            match -rv as c_int {
+                0 => break,
+                ffi::EINTR | ffi::EAGAIN => continue,
+                1..=c_int::MAX => return if out == 0 { Err(-rv as c_int) } else { Ok(out) },
+                _ => {}
+            }
+            p = unsafe { p.add(rv as usize) };
+            out += rv as usize;
+            count -= rv as usize;
+        }
+        Ok(out)
+    }
+
     fn write_all(&mut self, data: &[u8], pos: loff_t) -> core::result::Result<size_t, c_int> {
         let mut out: size_t = 0;
         let mut count = data.len();
         let mut p = data.as_ptr();
+        let mut lpos = pos;
 
         /* sys_write only can write MAX_RW_COUNT aka 2G-4K bytes at most */
         while count != 0 {
-            let rv = unsafe { ffi::kernel_write(self.file, p as *const c_void, count, pos) };
+            let rv = unsafe { ffi::kernel_write(self.file, p as *const c_void, count, &mut lpos) };
 
             match -rv as c_int {
                 0 => break,
@@ -178,10 +224,101 @@ impl Drop for KFile {
     }
 }
 
+struct KernelVersion {
+    major: u16,
+    minor: u16,
+    patch: u16,
+}
+
+static mut BUF: [u8; 256] = [0; 256];
+
+fn parse_version_part(split: Option<&[u8]>, full_version: &str) -> Result<u16, ()> {
+    if let Some(number) = split {
+        if let Ok(num_str) = str::from_utf8(number) {
+            if let Ok(num) = num_str.parse::<u16>() {
+                return Ok(num);
+            }
+        }
+    }
+    printkln!("stage1: cannot parse version %s", full_version.as_ptr());
+    Err(())
+}
+
+unsafe fn get_kernel_version() -> Result<KernelVersion, ()> {
+    let path = c_str!("/proc/sys/kernel/osrelease").as_ptr() as *const i8;
+    let mut file = match KFile::open(path, ffi::O_RDONLY, 0) {
+        Ok(f) => f,
+        Err(e) => {
+            printkln!("stage1: cannot open /proc/sys/kernel/osrelease: %d", e);
+            return Err(());
+        }
+    };
+    // leave one byte null to make it a valid c string
+    let buf = match BUF.get_mut(0..BUF.len() - 1) {
+        Some(f) => f,
+        None => {
+            printkln!("stage1: BUG! cannot take slice of buffer");
+            return Err(());
+        }
+    };
+    let count = match file.read_all(buf, 0) {
+        Ok(n) => n,
+        Err(e) => {
+            printkln!("stage1: failed to read /proc/sys/kernel/osrelease: %d", e);
+            return Err(());
+        }
+    };
+    let read_buf = match BUF.get(0..count) {
+        Some(f) => f,
+        None => {
+            printkln!("stage1: kernel overflowed read buffer");
+            return Err(());
+        }
+    };
+    let version_str = match str::from_utf8(read_buf) {
+        Ok(s) => s,
+        Err(_) => {
+            printkln!("stage1: /proc/sys/kernel/osrelease is not a valid utf-8 string");
+            return Err(());
+        }
+    };
+
+    let pos = version_str.find(|c: char| c != '.' && !c.is_ascii_digit());
+    let kernel = if let Some(pos) = pos {
+        match version_str.get(..pos) {
+            Some(s) => s,
+            None => {
+                printkln!("stage1: could split off kernel version part");
+                return Err(());
+            }
+        }
+    } else {
+        version_str
+    };
+    let mut split = kernel.as_bytes().splitn(3, |c| *c == b'.');
+    let major = parse_version_part(split.next(), version_str)?;
+    let minor = parse_version_part(split.next(), version_str)?;
+    let patch = parse_version_part(split.next(), version_str)?;
+
+    Ok(KernelVersion {
+        major,
+        minor,
+        patch,
+    })
+}
+
 // cannot put this onto the stack without stackoverflows?
 static mut DEVICES: [Option<PlatformDevice>; MAX_DEVICES] = [None, None, None];
 
 unsafe fn run_stage2() -> Result<(), ()> {
+    let version = get_kernel_version()?;
+
+    printkln!(
+        "stage1: detected linux version %u.%u.%u",
+        version.major as c_uint,
+        version.minor as c_uint,
+        version.patch as c_uint
+    );
     for (i, addr) in VMSH_STAGE1_ARGS.device_addrs.iter().enumerate() {
         if *addr == 0 {
             continue;
@@ -192,6 +329,7 @@ unsafe fn run_stage2() -> Result<(), ()> {
             *addr as usize,
             MMIO_SIZE,
             IRQ_NUM, //irq as usize,
+            &version,
         ) {
             Ok(v) => {
                 if let Some(elem) = DEVICES.get_mut(i) {
@@ -239,18 +377,27 @@ unsafe fn run_stage2() -> Result<(), ()> {
         }
     }
     drop(file);
-    ffi::flush_delayed_fput();
 
     let mut envp: [*mut c_char; 1] = [ptr::null_mut()];
 
-    let res = ffi::call_usermodehelper(
-        VMSH_STAGE1_ARGS.argv[0],
-        VMSH_STAGE1_ARGS.argv.as_mut_ptr(),
-        envp.as_mut_ptr(),
-        ffi::UMH_WAIT_EXEC,
-    );
-    if res != 0 {
-        printkln!("stage1: failed to spawn stage2: %d", res);
+    loop {
+        let res = ffi::call_usermodehelper(
+            VMSH_STAGE1_ARGS.argv[0],
+            VMSH_STAGE1_ARGS.argv.as_mut_ptr(),
+            envp.as_mut_ptr(),
+            ffi::UMH_WAIT_EXEC,
+        );
+        if res == -ffi::ETXTBSY {
+            // Ideally we could use flush_delayed_fput to close the binary but not
+            // all kernel versions support this.
+            // Hence we just sleep until the file is closed.
+            ffi::usleep_range(100, 1000);
+            continue;
+        }
+        if res != 0 {
+            printkln!("stage1: failed to spawn stage2: %d", res);
+        }
+        break;
     }
 
     Ok(())

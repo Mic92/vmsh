@@ -1,4 +1,4 @@
-use log::{info, trace};
+use log::{debug, info, trace};
 use nix::sys::mman::ProtFlags;
 use simple_error::{require_with, try_with, SimpleError};
 use std::collections::HashMap;
@@ -69,28 +69,54 @@ pub struct kernel_symbol {
     pub namespace_offset: libc::c_int,
 }
 
+// 5.3 did not have namespace_offset yet, we simply check for both
+#[repr(C)]
+#[derive(Debug)]
+pub struct kernel_symbol_5_3 {
+    pub value_offset: libc::c_int,
+    pub name_offset: libc::c_int,
+}
+
 unsafe fn cast_kernel_sym(mem: &[u8]) -> &kernel_symbol {
     &*mem::transmute::<_, *const kernel_symbol>(mem.as_ptr())
+}
+
+fn check_kernel_sym(
+    mem: &[u8],
+    strings_range: &Range<usize>,
+    sym_size: usize,
+    ii: usize,
+) -> Option<usize> {
+    let sym = unsafe { cast_kernel_sym(&mem[ii - sym_size..ii]) };
+    let field_offset =
+        &sym.name_offset as *const i32 as usize - sym as *const kernel_symbol as usize;
+    let name_idx = match ii
+        .checked_add(sym.name_offset as usize)
+        .and_then(|s| s.checked_add(field_offset))
+    {
+        Some(idx) => idx,
+        None => return None,
+    };
+    if strings_range.contains(&name_idx) && ii > sym_size {
+        let name_idx_2 = ii + (sym.name_offset as usize) + field_offset - sym_size;
+        if strings_range.contains(&name_idx_2) {
+            return Some(sym_size);
+        }
+    }
+    None
 }
 
 /// Skips over kcrctab if present and retrieves actual ksymtab offset. This is
 /// done by casting each offset to a kernel_symbole and check if its name_offset
 /// would fall into the ksymtab_string address range.
-fn get_ksymtab_start(mem: &[u8], strings_range: &Range<usize>) -> Option<usize> {
+fn get_ksymtab_start(mem: &[u8], strings_range: &Range<usize>) -> Option<(usize, usize)> {
     // each entry in kcrctab is 32 bytes
     let step_size = size_of::<u32>();
-    let sym_size = size_of::<kernel_symbol>();
     for ii in (0..strings_range.start + 1).rev().step_by(step_size) {
-        //let sym = unsafe { cast_ref::<kernel_symbol>(&mem[ii - sym_size..ii]) };
-        let sym = unsafe { cast_kernel_sym(&mem[ii - sym_size..ii]) };
-        let field_offset =
-            &sym.name_offset as *const i32 as usize - sym as *const kernel_symbol as usize;
-        let name_idx = ii + (sym.name_offset as usize) + field_offset;
-        if strings_range.contains(&name_idx) && ii > size_of::<kernel_symbol>() {
-            let name_idx_2 = ii + (sym.name_offset as usize) + field_offset - sym_size;
-            if strings_range.contains(&name_idx_2) {
-                return Some(ii);
-            }
+        let sym_size = check_kernel_sym(mem, strings_range, size_of::<kernel_symbol>(), ii)
+            .or_else(|| check_kernel_sym(mem, strings_range, size_of::<kernel_symbol_5_3>(), ii));
+        if let Some(sym_size) = sym_size {
+            return Some((ii, sym_size));
         }
     }
 
@@ -136,14 +162,14 @@ fn get_kernel_symbols(
     ksymtab_strings: Range<usize>,
 ) -> Result<HashMap<String, usize>> {
     let mut syms = HashMap::new();
-    let start = require_with!(get_ksymtab_start(mem, &ksymtab_strings), "no ksymtab found");
+    let (start, sym_size) =
+        require_with!(get_ksymtab_start(mem, &ksymtab_strings), "no ksymtab found");
 
-    info!(
+    trace!(
         "found ksymtab {} bytes before ksymtab_strings",
         ksymtab_strings.start - start
     );
 
-    let sym_size = size_of::<kernel_symbol>();
     for ii in (0..start + 1).rev().step_by(sym_size) {
         let sym_start = ii - sym_size;
         let sym = unsafe { cast_kernel_sym(&mem[sym_start..ii]) };
@@ -151,11 +177,18 @@ fn get_kernel_symbols(
             &sym.name_offset as *const i32 as usize - sym as *const kernel_symbol as usize;
         let value_offset =
             &sym.value_offset as *const i32 as usize - sym as *const kernel_symbol as usize;
-        let name_idx = sym_start + name_offset + sym.name_offset as usize;
-        let value_ptr = apply_offset(mem_base + sym_start + value_offset, sym.value_offset);
+        let name_idx = match sym_start
+            .checked_add(name_offset)
+            .and_then(|s| s.checked_add(sym.name_offset as usize))
+        {
+            Some(idx) => idx,
+            None => break,
+        };
+
         if !ksymtab_strings.contains(&name_idx) {
             break;
         }
+        let value_ptr = apply_offset(mem_base + sym_start + value_offset, sym.value_offset);
         let name_len = require_with!(
             mem[name_idx..].iter().position(|c| *c == 0),
             "symbol name does not end"
@@ -165,7 +198,7 @@ fn get_kernel_symbols(
             "invalid symbol name"
         );
         let name = try_with!(name.to_str(), "invalid encoding for symbol name");
-        trace!("{} @ {:x}", name, value_ptr);
+        debug!("{} @ {:x}", name, value_ptr);
         syms.insert(name.to_owned(), value_ptr);
     }
     Ok(syms)
