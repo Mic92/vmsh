@@ -1,4 +1,4 @@
-use log::{info, trace};
+use log::{debug, info, trace};
 use nix::sys::mman::ProtFlags;
 use simple_error::{require_with, try_with, SimpleError};
 use std::collections::HashMap;
@@ -198,7 +198,7 @@ fn get_kernel_symbols(
             "invalid symbol name"
         );
         let name = try_with!(name.to_str(), "invalid encoding for symbol name");
-        info!("{} @ {:x}", name, value_ptr);
+        debug!("{} @ {:x}", name, value_ptr);
         syms.insert(name.to_owned(), value_ptr);
     }
     Ok(syms)
