@@ -16,14 +16,14 @@ use vmsh::{coredump, inspect};
 
 const VM_TYPES: &[&str] = &["process_id", "kubernetes", "vhive", "vhive_fc_vmid"];
 
-fn pid_arg(index: u64) -> Arg<'static, 'static> {
+fn _pid_arg(index: u64) -> Arg<'static, 'static> {
     Arg::with_name("pid")
         .help("Pid of the hypervisor we get the information from")
         .required(true)
         .index(index)
 }
 
-fn parse_pid_arg(args: &ArgMatches) -> Pid {
+fn _parse_pid_arg(args: &ArgMatches) -> Pid {
     Pid::from_raw(value_t_or_exit!(args, "pid", i32))
 }
 
@@ -76,7 +76,7 @@ fn command_args(index: u64) -> Arg<'static, 'static> {
 
 fn inspect(args: &ArgMatches) {
     let opts = InspectOptions {
-        pid: parse_pid_arg(args),
+        pid: parse_vmid_arg(args),
     };
 
     if let Err(err) = inspect::inspect(&opts) {
@@ -109,7 +109,7 @@ fn attach(args: &ArgMatches) {
 }
 
 fn coredump(args: &ArgMatches) {
-    let pid = parse_pid_arg(args);
+    let pid = parse_vmid_arg(args);
     let path =
         value_t!(args, "PATH", PathBuf).unwrap_or_else(|_| PathBuf::from(format!("core.{}", pid)));
 
@@ -142,7 +142,8 @@ fn main() {
         .about("Inspect a virtual machine.")
         .version(crate_version!())
         .author(crate_authors!("\n"))
-        .arg(pid_arg(1));
+        .arg(vmid_arg(1))
+        .arg(vmid_type_arg());
 
     let attach_command = SubCommand::with_name("attach")
         .about("Attach (a block device) to a virtual machine.")
@@ -185,7 +186,8 @@ fn main() {
         .about("Get a coredump of a virtual machine.")
         .version(crate_version!())
         .author(crate_authors!("\n"))
-        .arg(pid_arg(1))
+        .arg(vmid_arg(1))
+        .arg(vmid_type_arg())
         .arg(
             Arg::with_name("PATH")
                 .help("path to coredump. Defaults to core.${pid}")
