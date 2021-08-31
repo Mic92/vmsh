@@ -77,6 +77,13 @@ pub struct kernel_symbol_5_3 {
     pub name_offset: libc::c_int,
 }
 
+#[repr(C)]
+#[derive(Debug)]
+pub struct kernel_symbol_4_18 {
+    pub value: libc::c_ulong,
+    pub name: libc::c_ulong,
+}
+
 unsafe fn cast_kernel_sym(mem: &[u8]) -> &kernel_symbol {
     &*mem::transmute::<_, *const kernel_symbol>(mem.as_ptr())
 }
@@ -98,8 +105,31 @@ fn check_kernel_sym(
         None => return None,
     };
     if strings_range.contains(&name_idx) && ii > sym_size {
+        // FIXME this is incorrect
         let name_idx_2 = ii + (sym.name_offset as usize) + field_offset - sym_size;
         if strings_range.contains(&name_idx_2) {
+            return Some(sym_size);
+        }
+    }
+    None
+}
+
+fn get_kernel_symbol_legacy(mem: &[u8]) -> &kernel_symbol_4_18 {
+    unsafe { &*(mem.as_ptr() as *const kernel_symbol_4_18) }
+}
+
+fn check_kernel_sym_legacy(
+    mem: &[u8],
+    mem_base: usize,
+    strings_range: &Range<usize>,
+    ii: usize,
+) -> Option<usize> {
+    let sym_size = size_of::<kernel_symbol_4_18>();
+    let sym = get_kernel_symbol_legacy(&mem[ii - sym_size..ii]);
+    let virt_range = strings_range.start + mem_base..strings_range.end + mem_base;
+    if virt_range.contains(&(sym.name as usize)) {
+        let sym2 = get_kernel_symbol_legacy(&mem[ii - 2 * sym_size..ii - sym_size]);
+        if virt_range.contains(&(sym2.name as usize)) {
             return Some(sym_size);
         }
     }
@@ -109,12 +139,17 @@ fn check_kernel_sym(
 /// Skips over kcrctab if present and retrieves actual ksymtab offset. This is
 /// done by casting each offset to a kernel_symbole and check if its name_offset
 /// would fall into the ksymtab_string address range.
-fn get_ksymtab_start(mem: &[u8], strings_range: &Range<usize>) -> Option<(usize, usize)> {
+fn get_ksymtab_start(
+    mem: &[u8],
+    mem_base: usize,
+    strings_range: &Range<usize>,
+) -> Option<(usize, usize)> {
     // each entry in kcrctab is 32 bytes
     let step_size = size_of::<u32>();
     for ii in (0..strings_range.start + 1).rev().step_by(step_size) {
         let sym_size = check_kernel_sym(mem, strings_range, size_of::<kernel_symbol>(), ii)
-            .or_else(|| check_kernel_sym(mem, strings_range, size_of::<kernel_symbol_5_3>(), ii));
+            .or_else(|| check_kernel_sym(mem, strings_range, size_of::<kernel_symbol_5_3>(), ii))
+            .or_else(|| check_kernel_sym_legacy(mem, mem_base, strings_range, ii));
         if let Some(sym_size) = sym_size {
             return Some((ii, sym_size));
         }
@@ -156,51 +191,72 @@ fn apply_offset(addr: usize, offset: libc::c_int) -> usize {
     }
 }
 
+fn symbol_name(mem: &[u8], idx: usize) -> Result<String> {
+    let len = require_with!(
+        mem[idx..].iter().position(|c| *c == 0),
+        "symbol name does not end"
+    );
+    let name = try_with!(
+        CStr::from_bytes_with_nul(&mem[idx..idx + len + 1]),
+        "invalid symbol name"
+    );
+
+    Ok(try_with!(name.to_str(), "invalid encoding for symbol name").to_owned())
+}
+
 fn get_kernel_symbols(
     mem: &[u8],
     mem_base: usize,
     ksymtab_strings: Range<usize>,
 ) -> Result<HashMap<String, usize>> {
     let mut syms = HashMap::new();
-    let (start, sym_size) =
-        require_with!(get_ksymtab_start(mem, &ksymtab_strings), "no ksymtab found");
+    let (start, sym_size) = require_with!(
+        get_ksymtab_start(mem, mem_base, &ksymtab_strings),
+        "no ksymtab found"
+    );
 
     trace!(
         "found ksymtab {} bytes before ksymtab_strings",
         ksymtab_strings.start - start
     );
 
-    for ii in (0..start + 1).rev().step_by(sym_size) {
-        let sym_start = ii - sym_size;
-        let sym = unsafe { cast_kernel_sym(&mem[sym_start..ii]) };
-        let name_offset =
-            &sym.name_offset as *const i32 as usize - sym as *const kernel_symbol as usize;
-        let value_offset =
-            &sym.value_offset as *const i32 as usize - sym as *const kernel_symbol as usize;
-        let name_idx = match sym_start
-            .checked_add(name_offset)
-            .and_then(|s| s.checked_add(sym.name_offset as usize))
-        {
-            Some(idx) => idx,
-            None => break,
-        };
-
-        if !ksymtab_strings.contains(&name_idx) {
-            break;
+    if sym_size == size_of::<kernel_symbol_4_18>() {
+        let virt_range = ksymtab_strings.start + mem_base..ksymtab_strings.end + mem_base;
+        for ii in (0..start + 1).rev().step_by(sym_size) {
+            let sym = get_kernel_symbol_legacy(&mem[ii - sym_size..ii]);
+            if !virt_range.contains(&(sym.name as usize)) {
+                break;
+            }
+            let name = symbol_name(mem, sym.name as usize - mem_base)?;
+            debug!("{} @ {:x}", name, sym.value);
+            syms.insert(name, sym.value as usize);
         }
-        let value_ptr = apply_offset(mem_base + sym_start + value_offset, sym.value_offset);
-        let name_len = require_with!(
-            mem[name_idx..].iter().position(|c| *c == 0),
-            "symbol name does not end"
-        );
-        let name = try_with!(
-            CStr::from_bytes_with_nul(&mem[name_idx..name_idx + name_len + 1]),
-            "invalid symbol name"
-        );
-        let name = try_with!(name.to_str(), "invalid encoding for symbol name");
-        debug!("{} @ {:x}", name, value_ptr);
-        syms.insert(name.to_owned(), value_ptr);
+    } else {
+        for ii in (0..start + 1).rev().step_by(sym_size) {
+            let sym_start = ii - sym_size;
+            let sym = unsafe { cast_kernel_sym(&mem[sym_start..ii]) };
+            let name_offset =
+                &sym.name_offset as *const i32 as usize - sym as *const kernel_symbol as usize;
+            let value_offset =
+                &sym.value_offset as *const i32 as usize - sym as *const kernel_symbol as usize;
+            let name_idx = match sym_start
+                .checked_add(name_offset)
+                .and_then(|s| s.checked_add(sym.name_offset as usize))
+            {
+                Some(idx) => idx,
+                None => break,
+            };
+
+            if !ksymtab_strings.contains(&name_idx) {
+                break;
+            }
+            let value_ptr = apply_offset(mem_base + sym_start + value_offset, sym.value_offset);
+            let name = symbol_name(mem, name_idx)?;
+            debug!("{} @ {:x}", name, value_ptr);
+            syms.insert(name, value_ptr);
+        }
     }
+
     Ok(syms)
 }
 
