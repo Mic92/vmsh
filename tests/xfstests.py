@@ -19,6 +19,7 @@ import time
 QUICK = False
 WITH_SCRATCH = True
 
+FS = "xfs"  # options: xfs, ext4
 
 HOST_SSDp1 = f"{HOST_SSD}p1"
 HOST_SSDp2 = f"{HOST_SSD}p2"
@@ -113,8 +114,8 @@ def format_ssd() -> None:
     run(["sudo", "parted", HOST_SSD, "--", "mklabel", "gpt"])
     run(["sudo", "parted", HOST_SSD, "--", "mkpart", "primary", "0%", "50%"])
     run(["sudo", "parted", HOST_SSD, "--", "mkpart", "primary", "50%", "100%"])
-    run(["sudo", "mkfs.ext4", HOST_SSDp1])
-    run(["sudo", "mkfs.ext4", HOST_SSDp2])
+    run(["sudo", f"mkfs.{FS}", HOST_SSDp1])
+    run(["sudo", f"mkfs.{FS}", HOST_SSDp2])
     Path(HOST_DIR).mkdir(exist_ok=True)
     Path(HOST_DIR_SCRATCHDEV).mkdir(exist_ok=True)
     run(["sudo", "chown", os.getlogin(), HOST_DIR])
