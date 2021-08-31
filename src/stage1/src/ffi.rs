@@ -109,6 +109,12 @@ extern "C" {
     pub fn filp_close(filp: *mut file, id: *mut c_void) -> c_int;
     pub fn kernel_write(file: *mut file, buf: *const c_void, count: size_t, pos: loff_t)
         -> ssize_t;
+    pub fn kernel_read(
+        file: *mut file,
+        buf: *mut c_void,
+        count: size_t,
+        pos: *mut loff_t,
+    ) -> ssize_t;
 
     pub fn call_usermodehelper(
         path: *const c_char,

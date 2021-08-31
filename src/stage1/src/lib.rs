@@ -144,6 +144,26 @@ impl KFile {
         Ok(KFile { file })
     }
 
+    fn read_all(&mut self, data: &mut [u8], pos: loff_t) -> core::result::Result<size_t, c_int> {
+        let mut out: size_t = 0;
+        let mut count = data.len();
+        let mut p = data.as_ptr();
+        let mut lpos = pos;
+        loop {
+            let rv = unsafe { ffi::kernel_read(self.file, p as *mut c_void, count, &mut lpos) };
+            match -rv as c_int {
+                0 => break,
+                ffi::EINTR | ffi::EAGAIN => continue,
+                1..=c_int::MAX => return if out == 0 { Err(-rv as c_int) } else { Ok(out) },
+                _ => {}
+            }
+            p = unsafe { p.add(rv as usize) };
+            out += rv as usize;
+            count -= rv as usize;
+        }
+        Ok(out)
+    }
+
     fn write_all(&mut self, data: &[u8], pos: loff_t) -> core::result::Result<size_t, c_int> {
         let mut out: size_t = 0;
         let mut count = data.len();
