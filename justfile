@@ -52,6 +52,11 @@ test: passwordless_sudo
 
 # stress test the host, guest-qemu-blk and vmsh-blk device
 xfstests: passwordless_sudo
+  @ if [ -n "${IN_CAPSH:-}" ]; then \
+    true; \
+  else \
+    echo "Please use \`just capsh\` to elevate your privileges."; exit 1; \
+  fi
   python3 tests/xfstests.py
 
 # Fuzz - or rather stress test the blkdev (run `just qemu` and `just attach-qemu-img` before)

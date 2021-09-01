@@ -129,31 +129,14 @@ def excludes() -> List[str]:
         # /mnt shared mountpoint
         # do we need to make --make-shared the default for all mounts?
         "generic/632"
-        # Fixed:
-        # acl param issue
-        "generic/079"
-        # files do not match
-        # generic/110 generic/111 generic/115 generic/116 generic/118 generic/119 generic/121 generic/122
-        # generic/134 generic/136 generic/138 generic/139 generic/140 generic/144 generic/516
-        # blkdev names/paths end up wrong
-        "xfs/006"
-        "xfs/264"
-        # xfs* partial
-        "xfs/026"
-        "xfs/027"
-        "xfs/028"
-        "xfs/046"
-        "xfs/056"
-        "xfs/059"
-        "xfs/060"
-        "xfs/063"
-        "xfs/066"
-        "xfs/266"
-        "xfs/281"
-        "xfs/282"
-        "xfs/283"
-        "xfs/296"
+        # generic/600 fsgqa cannot execute commands: investigate!
     ]
+
+    vmsh_blk_scratch = [
+        # not individually reproducible
+        # "xfs/008"
+    ]
+
     # TEST_DIR=/mnt TEST_DEV=/dev/vdb1 SCRATCH_DEV=/dev/vdb2 SCRATCH_MNT=/scratchmnt xfstests-check
 
     # return native_scratch
@@ -188,6 +171,14 @@ def format_ssd() -> None:
     run(["sudo", "chown", os.getlogin(), HOST_SSD])
 
 
+def get_failures(fail: str) -> List[str]:
+    if fail.startswith("Failures: "):
+        failures = fail.split(" ")[1:]
+    else:
+        failures = []
+    return failures
+
+
 def native(stats: Dict[str, str]) -> None:
     env = {"TEST_DIR": HOST_DIR, "TEST_DEV": HOST_SSDp1}
     env_scratch = {"SCRATCH_DEV": HOST_SSDp2, "SCRATCH_MNT": HOST_DIR_SCRATCHDEV}
@@ -195,7 +186,7 @@ def native(stats: Dict[str, str]) -> None:
         env = dict(env, **env_scratch)
     if QUICK:
         run(
-            ["sudo", "-E", "xfstests-check", "-e", excludes_str(), "xfs/005"],
+            ["sudo", "-E", "xfstests-check", "-e", excludes_str(), "generic/600"],
             stdout=None,
             stderr=None,
             extra_env=env,
@@ -203,7 +194,7 @@ def native(stats: Dict[str, str]) -> None:
         )
     else:
         run(
-            ["sudo", "-E", "xfstests-check", "-e", excludes_str(), "-g", "xfs/quick"],
+            ["sudo", "-E", "xfstests-check", "-e", excludes_str(), "-g", "quick"],
             stdout=None,
             stderr=None,
             extra_env=env,
@@ -211,15 +202,36 @@ def native(stats: Dict[str, str]) -> None:
         )
 
     with open("results/check.log", "r") as f:
-        stats["native"] = f.readlines()[-1].strip()
+        lines = f.readlines()
+        stats["native"] = lines[-1].strip()
+        fail = lines[-2].strip()
+        failures = get_failures(fail)
+
+    recoveries: List[str] = []
+    for failure in failures:
+        time.sleep(1)
+        run(
+            ["sudo", "-E", "xfstests-check", "-e", excludes_str(), failure],
+            stdout=None,
+            stderr=None,
+            extra_env=env,
+            check=False,
+        )
+        with open("results/check.log", "r") as f:
+            lines = f.readlines()
+            if "Passed all 1 tests" in lines[-1].strip():
+                recoveries += failure
+
+    print("Failures detected:", failures)
+    print("Failure recoveries:", recoveries)
+    stats["native_recoveries"] = f"{len(recoveries)}/{len(failures)}"
 
 
 def qemu_blk(helpers: confmeasure.Helpers, stats: Dict[str, str]) -> None:
     with util.testbench(helpers, with_vmsh=False, ioregionfd=False, mounts=False) as vm:
-        # breakpoint()
         vm.ssh_cmd(["mkdir", "-p", "/mnt"], check=True)
         vm.ssh_cmd(["mkdir", "-p", "/scratchmnt"], check=True)
-        breakpoint()
+        # breakpoint()
         env = f"TEST_DIR=/mnt TEST_DEV={GUEST_QEMUBLK}1"
         if WITH_SCRATCH:
             env += f" SCRATCH_DEV={GUEST_QEMUBLK}2 SCRATCH_MNT=/scratchmnt"
@@ -228,7 +240,7 @@ def qemu_blk(helpers: confmeasure.Helpers, stats: Dict[str, str]) -> None:
                 [
                     "sh",
                     "-c",
-                    f"{env} xfstests-check -e {excludes_str()} generic/484",
+                    f"{env} xfstests-check -e '{excludes_str()}' xfs/539",
                 ],
                 stdout=None,
                 check=False,
@@ -238,19 +250,44 @@ def qemu_blk(helpers: confmeasure.Helpers, stats: Dict[str, str]) -> None:
                 [
                     "sh",
                     "-c",
-                    f"{env} xfstests-check -e {excludes_str()} -g quick",
+                    f"{env} xfstests-check -e '{excludes_str()}' -g quick",
                 ],
                 stdout=None,
                 check=False,
             )
-        lines = vm.ssh_cmd(["tail", "results/check.log"]).stdout
-        stats["qemu-blk"] = lines.split("\n")[-2].strip()
+
+        lines = vm.ssh_cmd(["tail", "results/check.log"]).stdout.split("\n")
+        stats["qemu-blk"] = lines[-2].strip()
+
+        fail = lines[-3].strip()
+        failures = get_failures(fail)
+
+        recoveries: List[str] = []
+        for failure in failures:
+            time.sleep(1)
+            vm.ssh_cmd(
+                [
+                    "sh",
+                    "-c",
+                    f"{env} xfstests-check -e '{excludes_str()}' {failure}",
+                ],
+                stdout=None,
+                check=False,
+            )
+            lines = vm.ssh_cmd(["tail", "results/check.log"]).stdout.split("\n")
+            if "Passed all 1 tests" in lines[-3].strip():
+                recoveries += failure
+
+        print("Failures detected:", failures)
+        print("Failure recoveries:", recoveries)
+        stats["qemu-blk_recoveries"] = f"{len(recoveries)}/{len(failures)}"
 
 
 def vmsh_blk(helpers: confmeasure.Helpers, stats: Dict[str, str]) -> None:
     with util.testbench(helpers, with_vmsh=True, ioregionfd=False, mounts=False) as vm:
         vm.ssh_cmd(["mkdir", "-p", "/mnt"], check=True)
         vm.ssh_cmd(["mkdir", "-p", "/scratchmnt"], check=True)
+        # breakpoint()
         env = f"TEST_DIR=/mnt TEST_DEV={GUEST_JAVDEV}1"
         if WITH_SCRATCH:
             env += f" SCRATCH_DEV={GUEST_JAVDEV}2 SCRATCH_MNT=/scratchmnt"
@@ -259,7 +296,7 @@ def vmsh_blk(helpers: confmeasure.Helpers, stats: Dict[str, str]) -> None:
                 [
                     "sh",
                     "-c",
-                    f"{env} xfstests-check -e {excludes_str()} ext4/001",
+                    f"{env} xfstests-check -e '{excludes_str()}' xfs/539",
                 ],
                 stdout=None,
                 check=False,
@@ -269,24 +306,58 @@ def vmsh_blk(helpers: confmeasure.Helpers, stats: Dict[str, str]) -> None:
                 [
                     "sh",
                     "-c",
-                    f"{env} xfstests-check -e {excludes_str()} -g quick",
+                    f"{env} xfstests-check -e '{excludes_str()}' -g quick",
                 ],
                 stdout=None,
                 check=False,
             )
-        lines = vm.ssh_cmd(["tail", "results/check.log"]).stdout
-        stats["vmsh-blk"] = lines.split("\n")[-2].strip()
+        lines = vm.ssh_cmd(["tail", "results/check.log"]).stdout.split("\n")
+        stats["vmsh-blk"] = lines[-2].strip()
+
+        fail = lines[-3].strip()
+        failures = get_failures(fail)
+
+        recoveries: List[str] = []
+        for failure in failures:
+            time.sleep(1)
+            vm.ssh_cmd(
+                [
+                    "sh",
+                    "-c",
+                    f"{env} xfstests-check -e '{excludes_str()}' {failure}",
+                ],
+                stdout=None,
+                check=False,
+            )
+            lines = vm.ssh_cmd(["tail", "results/check.log"]).stdout.split("\n")
+            if "Passed all 1 tests" in lines[-3].strip():
+                recoveries += failure
+
+        print("Failures detected:", failures)
+        print("Failure recoveries:", recoveries)
+        stats["vmsh-blk_recoveries"] = f"{len(recoveries)}/{len(failures)}"
 
 
 def main() -> None:
     util.check_ssd()
     helpers = confmeasure.Helpers()
-    format_ssd()
     stats: Dict[str, str] = {}
 
-    # native(stats)
+    print("")
+    print("================================ native test ========================")
+    print("")
+    format_ssd()
+    native(stats)
+    print("")
+    print("================================ qemu-blk test ========================")
+    print("")
+    format_ssd()
     qemu_blk(helpers, stats)
-    # vmsh_blk(helpers, stats)
+    print("")
+    print("================================ vmsh-blk test ========================")
+    print("")
+    format_ssd()
+    vmsh_blk(helpers, stats)
 
     stats["excluded"] = str(len(excludes()))
     print(stats)
