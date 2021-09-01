@@ -94,6 +94,9 @@ fn check_kernel_sym(
     sym_size: usize,
     ii: usize,
 ) -> Option<usize> {
+    if sym_size > ii {
+        return None;
+    }
     let sym = unsafe { cast_kernel_sym(&mem[ii - sym_size..ii]) };
     let field_offset =
         &sym.name_offset as *const i32 as usize - sym as *const kernel_symbol as usize;
@@ -125,6 +128,9 @@ fn check_kernel_sym_legacy(
     ii: usize,
 ) -> Option<usize> {
     let sym_size = size_of::<kernel_symbol_4_18>();
+    if sym_size > ii {
+        return None;
+    }
     let sym = get_kernel_symbol_legacy(&mem[ii - sym_size..ii]);
     let virt_range = strings_range.start + mem_base..strings_range.end + mem_base;
     if virt_range.contains(&(sym.name as usize)) {
