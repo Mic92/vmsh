@@ -161,6 +161,9 @@ sign-drone:
 build-linux-shell:
   nix develop '.#kernel-deps'
 
+# Clean build directory of linux
+clean-linux: configure-linux
+  {kernel_shell}} "make -C {{linux_dir}} mrproper"
 # Build linux kernel
 build-linux: configure-linux
   yes \n | {{kernel_shell}} make -C {{linux_dir}} -j$(nproc)
