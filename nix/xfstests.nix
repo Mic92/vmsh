@@ -3,7 +3,7 @@
 , fetchgit, fio, gawk, keyutils, killall, lib, libaio, libcap, libtool
 , libuuid, libxfs, lvm2, openssl, perl, procps, quota
 , time, util-linux, which, writeScript, xfsprogs, runtimeShell, mktemp
-, hostname, gnused, diffutils, findutils, glibc, callPackage }:
+, hostname, gnused, diffutils, findutils, glibc, callPackage, file }:
 
 let
   xfsdump = callPackage ./xfsdump.nix { };
@@ -36,7 +36,8 @@ stdenv.mkDerivation {
 
 
     # needed for qemu-blk. Check if this works natively.
-    sed -i 's/$here\/src\/detached_mounts_propagation/mount $SCRATCH_DEV $SCRATCH_MNT\nmount --make-shared $SCRATCH_MNT\n$here\/src\/detached_mounts_propagation/' tests/generic/632
+    #sed -i 's/$here\/src\/detached_mounts_propagation/mount $SCRATCH_DEV $SCRATCH_MNT\nmount --make-shared $SCRATCH_MNT\n$here\/src\/detached_mounts_propagation/' tests/generic/632
+    # works natively:
     sed -i 's/$DMERROR_DEV/$TEST_DEV/' tests/xfs/006 tests/xfs/264
 
 
@@ -128,6 +129,7 @@ stdenv.mkDerivation {
                                    xfsprogs
                                    glibc # for getconf
                                    xfsdump
+                                   file
                                    ])}:$PATH
     exec ./check "$@"
   '';
