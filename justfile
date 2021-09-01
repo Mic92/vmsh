@@ -7,7 +7,7 @@ rev := `nix eval --raw .#lib.nixpkgsRev`
 linux_dir := justfile_directory() + "/../linux"
 linux_repo := "https://github.com/Mic92/linux"
 nix_results := justfile_directory() + "/.git/nix-results/" + rev
-kernel_shell := "nix develop " + justfile_directory() + "#kernel-deps --command"
+kernel_shell := "$(nix build --out-link " + nix_results + "/kernel-fhs --json " + justfile_directory() + "#kernel-deps | jq -r '.[] | .outputs | .out')/bin/linux-kernel-build"
 hypervisor_socket := justfile_directory() + "/.git/cloud-hypervisor-socket"
 
 virtio_blk_img := justfile_directory() + "/../linux/nixos.ext4"
@@ -114,8 +114,8 @@ configure-linux: clone-linux
   set -xeuo pipefail
   if [[ ! -f {{linux_dir}}/.config ]]; then
     cd {{linux_dir}}
-    {{kernel_shell}} make defconfig kvm_guest.config
-    {{kernel_shell}} scripts/config \
+    {{kernel_shell}} "make defconfig kvm_guest.config"
+    {{kernel_shell}} "scripts/config \
        --disable DRM \
        --disable USB \
        --disable WIRELESS \
@@ -148,7 +148,7 @@ configure-linux: clone-linux
        --disable SQUASHFS_FILE_CACHE \
        --enable SQUASHFS_DECOMP_MULTI \
        --disable SQUASHFS_DECOMP_SINGLE \
-       --disable SQUASHFS_DECOMP_MULTI_PERCPU
+       --disable SQUASHFS_DECOMP_MULTI_PERCPU"
   fi
 
 # Sign drone ci configuration
@@ -159,14 +159,18 @@ sign-drone:
 
 # Linux kernel development shell
 build-linux-shell:
-  nix develop '.#kernel-deps'
+  nix develop .#kernel-deps-shell
 
 # Clean build directory of linux
 clean-linux: configure-linux
-  {kernel_shell}} "make -C {{linux_dir}} mrproper"
+  cd {{linux_dir}} && {kernel_shell}} "make -C {{linux_dir}} mrproper"
+
 # Build linux kernel
 build-linux: configure-linux
-  yes \n | {{kernel_shell}} make -C {{linux_dir}} -j$(nproc)
+  #!/usr/bin/env bash
+  set -xeu
+  cd {{linux_dir}}
+  yes \n | {{kernel_shell}} "make -C {{linux_dir}} -j$(nproc)"
 
 # Build a disk image
 image NAME="nixos" PATH="/nixos.img":
@@ -230,6 +234,19 @@ qemu EXTRA_CMDLINE="nokalsr": build-linux nixos-image
     -chardev stdio,mux=on,id=char0,signal=off \
     -mon chardev=char0,mode=readline \
     -device virtconsole,chardev=char0,id=vmsh,nr=0
+
+qemu2 EXTRA_CMDLINE="nokalsr": build-linux nixos-image
+  qemu-system-x86_64 \
+    -kernel {{linux_dir}}/arch/x86/boot/bzImage \
+    -drive format=raw,file={{linux_dir}}/nixos.ext4 \
+    -append "root=/dev/sda console=ttyS0 {{EXTRA_CMDLINE}}" \
+    -net nic,netdev=user.0,model=virtio \
+    -m 512M \
+    -netdev user,id=user.0,hostfwd=tcp:127.0.0.1:{{qemu_ssh_port}}-:22 \
+    -cpu host \
+    -virtfs local,path={{justfile_directory()}}/..,security_model=none,mount_tag=home \
+    -virtfs local,path={{linux_dir}},security_model=none,mount_tag=linux \
+    -nographic -enable-kvm \
 
 alias cl := cloud-hypervisor
 cloud-hypervisor: build-linux nixos-image

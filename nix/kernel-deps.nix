@@ -1,4 +1,4 @@
-{ mkShell
+{ buildFHSUserEnv
 , lib
 , getopt
 , elfutils
@@ -14,10 +14,11 @@
 , perl
 , hostname
 , cpio
+, runScript ? ''bash -c''
 }:
-mkShell {
+buildFHSUserEnv {
   name = "linux-kernel-build";
-  buildInputs = [
+  targetPkgs = pkgs: (with pkgs;  [
     getopt
     flex
     bison
@@ -33,5 +34,6 @@ mkShell {
     ncurses
     openssl
     zlib
-  ];
+  ]);
+  inherit runScript;
 }

@@ -41,6 +41,9 @@
         };
 
         kernel-deps = pkgs.callPackage ./nix/kernel-deps.nix {};
+        kernel-deps-shell = (pkgs.callPackage ./nix/kernel-deps.nix {
+          runScript = "bash";
+        }).env;
 
         measureDeps = [
           pkgs.numactl
@@ -94,7 +97,7 @@
           };
 
           # see justfile/build-linux-shell
-          inherit kernel-deps;
+          inherit kernel-deps kernel-deps-shell;
           linux_ioregionfd = pkgs.callPackage ./nix/linux-ioregionfd.nix { };
           linuxPackages_ioregionfd = pkgs.recurseIntoAttrs (pkgs.linuxPackagesFor linux_ioregionfd);
 
