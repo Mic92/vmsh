@@ -138,6 +138,7 @@ configure-linux: clone-linux
        --enable IKHEADERS \
        --enable IKCONFIG_PROC \
        --enable VIRTIO_MMIO \
+       --enable VIRTIO_MMIO_CMDLINE_DEVICES \
        --enable PTDUMP_CORE \
        --enable PTDUMP_DEBUGFS \
        --enable OVERLAY_FS \
@@ -261,6 +262,12 @@ cloud-hypervisor: build-linux nixos-image
 
 stop-cloud-hypervisor:
   curl --unix-socket {{hypervisor_socket}} -X PUT http://localhost/api/v1/vm.power-button
+
+firecracker: build-linux nixos-image
+  firectl -m512 -c1 --kernel={{linux_dir}}/vmlinux \
+  --kernel-opts "console=ttyS0" \
+  --root-drive={{linux_dir}}/nixos.ext4
+
 
 crosvm: build-linux nixos-image
   crosvm run -m500 -c1 --rwdisk {{linux_dir}}/nixos.ext4 \

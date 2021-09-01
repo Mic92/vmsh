@@ -131,6 +131,10 @@
             pkgs.gnuplot
             pkgs.cloud-hypervisor
             pkgs.crosvm
+            pkgs.firectl
+            (pkgs.writeShellScriptBin "firecracker" ''
+              exec ${pkgs.firecracker}/bin/firecracker --seccomp-level 0 "$@"
+            '')
             
             # for xfstests:
             pkgs.parted
