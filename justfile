@@ -171,7 +171,7 @@ build-linux: configure-linux
   #!/usr/bin/env bash
   set -xeu
   cd {{linux_dir}}
-  yes \n | {{kernel_shell}} "make -C {{linux_dir}} -j$(nproc)"
+  yes "" | {{kernel_shell}} "make -C {{linux_dir}} -j$(nproc)"
 
 # Build a disk image
 image NAME="nixos" PATH="/nixos.img":
