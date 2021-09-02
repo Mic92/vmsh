@@ -80,6 +80,7 @@ let
       pcre
       glibc
       glibc.static
+      openmpi
       # for systemd-detect-virt
       systemd
     ] ++ lib.optionals (enableBuildDeps') [
@@ -90,7 +91,6 @@ let
       bc
       perl
       gcc
-      openmpi
       python2
       python3
     ];
