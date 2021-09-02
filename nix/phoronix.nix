@@ -80,6 +80,8 @@ let
       pcre
       glibc
       glibc.static
+      # for systemd-detect-virt
+      systemd
     ] ++ lib.optionals (enableBuildDeps') [
       binutils
       automake
