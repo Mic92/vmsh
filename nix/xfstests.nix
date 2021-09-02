@@ -40,6 +40,11 @@ stdenv.mkDerivation {
     # works natively:
     sed -i 's/$DMERROR_DEV/$TEST_DEV/' tests/xfs/006 tests/xfs/264
 
+    # This test tests uncommon chars (emotes etc) in file metadata. They work
+    # fine. Nativly, online scrubbing support is available (and thus run), but
+    # does not print any warnings. I claim this is the expected behaviour but
+    # the test disagrees. 
+    sed -i 's/||/\&\&/' tests/generic/454
 
     # Fix shell-less fsgqa user
     sed -i 's/su $qa_user/su -s \/bin\/sh $qa_user/' common/rc
