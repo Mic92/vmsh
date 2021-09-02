@@ -34,68 +34,6 @@ def excludes() -> List[str]:
     system. Tests which fail on vmsh-blk but succeed on qemu-blk are NOT
     excluded.
     """
-
-    # -g quick on ext4
-
-    native_noscratch = [
-        # missing SCRATCH_MNT? Test impl error. Works with scratch.
-        "generic/628",
-        "generic/629",
-    ]
-    _ = native_noscratch
-    native_scratch = [
-        # -pwrite: No space left on device
-        "ext4/306",
-        # ?
-        "generic/079",
-        "generic/452",
-        # The following are skipped in qemu, mostly because of missing kernel
-        # features. (disk encryption)
-        "ext4/051",
-        "generic/548",
-        "generic/549",
-        "generic/550",
-        "generic/582",
-        "generic/583",
-        "generic/584",
-        "generic/592",
-        "generic/602",
-    ]
-    qemu_blk_noscratch = [
-        # "please ensure that /mnt is a shared mountpoint" (sounds like testimpl error)
-        "generic/632",
-    ]
-    qemu_blk_scratch = [
-        # blocks indefinitely >~5h
-        "generic/397",
-        # +/tmp/xfstests.szrcLx/tests/ext4/024: line 41: /scratchmnt/edir/file: No such file or directory
-        "ext4/024",
-        # -Write backwards sync leaving holes - defrag should do nothing
-        "generic/018",
-        # "group quota on SCRATCH_MNT (SCRATCH_DEV) is off" when it should on
-        "generic/082",
-        # -cp: failed to clone 'SCRATCH_MNT/test-356/file2' from 'SCRATCH_MNT/test-356/file1': Text file busy
-        # -Tear it down
-        # +./common/rc: line 2553: /dev/fd/62: No such file or directory
-        "generic/356",
-        # ...
-        "generic/357",
-        "generic/398",
-        "generic/419",
-        "generic/421",
-        "generic/440",
-        "generic/472",
-        "generic/493",
-        "generic/494",
-        "generic/495",
-        "generic/496",
-        "generic/497",
-        "generic/554",
-        "generic/569",
-        "generic/636",
-        "generic/641",
-    ]
-
     # -g quick on xfs
     # Some tests are skipped because xfsdump is missing. I don't think this is
     # packaged in nixos.
@@ -132,15 +70,12 @@ def excludes() -> List[str]:
         # generic/600 fsgqa cannot execute commands: investigate!
     ]
 
-    vmsh_blk_scratch = [
-        # not individually reproducible
-        # "xfs/008"
-    ]
+    vmsh_blk_scratch: List[str] = []
 
     # TEST_DIR=/mnt TEST_DEV=/dev/vdb1 SCRATCH_DEV=/dev/vdb2 SCRATCH_MNT=/scratchmnt xfstests-check
 
-    # return native_scratch
     return []
+    return native_scratch + qemu_blk_scratch + vmsh_blk_scratch
 
 
 def excludes_str() -> str:
@@ -231,7 +166,7 @@ def qemu_blk(helpers: confmeasure.Helpers, stats: Dict[str, str]) -> None:
     with util.testbench(helpers, with_vmsh=False, ioregionfd=False, mounts=False) as vm:
         vm.ssh_cmd(["mkdir", "-p", "/mnt"], check=True)
         vm.ssh_cmd(["mkdir", "-p", "/scratchmnt"], check=True)
-        # breakpoint()
+        breakpoint()
         env = f"TEST_DIR=/mnt TEST_DEV={GUEST_QEMUBLK}1"
         if WITH_SCRATCH:
             env += f" SCRATCH_DEV={GUEST_QEMUBLK}2 SCRATCH_MNT=/scratchmnt"
@@ -346,8 +281,8 @@ def main() -> None:
     print("")
     print("================================ native test ========================")
     print("")
-    format_ssd()
-    native(stats)
+    # format_ssd()
+    # native(stats)
     print("")
     print("================================ qemu-blk test ========================")
     print("")
@@ -356,8 +291,8 @@ def main() -> None:
     print("")
     print("================================ vmsh-blk test ========================")
     print("")
-    format_ssd()
-    vmsh_blk(helpers, stats)
+    # format_ssd()
+    # vmsh_blk(helpers, stats)
 
     stats["excluded"] = str(len(excludes()))
     print(stats)
