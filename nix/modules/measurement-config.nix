@@ -10,6 +10,8 @@ in {
     pkgs.fio
     phoronix
     myxfstests
+    pkgs.su
+    pkgs.linux-pam
   ];
   environment.etc.passwd.text = ''
     daemon:1:daemon:/usr/sbin:/noshell
