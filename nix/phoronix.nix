@@ -83,6 +83,7 @@ let
       openmpi
       # for systemd-detect-virt
       systemd
+      which
     ] ++ lib.optionals (enableBuildDeps') [
       binutils
       automake
