@@ -4,7 +4,7 @@ from root import MEASURE_RESULTS
 
 import os
 import json
-from typing import List, Any, Iterator, Dict, DefaultDict, Optional, Text
+from typing import List, Any, Iterator, Dict, DefaultDict, Optional, Text, IO, Union
 from collections import defaultdict
 from contextlib import contextmanager
 import subprocess
@@ -170,13 +170,16 @@ def testbench(
             print(vm.ssh_cmd(["umount", GUEST_QEMU9P]).stdout)
 
 
+ChildFd = Union[None, int, IO]
+
+
 def run(
     cmd: List[str],
     extra_env: Dict[str, str] = {},
-    stdout: Optional[int] = subprocess.PIPE,
-    stderr: Optional[int] = subprocess.PIPE,
+    stdout: ChildFd = subprocess.PIPE,
+    stderr: ChildFd = None,
     input: Optional[str] = None,
-    stdin: Optional[int] = None,
+    stdin: ChildFd = None,
     check: bool = True,
 ) -> "subprocess.CompletedProcess[Text]":
     env = os.environ.copy()
