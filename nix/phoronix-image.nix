@@ -4,7 +4,7 @@ let
   phoronix = pkgs.callPackage ./phoronix.nix {};
 in
 buildDiskImage {
-  diskSize = "300M";
+  diskSize = "1024M";
   extraCommands = ''
     pushd root
     mkdir -p phoronix-test-suite
