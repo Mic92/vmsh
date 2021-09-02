@@ -13,7 +13,7 @@ from pathlib import Path
 import time
 
 
-HOST_SSD = "/dev/nvme0n1"
+HOST_SSD = os.environ.get("HOST_SSD", "/dev/nvme0n1")
 HOST_DIR = "/mnt/nvme"
 GUEST_JAVDEV = "/dev/vdc"
 GUEST_QEMUBLK = "/dev/vdb"
@@ -238,6 +238,8 @@ def fresh_fs_ssd(image: Optional[Path]) -> Iterator[Any]:
 
 
 def check_ssd() -> None:
+    if "HOST_SSD" in os.environ:
+        return
     print(subprocess.check_output(["lsblk"]).decode())
     input_ = "y"
     input_ = input(f"Delete {HOST_SSD} to use for benchmark? [Y/n] ")
