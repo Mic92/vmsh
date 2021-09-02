@@ -10,5 +10,7 @@ in {
     pkgs.fio
     phoronix
     myxfstests
+    pkgs.su
+    pkgs.linux-pam
   ];
 }

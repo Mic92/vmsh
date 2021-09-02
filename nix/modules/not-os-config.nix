@@ -75,6 +75,46 @@
       fsgqa2:x:995:
       fsgqa:x:996:
     '';
+#    "shadow".text = ''
+#      fsgqa2:!:1::::::
+#      fsgqa:!:1::::::
+#      123456-fsgqa:!:1::::::
+#      daemon:!:1::::::
+#      sys:!:1::::::
+#      bin:!:1::::::
+#    '';
+    "security/pam_env.conf".text = "
+
+    ";
+    "sudoers".text = ''
+      root        ALL=(ALL:ALL) SETENV: ALL
+    '';
+    "pam.d/other".text = ''
+      #auth     required pam_warn.so
+      #auth     sufficient pam_rootok.so
+      auth     sufficient pam_permit.so
+      account  required pam_permit.so
+      password required pam_permit.so
+      session  optional pam_env.so
+      # Account management.
+      #account required pam_unix.so
+      # Authentication management.
+#      auth sufficient ${pkgs.linux-pam}/lib/security/pam_rootok.so
+      #auth required pam_faillock.so
+      #auth sufficient pam_unix.so   likeauth try_first_pass
+      #auth required pam_deny.so
+      # Password management.
+      #password sufficient pam_unix.so nullok sha512
+      # Session management.
+      #session required pam_env.so conffile=/nix/store/zg2hdxcf62dpxfn9y7v8arwbyhzxnahy-pam-environment readenv=0
+      #session required ${pkgs.linux-pam}/lib/security/pam_env.so conffile=${pkgs.linux-pam}/etc/security/pam_env.conf
+      #session required ${pkgs.linux-pam}/lib/security/pam_env.so conffile=/etc/pam_env_conf
+      #session required pam_env.so
+      #session required pam_unix.so
+      #session optional pam_unix.so
+      #session optional pam_xauth.so 
+       #xauthpath=/nix/store/wmww8v2s3rn0r48rai1h3r0diza69c9r-xauth-1.1/bin/xauth systemuser=99
+    '';
     "ssh/authorized_keys.d/root" = {
       source = ../ssh_key.pub;
       mode = "444";
