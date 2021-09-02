@@ -15,11 +15,14 @@ import time
 
 HOST_SSD = os.environ.get("HOST_SSD", "/dev/nvme0n1")
 HOST_DIR = "/mnt/nvme"
+# XXX use Path everywhere
+HOST_DIR_PATH = Path(HOST_DIR)
 GUEST_JAVDEV = "/dev/vdc"
 GUEST_QEMUBLK = "/dev/vdb"
 GUEST_QEMU9P = "/9p"
 GUEST_JAVDEV_MOUNT = "/javdev"
 GUEST_QEMUBLK_MOUNT = "/blk"
+GUEST_QEMUBLK_PATH = Path(GUEST_QEMUBLK_MOUNT)
 
 
 @contextmanager
