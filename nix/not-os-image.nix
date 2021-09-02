@@ -19,7 +19,13 @@ let
       };
     };
   }).config;
-  inherit (config.system.build) kernel;
+  #inherit (config.system.build) kernel;
+  kernel = pkgs.linux.override {
+    structuredExtraConfig = with lib.kernel; {
+      XFS_ONLINE_SCRUB = yes;
+    };
+    ignoreConfigErrors = true;
+  };
   kerneldir = "${kernel.dev}/lib/modules/${kernel.modDirVersion}/build";
 in
 {
