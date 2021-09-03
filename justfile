@@ -53,6 +53,11 @@ test: passwordless_sudo
 
 # stress test the host, guest-qemu-blk and vmsh-blk device
 xfstests: passwordless_sudo
+  @ if [ -n "${IN_CAPSH:-}" ]; then \
+    true; \
+  else \
+    echo "Please use \`just capsh\` to elevate your privileges."; exit 1; \
+  fi
   python3 tests/xfstests.py
 
 # Fuzz - or rather stress test the blkdev (run `just qemu` and `just attach-qemu-img` before)
@@ -165,7 +170,7 @@ build-linux-shell:
 
 # Clean build directory of linux
 clean-linux: configure-linux
-  cd {{linux_dir}} && {kernel_shell}} "make -C {{linux_dir}} mrproper"
+  cd {{linux_dir}} && {{kernel_shell}} "make -C {{linux_dir}} mrproper"
 
 # Build linux kernel
 build-linux: configure-linux
@@ -303,7 +308,7 @@ qemu-notos image="not-os-image": build-linux
   from qemu import qemu_command
   #image = notos_image()
   print("run {{image}}")
-  image = notos_image_custom_kernel(".#{{image}}")
+  image = notos_image(".#{{image}}")
   cmd = qemu_command(image, "qmp.sock", ssh_port={{qemu_ssh_port}})
   print(" ".join(cmd))
   subprocess.run(cmd)
