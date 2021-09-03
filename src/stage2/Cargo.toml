@@ -9,5 +9,4 @@ license = "MIT"
 nix = "0.22.*"
 libc = "0.2.*"
 simple-error = "0.2.*"
-container-pid = "0.1.0"
 ioutils = { path = "../ioutils" }
