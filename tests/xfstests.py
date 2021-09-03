@@ -55,23 +55,25 @@ def excludes() -> List[str]:
     ]
 
     qemu_blk_scratch = [
-        # works occasionally
-        # kernel prints trace when this is run the first time
+        # works occasionally. "fixed" by retries.
+        # kernel printlns trace when this is run the first time
         # looks like an actual kernel bug
-        "generic/623"
+        # "generic/623"
+
         # wrong error code, probably fine if we used another mount
+        # libmount throws error but instead "Structure needs cleaning." should happen.
+        # -mount: SCRATCH_MNT: mount(2) system call failed: Structure needs cleaning.
+        # +mount: SCRATCH_MNT: wrong fs type, bad option, bad superblock on SCRATCH_DEV, missing codepage or helper program, or other error.
         "xfs/154"
         "xfs/158"
-        # quota stuff
+
+        # quota stuff, similar to generic/594
         "xfs/050"
         "xfs/144"
-        # see native
-        "xfs/506"
-        "xfs/539"
+
         # /mnt shared mountpoint
         # do we need to make --make-shared the default for all mounts?
         "generic/632"
-        # generic/600 fsgqa cannot execute commands: investigate!
     ]
 
     vmsh_blk_scratch: List[str] = []

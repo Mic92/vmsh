@@ -10,7 +10,10 @@ in {
     pkgs.fio
     phoronix
     myxfstests
+    pkgs.acl
     pkgs.su
     pkgs.linux-pam
+    pkgs.findutils
+    pkgs.mount
   ];
 }
