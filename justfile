@@ -47,6 +47,7 @@ passwordless_sudo:
 
 # Run unit and integration tests
 test: passwordless_sudo
+  nix flake check
   cargo test
   pytest -n $(nproc --ignore=2) -s tests
 
