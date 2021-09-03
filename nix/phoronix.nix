@@ -80,6 +80,10 @@ let
       pcre
       glibc
       glibc.static
+      openmpi
+      # for systemd-detect-virt
+      systemd
+      which
     ] ++ lib.optionals (enableBuildDeps') [
       binutils
       automake
@@ -88,7 +92,6 @@ let
       bc
       perl
       gcc
-      openmpi
       python2
       python3
     ];

@@ -4,7 +4,7 @@ from root import MEASURE_RESULTS
 
 import os
 import json
-from typing import List, Any, Iterator, Dict, DefaultDict, Optional, Text
+from typing import List, Any, Iterator, Dict, DefaultDict, Optional, Text, IO, Union
 from collections import defaultdict
 from contextlib import contextmanager
 import subprocess
@@ -13,13 +13,16 @@ from pathlib import Path
 import time
 
 
-HOST_SSD = "/dev/nvme0n1"
+HOST_SSD = os.environ.get("HOST_SSD", "/dev/nvme0n1")
 HOST_DIR = "/mnt/nvme"
+# XXX use Path everywhere
+HOST_DIR_PATH = Path(HOST_DIR)
 GUEST_JAVDEV = "/dev/vdc"
 GUEST_QEMUBLK = "/dev/vdb"
 GUEST_QEMU9P = "/9p"
 GUEST_JAVDEV_MOUNT = "/javdev"
 GUEST_QEMUBLK_MOUNT = "/blk"
+GUEST_QEMUBLK_PATH = Path(GUEST_QEMUBLK_MOUNT)
 
 
 @contextmanager
@@ -170,13 +173,16 @@ def testbench(
             print(vm.ssh_cmd(["umount", GUEST_QEMU9P]).stdout)
 
 
+ChildFd = Union[None, int, IO]
+
+
 def run(
     cmd: List[str],
     extra_env: Dict[str, str] = {},
-    stdout: Optional[int] = subprocess.PIPE,
-    stderr: Optional[int] = subprocess.PIPE,
+    stdout: ChildFd = subprocess.PIPE,
+    stderr: ChildFd = None,
     input: Optional[str] = None,
-    stdin: Optional[int] = None,
+    stdin: ChildFd = None,
     check: bool = True,
 ) -> "subprocess.CompletedProcess[Text]":
     env = os.environ.copy()
@@ -202,12 +208,31 @@ def blkdiscard() -> Any:
 
 
 @contextmanager
-def fresh_fs_ssd() -> Iterator[Any]:
-    while "target is busy" in run(["sudo", "umount", HOST_SSD], check=False).stderr:
+def fresh_fs_ssd(image: Optional[Path] = None) -> Iterator[Any]:
+    while (
+        "target is busy"
+        in run(["sudo", "umount", HOST_SSD], check=False, stderr=subprocess.PIPE).stderr
+    ):
         print("umount: waiting for target not to be busy")
         time.sleep(1)
     blkdiscard()
-    run(["sudo", "mkfs.ext4", HOST_SSD])
+    if image:
+        run(
+            [
+                "sudo",
+                "dd",
+                "status=progress",
+                "bs=128M",
+                "iflag=direct",
+                "oflag=direct",
+                "conv=fdatasync",
+                f"if={image}",
+                f"of={HOST_SSD}",
+            ]
+        )
+        run(["sudo", "resize2fs", "-f", HOST_SSD])
+    else:
+        run(["sudo", "mkfs.ext4", HOST_SSD])
     Path(HOST_DIR).mkdir(exist_ok=True)
     run(["sudo", "mount", HOST_SSD, HOST_DIR])
     run(["sudo", "chown", os.getlogin(), HOST_DIR])
@@ -222,6 +247,8 @@ def fresh_fs_ssd() -> Iterator[Any]:
 
 
 def check_ssd() -> None:
+    if "HOST_SSD" in os.environ:
+        return
     print(subprocess.check_output(["lsblk"]).decode())
     input_ = "y"
     input_ = input(f"Delete {HOST_SSD} to use for benchmark? [Y/n] ")
@@ -236,7 +263,7 @@ def check_intel_turbo() -> None:
         with open(path) as f:
             if f.readline() != "1\n":
                 print(
-                    """Please run: sudo su -c 'echo "1" > /sys/devices/system/cpu/intel_pstate/no_turbo'"""
+                    """Please run: echo 1 | sudo tee /sys/devices/system/cpu/intel_pstate/no_turbo"""
                 )
                 exit(1)
 
