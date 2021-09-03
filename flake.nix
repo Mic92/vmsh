@@ -87,6 +87,9 @@
         packages = rec {
           inherit vmsh linux_ioregionfd;
 
+          # see justfile/build-linux-shell
+          inherit kernel-deps;
+
           # used in tests/xfstests.py
           xfstests = pkgs.callPackage ./nix/xfstests.nix { };
 
@@ -108,13 +111,13 @@
             nativeBuildInputs = ciDeps;
           };
           # see justfile/build-linux-shell
-          inherit kernel-deps kernel-deps-shell;
+          inherit kernel-deps-shell;
         };
         # not supported by nix flakes yet, but useful
         packageSets = rec {
           linuxPackages_ioregionfd = pkgs.recurseIntoAttrs (pkgs.linuxPackagesFor linux_ioregionfd);
         };
-        checks = self.packages;
+        checks = self.packages.${system};
         # used by `nix develop`
         devShell = pkgs.mkShell {
           inherit (vmsh) buildInputs;

@@ -161,7 +161,7 @@ sign-drone:
 
 # Linux kernel development shell
 build-linux-shell:
-  nix develop .#kernel-deps-shell
+  nix develop #devShells.x86_64-linux.kernel-deps-shell
 
 # Clean build directory of linux
 clean-linux: configure-linux
