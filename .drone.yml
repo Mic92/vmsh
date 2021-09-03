@@ -21,8 +21,8 @@ steps:
   commands:
   # this also compiles vmsh against notos,
   # disable faulthandler so we do not run into timeouts
-  - nix develop ".#ci-shell" --command pytest -p no:faulthandler -s ./tests/test_help.py
-  - TEST_NO_REBUILD=1 nix develop ".#ci-shell" --command pytest -n $(nproc --ignore=2) -s ./tests
+  - nix develop ".#devShells.x86_64-linux.ci-shell" --command pytest -p no:faulthandler -s ./tests/test_help.py
+  - TEST_NO_REBUILD=1 nix develop ".#devShells.x86_64-linux.ci-shell" --command pytest -n $(nproc --ignore=2) -s ./tests
 trigger:
   event:
   - push
@@ -46,15 +46,15 @@ clone:
   depth: 1
 
 steps:
-- name: build nix package
+- name: build all nix packages
   commands:
-  - nix build .#
+  - nix flake check
 trigger:
   event:
   - push
 
 ---
 kind: signature
-hmac: 745d767ce26ac3548fe5fd3accc82b0bada7453c53d893ba6e20ad95943133f8
+hmac: 8f99959ad2356b7581b5a6076dac5e56d2b3cddd6adb4d571598855dd8126b2d
 
 ...
