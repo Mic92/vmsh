@@ -1,9 +1,14 @@
+{ linux-ioregionfd }:
 { lib, pkgs, ... }:
 let
   phoronix = pkgs.callPackage ../phoronix.nix {};
   myxfstests = pkgs.callPackage ../xfstests.nix { };
 in {
-  imports = [ ./not-os-config.nix ];
+  imports = [
+    ./not-os-config.nix
+    # we mainly need this for XFS_ONLINE_SCRUB
+    linux-ioregionfd
+  ];
   environment.systemPackages = [
     pkgs.hdparm
     pkgs.sysbench

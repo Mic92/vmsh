@@ -55,16 +55,16 @@
     "not-os": {
       "flake": false,
       "locked": {
-        "lastModified": 1630336741,
-        "narHash": "sha256-s5l9Zj175Vayp8ubUqjJB9UXiSVrx9odA5ebs7qjdSA=",
+        "lastModified": 1630673293,
+        "narHash": "sha256-nT7JFxln3ink75M+35lGaANaVTSgzB8pQa3FtCPz9A0=",
         "owner": "Mic92",
         "repo": "not-os",
-        "rev": "645c55834cced8ba414a88d3ce71b913a35b6e00",
+        "rev": "e1f305dfbc7e5be3fa4775afebe4e65a950ca948",
         "type": "github"
       },
       "original": {
         "owner": "Mic92",
-        "ref": "bug-fix",
+        "ref": "overridable-kernel",
         "repo": "not-os",
         "type": "github"
       }

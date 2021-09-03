@@ -3,9 +3,9 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
-    # TODO: switch back when https://github.com/cleverca22/not-os/pull/17 is merged
+    # TODO: switch back when https://github.com/cleverca22/not-os/pull/19 is merged
     #not-os.url = "github:cleverca22/not-os";
-    not-os.url = "github:Mic92/not-os/bug-fix";
+    not-os.url = "github:Mic92/not-os/overridable-kernel";
     not-os.flake = false;
     flake-utils.url = "github:numtide/flake-utils";
     fenix = {
@@ -78,7 +78,9 @@
         }).json;
         measurement-image = (pkgs.callPackage ./nix/not-os-image.nix {
           inherit not-os;
-          notos-config = ./nix/modules/measurement-config.nix;
+          notos-config = import ./nix/modules/measurement-config.nix {
+            inherit (self.nixosModules) linux-ioregionfd;
+          };
         }).json;
         linux_ioregionfd = pkgs.callPackage ./nix/linux-ioregionfd.nix { };
       in {

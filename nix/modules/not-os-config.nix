@@ -40,14 +40,6 @@
     "9pnet" "9p" "9pnet_virtio" "fscache"
   ];
 
-  boot.kernelPatches = [{
-    name = "xfs enable extra features";
-    patch = null;
-    extraConfig = ''
-      XFS_ONLINE_SCRUB y
-    '';
-  }];
-
   system.activationScripts.vmsh = ''
     mkdir /vmsh
     mount -t 9p vmsh /vmsh -o trans=virtio,msize=104857600
