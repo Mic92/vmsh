@@ -81,8 +81,7 @@
           notos-config = ./nix/modules/measurement-config.nix;
         }).json;
         linux_ioregionfd = pkgs.callPackage ./nix/linux-ioregionfd.nix { };
-      in
-      rec {
+      in {
         # default target for `nix build`
         defaultPackage = vmsh;
         packages = rec {
@@ -115,6 +114,7 @@
         packageSets = rec {
           linuxPackages_ioregionfd = pkgs.recurseIntoAttrs (pkgs.linuxPackagesFor linux_ioregionfd);
         };
+        checks = self.packages;
         # used by `nix develop`
         devShell = pkgs.mkShell {
           inherit (vmsh) buildInputs;
