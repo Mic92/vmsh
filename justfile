@@ -170,7 +170,7 @@ build-linux-shell:
 
 # Clean build directory of linux
 clean-linux: configure-linux
-  cd {{linux_dir}} && {kernel_shell}} "make -C {{linux_dir}} mrproper"
+  cd {{linux_dir}} && {{kernel_shell}} "make -C {{linux_dir}} mrproper"
 
 # Build linux kernel
 build-linux: configure-linux
