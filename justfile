@@ -308,7 +308,7 @@ qemu-notos image="not-os-image": build-linux
   from qemu import qemu_command
   #image = notos_image()
   print("run {{image}}")
-  image = notos_image_custom_kernel(".#{{image}}")
+  image = notos_image(".#{{image}}")
   cmd = qemu_command(image, "qmp.sock", ssh_port={{qemu_ssh_port}})
   print(" ".join(cmd))
   subprocess.run(cmd)

@@ -40,6 +40,14 @@
     "9pnet" "9p" "9pnet_virtio" "fscache"
   ];
 
+  boot.kernelPatches = [{
+    name = "xfs enable extra features";
+    patch = null;
+    extraConfig = ''
+      XFS_ONLINE_SCRUB y
+    '';
+  }];
+
   system.activationScripts.vmsh = ''
     mkdir /vmsh
     mount -t 9p vmsh /vmsh -o trans=virtio,msize=104857600
@@ -58,9 +66,9 @@
       sys:x:993:991::/var/empty:/run/current-system/sw/bin/nologin
       bin:x:994:992::/var/empty:/run/current-system/sw/bin/nologin
       daemon:x:995:993::/var/empty:/run/current-system/sw/bin/nologin
-      fsgqa2:x:996:995::/home/fsgqa2:/bin/sh
-      fsgqa:x:997:996::/home/fsgqa:/bin/sh
-      123456-fsgqa:x:998:996::/home/123456-fsgqa:/bin/sh
+      fsgqa2:x:996:995::/var/empty:/bin/sh
+      fsgqa:x:997:996::/var/empty:/bin/sh
+      123456-fsgqa:x:998:996::/var/empty:/bin/sh
       nobody:x:65534:65534:Unprivileged account (don't use!):/var/empty:/run/current-system/sw/bin/nologin
     '';
     "group".text = ''
