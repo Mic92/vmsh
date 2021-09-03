@@ -44,12 +44,15 @@ def excludes() -> List[str]:
     native_scratch = [
         # kernel needs XFS_ONLINE_SCRUB
         # "xfs/506",
+
         # this test requires a deprication warning to be absent, but it is present. I dont care about that though.
         "xfs/539",
+
         # works on ext4 but not on xfs
         # -Block grace time: 00:10; Inode grace time: 00:20
         # +Block grace time: DEF_TIME; Inode grace time: DEF_TIME
         "generic/594",
+
         # set grace to n but got grace n-2
         "generic/600",
     ]
