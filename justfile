@@ -47,6 +47,7 @@ passwordless_sudo:
 
 # Run unit and integration tests
 test: passwordless_sudo
+  nix flake check
   cargo test
   pytest -n $(nproc --ignore=2) -s tests
 
@@ -160,7 +161,7 @@ sign-drone:
 
 # Linux kernel development shell
 build-linux-shell:
-  nix develop .#kernel-deps-shell
+  nix develop #devShells.x86_64-linux.kernel-deps-shell
 
 # Clean build directory of linux
 clean-linux: configure-linux
@@ -196,7 +197,7 @@ passwd-image:
 
 # Build kernel/disk image for not os
 notos-image:
-  nix build --out-link {{nix_results}}/notos-image '.#not-os-image.json'
+  nix build --out-link {{nix_results}}/notos-image '.#not-os-image'
   jq < {{nix_results}}/notos-image
 
 # built image for qemu_nested.sh
@@ -302,7 +303,7 @@ qemu-notos image="not-os-image": build-linux
   from qemu import qemu_command
   #image = notos_image()
   print("run {{image}}")
-  image = notos_image_custom_kernel(".#{{image}}.json")
+  image = notos_image_custom_kernel(".#{{image}}")
   cmd = qemu_command(image, "qmp.sock", ssh_port={{qemu_ssh_port}})
   print(" ".join(cmd))
   subprocess.run(cmd)

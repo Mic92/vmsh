@@ -29,7 +29,7 @@ class Helpers:
 
     @staticmethod
     def notos_image() -> VmImage:
-        return notos_image(nix=".#measurement-image.json")
+        return notos_image(nix=".#measurement-image")
 
     @staticmethod
     def busybox_image() -> "contextlib._GeneratorContextManager[Path]":

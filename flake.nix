@@ -15,7 +15,7 @@
   };
 
   outputs = { self, nixpkgs, flake-utils, fenix, not-os }:
-    (flake-utils.lib.eachDefaultSystem (system:
+    (flake-utils.lib.eachSystem ["x86_64-linux"] (system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
         fenixPkgs = fenix.packages.${system};
@@ -72,38 +72,29 @@
           ]))
         ] ++ vmsh.nativeBuildInputs ++ measureDeps;
 
-        not-os-image = pkgs.callPackage ./nix/not-os-image.nix {
+        not-os-image = (pkgs.callPackage ./nix/not-os-image.nix {
           inherit not-os;
           notos-config = ./nix/modules/not-os-config.nix;
-        };
-        measurement-image = pkgs.callPackage ./nix/not-os-image.nix {
+        }).json;
+        measurement-image = (pkgs.callPackage ./nix/not-os-image.nix {
           inherit not-os;
           notos-config = ./nix/modules/measurement-config.nix;
-        };
-      in
-      rec {
+        }).json;
+        linux_ioregionfd = pkgs.callPackage ./nix/linux-ioregionfd.nix { };
+      in {
         # default target for `nix build`
         defaultPackage = vmsh;
         packages = rec {
-          inherit vmsh;
+          inherit vmsh linux_ioregionfd;
+
+          # see justfile/build-linux-shell
+          inherit kernel-deps;
 
           # used in tests/xfstests.py
           xfstests = pkgs.callPackage ./nix/xfstests.nix { };
 
-          # used in .drone.yml
-          ci-shell = pkgs.mkShell {
-            inherit (vmsh) buildInputs;
-            nativeBuildInputs = ciDeps;
-          };
-
-          # see justfile/build-linux-shell
-          inherit kernel-deps kernel-deps-shell;
-          linux_ioregionfd = pkgs.callPackage ./nix/linux-ioregionfd.nix { };
-          linuxPackages_ioregionfd = pkgs.recurseIntoAttrs (pkgs.linuxPackagesFor linux_ioregionfd);
-
           # see justfile/not-os
-          inherit not-os-image;
-          inherit measurement-image;
+          inherit not-os-image measurement-image;
 
           # see justfile/nixos-image
           nixos-image = pkgs.callPackage ./nix/nixos-image.nix {};
@@ -113,6 +104,20 @@
 
           phoronix-test-suite = pkgs.callPackage ./nix/phoronix.nix {};
         };
+        devShells  = rec {
+          # used in .drone.yml
+          ci-shell = pkgs.mkShell {
+            inherit (vmsh) buildInputs;
+            nativeBuildInputs = ciDeps;
+          };
+          # see justfile/build-linux-shell
+          inherit kernel-deps-shell;
+        };
+        # not supported by nix flakes yet, but useful
+        packageSets = rec {
+          linuxPackages_ioregionfd = pkgs.recurseIntoAttrs (pkgs.linuxPackagesFor linux_ioregionfd);
+        };
+        checks = self.packages.${system};
         # used by `nix develop`
         devShell = pkgs.mkShell {
           inherit (vmsh) buildInputs;
@@ -150,7 +155,7 @@
         };
       })) // {
         nixosModules.linux-ioregionfd = { pkgs, ... }: {
-          boot.kernelPackages = self.packages.${pkgs.system}.linuxPackages_ioregionfd;
+          boot.kernelPackages = self.packageSets.${pkgs.system}.linuxPackages_ioregionfd;
         };
         lib.nixpkgsRev = nixpkgs.shortRev;
       };

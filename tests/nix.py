@@ -40,7 +40,7 @@ def busybox_image() -> Iterator[Path]:
         yield Path(n.name)
 
 
-NOTOS_IMAGE = ".#not-os-image.json"
+NOTOS_IMAGE = ".#not-os-image"
 
 
 def notos_image(nix: str = NOTOS_IMAGE) -> VmImage:

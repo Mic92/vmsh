@@ -17,7 +17,7 @@ in {
     fsgqa2:x:1001:1002:Fsgqa:/:/bin/sh
     123456-fsgqa:x:1003:1003:Fsgqa:/:/bin/sh
   '';
-  group.text = ''
+  environment.etc.group.text = ''
     daemon:x:1:
     fsgqa:x:1001:
     fsgqa2:x:1002:
