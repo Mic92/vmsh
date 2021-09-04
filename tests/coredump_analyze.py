@@ -280,9 +280,17 @@ def get_page_table_addr(sregs: KVMSRegs) -> int:
         return sregs.cr3
 
 
+@dataclass
+class Kernel:
+    # range in kaslr where we found mapped pages
+    memory: MappedMemory
+    # largest gap virtual memory.
+    largest_gap: Interval
+
+
 def find_linux_kernel_memory(
     pml4: PageTable, mem: Memory, mem_range: Interval
-) -> Optional[MappedMemory]:
+) -> Optional[Kernel]:
     """
     Return virtual and physical memory
     """
@@ -291,9 +299,11 @@ def find_linux_kernel_memory(
     # pdt = page_table(mem, pml4.entries[i] & PHYS_ADDR_MASK)
     it = iter(pml4)
     first: Optional[PageTableEntry] = None
+    largest_gap = Interval(0, 0)
     for entry in it:
         if entry.virt_addr >= mem_range.begin:
             first = entry
+            largest_gap = Interval(mem_range.begin, entry.virt_addr)
             break
     if first is None:
         return None
@@ -301,14 +311,11 @@ def find_linux_kernel_memory(
     for entry in it:
         if entry.virt_addr > mem_range.end:
             break
-        if last.phys_addr + last.size != entry.phys_addr:
-            print(
-                "Kernel is not in physical-continous memory. Assuming vmsh memory allocation."
-            )
-            break
+        if largest_gap.length() < entry.virt_addr - (last.virt_addr + last.size):
+            largest_gap = Interval(last.virt_addr, entry.virt_addr)
         last = entry
     phys_mem = mem[first.phys_addr : last.phys_addr + last.size]
-    return phys_mem.map(first.virt_addr)
+    return Kernel(phys_mem.map(first.virt_addr), largest_gap)
 
 
 # FIXME: on many archs, especially 32-bit ones, this layout is used!
@@ -435,24 +442,28 @@ def inspect_coredump(fd: IO[bytes]) -> None:
         print("program runs userspace")
     print(f"rip=0x{core.regs[0].rip:x}")
     pml4 = page_table(segments, pt_addr)
-    print("look for kernel in...")
     # if you want to dump the page table
-    # for entry in pml4:
-    #    print(entry)
-    kernel_memory = find_linux_kernel_memory(pml4, kernel_mem, LINUX_KERNEL_KASLR_RANGE)
-    if kernel_memory:
-        print(f"Found at {kernel_memory.start:x}:{kernel_memory.end:x}")
+    for entry in pml4:
+        print(entry)
+    print("look for kernel in...")
+    kernel = find_linux_kernel_memory(pml4, kernel_mem, LINUX_KERNEL_KASLR_RANGE)
+    if kernel:
+        print(f"Found at {kernel.memory.start:x}:{kernel.memory.end:x}")
+        gap = kernel.largest_gap
+        print(
+            f"Largest gap found is {gap.length()} bytes large at 0x{gap.begin:x}-0x{gap.end:x}"
+        )
     else:
         print("could not find kernel!")
         sys.exit(1)
 
-    strings_start_addr, strings_end_addr = find_ksymtab_strings_section(kernel_memory)
-    ksymtab_strings_section = kernel_memory[strings_start_addr:strings_end_addr]
+    strings_start_addr, strings_end_addr = find_ksymtab_strings_section(kernel.memory)
+    ksymtab_strings_section = kernel.memory[strings_start_addr:strings_end_addr]
     string_num = count_ksymtab_strings(ksymtab_strings_section)
     print(
         f"found ksymtab_string at physical 0x{strings_start_addr:x}:0x{strings_end_addr:x} with {string_num} strings"
     )
-    symbols = get_kernel_symbols(kernel_memory, ksymtab_strings_section)
+    symbols = get_kernel_symbols(kernel.memory, ksymtab_strings_section)
     print(f"found ksymtab with {len(symbols)} functions")
 
 

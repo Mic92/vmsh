@@ -287,6 +287,9 @@ pub struct Kernel {
     pub range: Range<usize>,
     pub memory_sections: Vec<MappedMemory>,
     pub symbols: HashMap<String, usize>,
+    /// Largest gap in virtual memory - this is our most potent canidate for
+    /// code injection
+    pub largest_gap: Range<usize>,
 }
 
 impl Kernel {
@@ -299,7 +302,7 @@ impl Kernel {
 }
 
 pub fn find_kernel(guest_mem: &GuestMem, hv: &Hypervisor) -> Result<Kernel> {
-    let memory_sections = try_with!(
+    let (memory_sections, largest_gap) = try_with!(
         guest_mem.find_kernel_sections(hv, LINUX_KERNEL_KASLR_RANGE),
         "could not find Linux kernel in VM memory"
     );
@@ -348,5 +351,6 @@ pub fn find_kernel(guest_mem: &GuestMem, hv: &Hypervisor) -> Result<Kernel> {
         range: kernel_start..kernel_end,
         memory_sections,
         symbols,
+        largest_gap,
     })
 }
