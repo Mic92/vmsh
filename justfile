@@ -141,6 +141,7 @@ configure-linux: clone-linux
        --enable KVM_AMD \
        --enable KVM_IOREGION \
        --enable BPF_SYSCALL \
+       --enable CONFIG_MODVERSIONS \
        --enable IKHEADERS \
        --enable IKCONFIG_PROC \
        --enable VIRTIO_MMIO \
