@@ -270,11 +270,17 @@ cloud-hypervisor: build-linux nixos-image
 stop-cloud-hypervisor:
   curl --unix-socket {{hypervisor_socket}} -X PUT http://localhost/api/v1/vm.power-button
 
+# checkout and build upstream firecracker kernel
+firecracker-kernel:
+   curl https://raw.githubusercontent.com/firecracker-microvm/firecracker/main/resources/microvm-kernel-x86_64.config > {{linux_dir}}/.config
+   git -C {{linux_dir}} fetch https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux-stable.git v4.14.245
+   git -C {{linux_dir}} checkout v4.14.245
+   just build-linux
+
 firecracker: build-linux nixos-image
   firectl -m512 -c1 --kernel={{linux_dir}}/vmlinux \
-  --kernel-opts "console=ttyS0" \
-  --root-drive={{linux_dir}}/nixos.ext4
-
+    --kernel-opts "console=ttyS0" \
+    --root-drive={{linux_dir}}/nixos.ext4
 
 crosvm: build-linux nixos-image
   crosvm run -m500 -c1 --rwdisk {{linux_dir}}/nixos.ext4 \
