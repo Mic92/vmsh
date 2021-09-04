@@ -181,7 +181,7 @@ impl GuestMem {
         &self,
         hv: &Hypervisor,
         range: Range<usize>,
-    ) -> Result<Vec<MappedMemory>> {
+    ) -> Result<(Vec<MappedMemory>, Range<usize>)> {
         let cpl = self.regs.cs & 3;
         if cpl == 3 {
             bail!("program stopped in userspace. Linux kernel might be not mapped in thise mode");
@@ -195,6 +195,8 @@ impl GuestMem {
 
         let mut iter = pml4.iter(hv, Arc::clone(&self.maps), range.clone());
         let mut sections: Vec<_> = vec![];
+
+        let mut largest_gap = 0..0;
         for e in &mut iter {
             let entry = try_with!(e, "cannot read page table");
             if entry.virt_addr as usize > range.start {
@@ -205,19 +207,27 @@ impl GuestMem {
                     "no memslot of physical address {} of page table"
                 );
                 sections.push(mapped_memory(&entry, host_offset));
+                largest_gap = range.start..(entry.virt_addr as usize);
                 break;
             }
         }
         if sections.is_empty() {
             bail!("no linux kernel found in page table");
         }
+
         for e in &mut iter {
             let entry = try_with!(e, "cannot read page table");
             //info!("{:#x}/{:#x}: {:?}", entry.entry.addr(), entry.virt_addr, &entry.entry.flags());
+            // break if we run out of the KASLR range
             if entry.virt_addr as usize >= range.end {
                 break;
             }
+
             let last = sections.last_mut().unwrap();
+            if largest_gap.len() < entry.virt_addr as usize - (last.virt_start as usize + last.len)
+            {
+                largest_gap = range.start..(entry.virt_addr as usize);
+            }
             if last.prot == prot_flags(entry.entry.flags()) {
                 last.len += huge_page_size(entry.level);
             } else {
@@ -229,7 +239,7 @@ impl GuestMem {
                 sections.push(mapped_memory(&entry, host_offset));
             }
         }
-        Ok(sections)
+        Ok((sections, largest_gap))
     }
 }
 

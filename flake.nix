@@ -2,10 +2,10 @@
   description = "Spawn debug shells in virtual machines";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
-    # TODO: switch back when https://github.com/cleverca22/not-os/pull/19 is merged
-    #not-os.url = "github:cleverca22/not-os";
-    not-os.url = "github:Mic92/not-os/overridable-kernel";
+    # switch back to nixpkgs-unstable once hydra finishes
+    # nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+    nixpkgs.url = "github:NixOS/nixpkgs/master";
+    not-os.url = "github:cleverca22/not-os";
     not-os.flake = false;
     flake-utils.url = "github:numtide/flake-utils";
     fenix = {

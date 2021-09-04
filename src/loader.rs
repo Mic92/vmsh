@@ -88,7 +88,7 @@ impl<'a> Loader<'a> {
             ),
         };
 
-        let vbase = kernel.range.end;
+        let vbase = kernel.largest_gap.start;
 
         let mut syms = sym_entries
             .iter()
@@ -148,7 +148,7 @@ impl<'a> Loader<'a> {
     }
 
     fn vbase(&self) -> usize {
-        self.kernel.range.end
+        self.kernel.largest_gap.start
     }
 
     fn write_stage1_args(

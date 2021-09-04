@@ -38,16 +38,16 @@
     },
     "nixpkgs": {
       "locked": {
-        "lastModified": 1629827819,
-        "narHash": "sha256-cysfDbdjTluO+UtuT6iRrf/2Lt7Qo/qRlpz9F5rz3Sc=",
+        "lastModified": 1630760642,
+        "narHash": "sha256-DQbGFWBIs84C/jUqdOQEXOjUVk6k8gvy8st1OZ2rfY0=",
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "503209808cd613daed238e21e7a18ffcbeacebe3",
+        "rev": "41ddbafe7c831b50b42c6ad44af578c4e112cd70",
         "type": "github"
       },
       "original": {
         "owner": "NixOS",
-        "ref": "nixpkgs-unstable",
+        "ref": "master",
         "repo": "nixpkgs",
         "type": "github"
       }
@@ -55,16 +55,15 @@
     "not-os": {
       "flake": false,
       "locked": {
-        "lastModified": 1630673293,
-        "narHash": "sha256-nT7JFxln3ink75M+35lGaANaVTSgzB8pQa3FtCPz9A0=",
-        "owner": "Mic92",
+        "lastModified": 1630679604,
+        "narHash": "sha256-LuBfCWZpHR4EI5cS9/xo9mRNl4RR4qPGTbTDeRjovTE=",
+        "owner": "cleverca22",
         "repo": "not-os",
-        "rev": "e1f305dfbc7e5be3fa4775afebe4e65a950ca948",
+        "rev": "1b1feb12a44daf57885d3167acd647dea7a1b29f",
         "type": "github"
       },
       "original": {
-        "owner": "Mic92",
-        "ref": "overridable-kernel",
+        "owner": "cleverca22",
         "repo": "not-os",
         "type": "github"
       }

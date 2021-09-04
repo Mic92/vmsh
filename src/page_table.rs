@@ -536,8 +536,20 @@ pub struct PageTableIteratorValue {
     pub entry: PageTableEntry,
 }
 
+impl PageTableIteratorValue {
+    /// Size of mapped page
+    pub fn size(&self) -> u64 {
+        assert!(
+            self.entry.flags().contains(PageTableFlags::PRESENT)
+                && (self.level == 3 || self.entry.flags().contains(PageTableFlags::HUGE_PAGE))
+        );
+        1 << get_shift(self.level)
+    }
+}
+
 impl<'a> Iterator for PageTableIterator<'a> {
     type Item = Result<PageTableIteratorValue>;
+
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(inner) = &mut self.inner {
             let item = inner.next();
