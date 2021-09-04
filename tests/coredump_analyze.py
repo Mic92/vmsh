@@ -332,7 +332,7 @@ def get_name_addr(mem: MappedMemory, idx: int) -> int:
     addr = idx - sym_size
     sym = kernel_symbol.from_buffer_copy(mem[addr:idx].data)
     name_addr = sym.name_offset + kernel_symbol.name_offset.offset + addr
-    print(f"0x{mem.virt_addr(addr):x} - 0x{name_addr:x} ({sym.name_offset:=})")
+    # print(f"0x{mem.virt_addr(addr):x} - 0x{name_addr:x} ({sym.name_offset:=})")
     return name_addr
 
 
@@ -347,12 +347,13 @@ def get_ksymtab_start(
     sym_size = ct.sizeof(kernel_symbol)
     # each entry in kcrctab is 32 bytes
     step_size = ct.sizeof(ct.c_int32)
+    print(f"0x{mem.virt_addr(ksymtab_strings.start):x}")
     for ii in range(ksymtab_strings.start, mem.start, -step_size):
         name_addr = get_name_addr(mem, ii)
 
         if ksymtab_strings.inrange(name_addr) and ii - mem.start > step_size:
             name_addr_2 = get_name_addr(mem, ii - sym_size)
-            if ksymtab_strings.inrange(name_addr_2):
+            if name_addr_2 != name_addr and ksymtab_strings.inrange(name_addr_2):
                 return ii
     return None
 
@@ -414,7 +415,7 @@ def get_kernel_symbols(
 
         name = ksymtab_strings[name_addr : name_addr + name_len].data.decode("ascii")
         syms[name] = value_addr
-        # print(f"{name} @ 0x{value_addr:x}")
+        print(f"{name} @ 0x{value_addr:x}")
     return syms
 
 
@@ -435,8 +436,9 @@ def inspect_coredump(fd: IO[bytes]) -> None:
     print(f"rip=0x{core.regs[0].rip:x}")
     pml4 = page_table(segments, pt_addr)
     print("look for kernel in...")
-    for entry in pml4:
-        print(entry)
+    # if you want to dump the page table
+    # for entry in pml4:
+    #    print(entry)
     kernel_memory = find_linux_kernel_memory(pml4, kernel_mem, LINUX_KERNEL_KASLR_RANGE)
     if kernel_memory:
         print(f"Found at {kernel_memory.start:x}:{kernel_memory.end:x}")

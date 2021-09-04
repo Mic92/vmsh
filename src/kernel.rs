@@ -1,4 +1,4 @@
-use log::{debug, info, trace};
+use log::{debug, info};
 use nix::sys::mman::ProtFlags;
 use simple_error::{require_with, try_with, SimpleError};
 use std::collections::HashMap;
@@ -40,7 +40,6 @@ fn find_ksymtab_strings_section(mem: &[u8]) -> Option<Range<usize>> {
     // we round up the start of the string to the nearest 4 bytes,
     // as ksymtab or kcrctab are always four byte aligned
 
-    //let start = round_up(idx - start_offset + 1, 4);
     let start = round_up(idx - start_offset, 4);
 
     let end_offset = mem[idx..]
@@ -88,30 +87,42 @@ unsafe fn cast_kernel_sym(mem: &[u8]) -> &kernel_symbol {
     &*mem::transmute::<_, *const kernel_symbol>(mem.as_ptr())
 }
 
+fn check_single_kernel_sym(
+    mem: &[u8],
+    ii: usize,
+    sym_size: usize,
+    strings_range: &Range<usize>,
+) -> Option<usize> {
+    let start = ii - sym_size;
+    let sym = unsafe { cast_kernel_sym(&mem[start..ii]) };
+    let field_offset =
+        &sym.name_offset as *const i32 as usize - sym as *const kernel_symbol as usize;
+    let sum = start
+        .checked_add(sym.name_offset as usize)
+        .and_then(|s| s.checked_add(field_offset));
+    if let Some(name_idx) = sum {
+        if strings_range.contains(&name_idx) {
+            return Some(name_idx);
+        }
+    }
+    None
+}
+
 fn check_kernel_sym(
     mem: &[u8],
     strings_range: &Range<usize>,
     sym_size: usize,
     ii: usize,
 ) -> Option<usize> {
-    if sym_size > ii {
+    if 2 * sym_size > ii {
         return None;
     }
-    let sym = unsafe { cast_kernel_sym(&mem[ii - sym_size..ii]) };
-    let field_offset =
-        &sym.name_offset as *const i32 as usize - sym as *const kernel_symbol as usize;
-    let name_idx = match ii
-        .checked_add(sym.name_offset as usize)
-        .and_then(|s| s.checked_add(field_offset))
-    {
-        Some(idx) => idx,
-        None => return None,
-    };
-    if strings_range.contains(&name_idx) && ii > sym_size {
-        // FIXME this is incorrect
-        let name_idx_2 = ii + (sym.name_offset as usize) + field_offset - sym_size;
-        if strings_range.contains(&name_idx_2) {
-            return Some(sym_size);
+    if let Some(addr1) = check_single_kernel_sym(mem, ii, sym_size, strings_range) {
+        if let Some(addr2) = check_single_kernel_sym(mem, ii - sym_size, sym_size, strings_range) {
+            // this heuristic helps if we accidentially point to the namespace field
+            if addr1 != addr2 {
+                return Some(sym_size);
+            }
         }
     }
     None
@@ -221,10 +232,13 @@ fn get_kernel_symbols(
         "no ksymtab found"
     );
 
-    trace!(
-        "found ksymtab {} bytes before ksymtab_strings",
-        ksymtab_strings.start - start
+    info!(
+        "found ksymtab {} bytes before ksymtab_strings at 0x{:x}",
+        ksymtab_strings.start - start,
+        start + mem_base
     );
+
+    let mut sym_count = 0;
 
     if sym_size == size_of::<kernel_symbol_4_18>() {
         let virt_range = ksymtab_strings.start + mem_base..ksymtab_strings.end + mem_base;
@@ -234,6 +248,7 @@ fn get_kernel_symbols(
                 break;
             }
             let name = symbol_name(mem, sym.name as usize - mem_base)?;
+            sym_count += 1;
             debug!("{} @ {:x}", name, sym.value);
             syms.insert(name, sym.value as usize);
         }
@@ -258,10 +273,12 @@ fn get_kernel_symbols(
             }
             let value_ptr = apply_offset(mem_base + sym_start + value_offset, sym.value_offset);
             let name = symbol_name(mem, name_idx)?;
+            sym_count += 1;
             debug!("{} @ {:x}", name, value_ptr);
             syms.insert(name, value_ptr);
         }
     }
+    info!("found {} kernel symbols", sym_count);
 
     Ok(syms)
 }
