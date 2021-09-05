@@ -42,7 +42,7 @@ fn vmid_type_arg() -> Arg<'static, 'static> {
         .empty_values(false)
         .require_delimiter(true)
         .value_name("TYPE")
-        .help("VM id lookups to try (sperated by ','). [default: all]")
+        .help("VM id lookups to try (seperated by ','). [default: all]")
         .possible_values(VM_TYPES)
 }
 
