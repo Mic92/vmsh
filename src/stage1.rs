@@ -103,6 +103,7 @@ impl Stage1 {
         driver_status: DriverStatus,
         result_sender: &SyncSender<()>,
     ) -> Result<InterrutableThread<(), ()>> {
+        info!("spawn stage1 in vm at ip {:#x}", self.regs.ip());
         try_with!(
             hv.set_regs(&hv.vcpus[0], &self.regs),
             "failed to set cpu registers"

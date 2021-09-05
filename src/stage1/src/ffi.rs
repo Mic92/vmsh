@@ -170,7 +170,17 @@ extern "C" {
         envp: *mut *mut c_char,
         wait: c_int,
     ) -> c_int;
-    pub static system_wq: *mut workqueue_struct;
     pub fn queue_work_on(cpu: c_int, wq: *mut workqueue_struct, work: *mut work_struct) -> bool;
     pub fn usleep_range(min: c_ulong, max: c_ulong);
+
+    pub fn kthread_create_on_node(
+        threadfn: unsafe extern "C" fn(data: *mut c_void) -> c_int,
+        data: *mut c_void,
+        node: c_int,
+        namefmt: *const c_char,
+        ...
+    ) -> *mut task_struct;
+
+    pub fn wake_up_process(p: *mut task_struct);
+    pub fn __symbol_get(symbol: *const c_char) -> *mut c_void;
 }

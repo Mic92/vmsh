@@ -403,7 +403,7 @@ unsafe fn run_stage2() -> Result<(), ()> {
     Ok(())
 }
 
-unsafe extern "C" fn spawn_stage2() -> c_int {
+unsafe extern "C" fn spawn_stage2() {
     //for (i, a) in VMSH_STAGE1_ARGS.argv.iter().enumerate() {
     //    if *a == ptr::null_mut() {
     //        break;
@@ -412,7 +412,7 @@ unsafe extern "C" fn spawn_stage2() -> c_int {
     //}
     if VMSH_STAGE1_ARGS.device_status == DeviceState::Undefined {
         printkln!("stage1: device is in undefined state, stopping...");
-        return 0;
+        return;
     }
     let mut retries = 0;
     while VMSH_STAGE1_ARGS.device_status == DeviceState::Initializing {
@@ -426,13 +426,13 @@ unsafe extern "C" fn spawn_stage2() -> c_int {
         if retries == 20 {
             printkln!("stage1: timeout waiting for device to be initialized");
             VMSH_STAGE1_ARGS.driver_status = DeviceState::Error;
-            return 0;
+            return;
         }
     }
     VMSH_STAGE1_ARGS.driver_status = DeviceState::Initializing;
     if VMSH_STAGE1_ARGS.device_status == DeviceState::Error {
         printkln!("stage1: device error detected, stopping...");
-        return 0;
+        return;
     }
     printkln!("stage1: initializing drivers");
     let res = run_stage2();
@@ -444,7 +444,7 @@ unsafe extern "C" fn spawn_stage2() -> c_int {
             d.take();
         });
         VMSH_STAGE1_ARGS.driver_status = DeviceState::Error;
-        return 0;
+        return;
     };
 
     while VMSH_STAGE1_ARGS.device_status == DeviceState::Ready {
@@ -455,7 +455,6 @@ unsafe extern "C" fn spawn_stage2() -> c_int {
         d.take();
     });
     VMSH_STAGE1_ARGS.driver_status = DeviceState::Terminating;
-    0
 }
 extern "C" {
     #[link(name = "trampoline", kind = "static")]
@@ -485,14 +484,18 @@ static mut THREAD_SPAWN_WORK: ffi::work_struct = ffi::work_struct {
 };
 
 #[no_mangle]
-fn init_vmsh() -> c_int {
+fn init_vmsh() {
     printkln!("stage1: init");
-
     unsafe {
+        let wq: *mut *mut ffi::workqueue_struct =
+            ffi::__symbol_get(c_str!("system_wq").as_ptr() as *mut c_char)
+                as *mut *mut ffi::workqueue_struct;
+        if wq.is_null() {
+            printkln!("stage1: failed to get reference on system work queue (system_wq)");
+            return;
+        }
         THREAD_SPAWN_WORK.entry.prev = &mut THREAD_SPAWN_WORK.entry;
         THREAD_SPAWN_WORK.entry.next = &mut THREAD_SPAWN_WORK.entry;
-        ffi::queue_work_on(0, ffi::system_wq as *mut c_void, &mut THREAD_SPAWN_WORK);
+        ffi::queue_work_on(0, *wq as *mut c_void, &mut THREAD_SPAWN_WORK);
     };
-
-    0
 }
