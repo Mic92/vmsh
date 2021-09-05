@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use chlorine::{c_char, c_int, c_longlong, c_uint, c_ulong, c_ushort, c_void, size_t};
+use chlorine::{c_char, c_int, c_long, c_longlong, c_uint, c_ulong, c_ushort, c_void, size_t};
 
 // kernel constants and definition
 pub const IORESOURCE_MEM: c_ulong = 0x00000200;
@@ -118,6 +118,32 @@ pub struct platform_device_info_5_0 {
     pub properties: *const property_entry,
 }
 
+type atomic_long_t = c_long;
+
+#[repr(C)]
+pub struct list_head {
+    pub next: *mut list_head,
+    pub prev: *mut list_head,
+}
+
+type work_func_t = unsafe extern "C" fn(work: *mut work_struct);
+
+#[repr(C)]
+pub struct work_struct {
+    pub data: atomic_long_t,
+    pub entry: list_head,
+    pub func: work_func_t,
+    // in case this function grows in future
+    pub padding: [u8; 100],
+}
+
+#[repr(C)]
+pub struct execute_work {
+    pub work: work_struct,
+}
+
+pub type workqueue_struct = c_void;
+
 extern "C" {
     pub fn platform_device_register_full(
         pdevinfo: *const platform_device_info,
@@ -144,15 +170,7 @@ extern "C" {
         envp: *mut *mut c_char,
         wait: c_int,
     ) -> c_int;
-
-    pub fn kthread_create_on_node(
-        threadfn: unsafe extern "C" fn(data: *mut c_void) -> c_int,
-        data: *mut c_void,
-        node: c_int,
-        namefmt: *const c_char,
-        ...
-    ) -> *mut task_struct;
-
-    pub fn wake_up_process(p: *mut task_struct);
+    pub static system_wq: *mut workqueue_struct;
+    pub fn queue_work_on(cpu: c_int, wq: *mut workqueue_struct, work: *mut work_struct) -> bool;
     pub fn usleep_range(min: c_ulong, max: c_ulong);
 }

@@ -403,7 +403,7 @@ unsafe fn run_stage2() -> Result<(), ()> {
     Ok(())
 }
 
-unsafe extern "C" fn spawn_stage2(_arg: *mut c_void) -> c_int {
+unsafe extern "C" fn spawn_stage2() -> c_int {
     //for (i, a) in VMSH_STAGE1_ARGS.argv.iter().enumerate() {
     //    if *a == ptr::null_mut() {
     //        break;
@@ -468,29 +468,31 @@ unsafe fn linker_hack() {
     _init_vmsh();
 }
 
+extern "C" fn stage2_worker(_work: *mut ffi::work_struct) {
+    printkln!("stage1: spawn stage2");
+    unsafe { spawn_stage2() };
+    printkln!("stage1: finished");
+}
+
+static mut THREAD_SPAWN_WORK: ffi::work_struct = ffi::work_struct {
+    data: 0,
+    entry: ffi::list_head {
+        next: ptr::null_mut(),
+        prev: ptr::null_mut(),
+    },
+    func: stage2_worker,
+    padding: [0; 100],
+};
+
 #[no_mangle]
 fn init_vmsh() -> c_int {
     printkln!("stage1: init");
 
-    // We cannot close a file synchronusly outside of a kthread
-    // Within a kthread we can use `flush_delayed_fput`
-    let thread = unsafe {
-        ffi::kthread_create_on_node(
-            spawn_stage2,
-            ptr::null_mut(),
-            0,
-            c_str!("vmsh-stage1").as_ptr() as *const c_char,
-        )
+    unsafe {
+        THREAD_SPAWN_WORK.entry.prev = &mut THREAD_SPAWN_WORK.entry;
+        THREAD_SPAWN_WORK.entry.next = &mut THREAD_SPAWN_WORK.entry;
+        ffi::queue_work_on(0, ffi::system_wq as *mut c_void, &mut THREAD_SPAWN_WORK);
     };
-    if is_err_value(thread) {
-        printkln!(
-            "stage1: failed to spawn kernel thread: %d",
-            err_value(thread)
-        );
-        return err_value(thread) as c_int;
-    }
-    unsafe { ffi::wake_up_process(thread) };
-    printkln!("stage1: finished");
 
     0
 }
