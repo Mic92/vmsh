@@ -3,10 +3,14 @@ import conftest
 import os
 
 
-def test_attach(helpers: conftest.Helpers, attach_repetitions: int = 1, vcpus: int = 1, mmio: str = "wrap_syscall") -> None:
+def test_attach(
+    helpers: conftest.Helpers,
+    attach_repetitions: int = 1,
+    vcpus: int = 1,
+    mmio: str = "wrap_syscall",
+) -> None:
     with helpers.busybox_image() as img, helpers.spawn_qemu(
-        helpers.notos_image(),
-        extra_args=["-smp", str(vcpus)]
+        helpers.notos_image(), extra_args=["-smp", str(vcpus)]
     ) as vm:
         vm.wait_for_ssh()
         for i in range(attach_repetitions):

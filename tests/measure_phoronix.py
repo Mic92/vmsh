@@ -1,6 +1,7 @@
 from contextlib import contextmanager
 import measure_helpers as util
-from typing import Iterator, List, Dict, IO
+from confmeasure import Helpers
+from typing import Iterator, List, Dict, IO, Union
 from pathlib import Path
 from dataclasses import dataclass
 import subprocess
@@ -8,6 +9,7 @@ import pandas as pd
 import phoronix
 
 from nix import nix_build
+from qemu import QemuVm
 
 
 @contextmanager
@@ -52,10 +54,8 @@ def phoronix_command(phoronix_path: Path, skip_tests: List[str]) -> Command:
 REPORT_PATH = Path("test-results/vmsh/composite.xml")
 
 
-def parse_result(report_path: Path, identifier: str) -> pd.DataFrame:
-    if not report_path.exists():
-        raise OSError(f"phoronix did not create a report at {report_path}")
-    df = phoronix.parse_xml(report_path)
+def parse_result(report: Union[Path, str], identifier: str) -> pd.DataFrame:
+    df = phoronix.parse_xml(report)
     df["identifier"] = identifier
     return df
 
@@ -66,21 +66,22 @@ def yes_please() -> IO[bytes]:
     return yes_please.stdout
 
 
+def link_phoronix_test_suite(test_suite: Path) -> List[str]:
+    return [
+        "ln",
+        "-sfn",
+        str(test_suite),
+        "/root/.phoronix-test-suite",
+    ]
+
+
 def native(skip_tests: List[str]) -> pd.DataFrame:
     with fresh_fs_ssd():
         test_suite = util.HOST_DIR_PATH.joinpath("phoronix-test-suite")
         report_path = test_suite.joinpath(REPORT_PATH)
         cmd = phoronix_command(test_suite, skip_tests)
         # this is gross but so is phoronix test suite
-        util.run(
-            [
-                "sudo",
-                "ln",
-                "-sfn",
-                str(test_suite),
-                "/root/.phoronix-test-suite",
-            ]
-        )
+        util.run(["sudo"] + link_phoronix_test_suite(test_suite))
         util.run(
             ["sudo", "taskset", "--cpu-list", "0", "env"] + cmd.env_vars + cmd.args,
             extra_env=cmd.env,
@@ -90,24 +91,40 @@ def native(skip_tests: List[str]) -> pd.DataFrame:
             # we check at the end if phoronix passed tests when we parse results
             check=False,
         )
+        if not report_path.exists():
+            raise OSError(f"phoronix did not create a report at {report_path}")
         return parse_result(report_path, "native")
 
 
-# def qemu_blk(helpers: confmeasure.Helpers, stats: Dict[str, List[Any]]) -> None:
-#    with util.fresh_fs_ssd(), util.testbench(
-#        helpers, with_vmsh=False, ioregionfd=False, mounts=False
-#    ) as vm:
-#        test_suite = util.GUEST_QEMUBLK_PATH.joinpath("phoronix-test-suite")
-#        report_path = test_suite.joinpath(REPORT_PATH)
-#        vm.ssh_cmd(cmd, check=True)
-#        pass
+def run_phoronix(
+    identifier: str, vm: QemuVm, mountpoint: Path, skip_tests: List[str]
+) -> pd.DataFrame:
+    test_suite = mountpoint.joinpath("phoronix-test-suite")
+    report_path = test_suite.joinpath(REPORT_PATH)
+    vm.ssh_cmd(link_phoronix_test_suite(test_suite))
+    cmd = phoronix_command(test_suite, skip_tests)
+    vm.ssh_cmd(cmd.args, extra_env=cmd.env, stdout=None, stdin=yes_please())
+    proc = vm.ssh_cmd(["cat", str(report_path)])
+    return parse_result(proc.stdout, identifier)
 
 
-# def vmsh_blk(helpers: confmeasure.Helpers, stats: Dict[str, List[Any]]) -> None:
-#    with util.fresh_fs_ssd(), util.testbench(
-#        helpers, with_vmsh=True, ioregionfd=True, mounts=False
-#    ) as vm:
-#        pass
+def qemu_blk(skip_tests: List[str]) -> pd.DataFrame:
+    with fresh_fs_ssd(), util.testbench(
+        Helpers(), with_vmsh=False, ioregionfd=False, mounts=True
+    ) as vm:
+        return run_phoronix(
+            "qemu-blk", vm, mountpoint=util.GUEST_QEMUBLK_PATH, skip_tests=skip_tests
+        )
+
+
+def vmsh_blk(skip_tests: List[str]) -> pd.DataFrame:
+    skip_tests = "fio,sqlite,dbench,ior,compilebench,postmark".split(",")
+    with fresh_fs_ssd(), util.testbench(
+        Helpers(), with_vmsh=True, ioregionfd=True, mounts=True
+    ) as vm:
+        return run_phoronix(
+            "vmsh-blk", vm, mountpoint=util.GUEST_JAVDEV_PATH, skip_tests=skip_tests
+        )
 
 
 STATS_PATH = util.MEASURE_RESULTS.joinpath("phoronix-stats.tsv")
@@ -116,7 +133,7 @@ STATS_PATH = util.MEASURE_RESULTS.joinpath("phoronix-stats.tsv")
 def main() -> None:
     util.check_ssd()
     util.check_intel_turbo()
-    benchmarks = [("native", native)]
+    benchmarks = [("native", native), ("vmsh_blk", vmsh_blk), ("qemu_blk", qemu_blk)]
     df = None
     if STATS_PATH.exists():
         df = pd.read_csv(STATS_PATH, sep="\t")
@@ -126,6 +143,9 @@ def main() -> None:
         skip_tests = "fio,sqlite,dbench,ior,compilebench,postmark".split(",")
         if df is not None:
             skip_tests = list(df[df.identifier == name].benchmark_name.unique())
+            if len(skip_tests) == 6:
+                # result of len(df.benchmark_name.unique())
+                continue
         new_df = benchmark(skip_tests)
         if df is not None:
             df = pd.concat([df, new_df])

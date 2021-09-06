@@ -12,10 +12,10 @@ from pathlib import Path
 from queue import Queue
 from shlex import quote
 from tempfile import TemporaryDirectory
-from typing import Any, Dict, Iterator, List, Optional
+from typing import Any, Dict, Iterator, List, Text
 
 from root import TEST_ROOT, PROJECT_ROOT
-from procs import run, pprint_cmd
+from procs import run, pprint_cmd, ChildFd
 
 
 @dataclass
@@ -171,9 +171,9 @@ class QemuVm:
 
     def ssh_Popen(
         self,
-        stdout: Optional[int] = subprocess.PIPE,
-        stderr: Optional[int] = None,
-        stdin: Optional[int] = None,
+        stdout: ChildFd = subprocess.PIPE,
+        stderr: ChildFd = None,
+        stdin: ChildFd = None,
     ) -> subprocess.Popen:
         """
         opens a background process with an interactive ssh session
@@ -187,11 +187,11 @@ class QemuVm:
         argv: List[str],
         extra_env: Dict[str, str] = {},
         check: bool = True,
-        stdin: Optional[int] = None,
-        stdout: Optional[int] = subprocess.PIPE,
-        stderr: Optional[int] = None,
+        stdin: ChildFd = None,
+        stdout: ChildFd = subprocess.PIPE,
+        stderr: ChildFd = None,
         verbose: bool = True,
-    ) -> subprocess.CompletedProcess:
+    ) -> "subprocess.CompletedProcess[Text]":
         """
         @return: CompletedProcess.stderr/stdout contains output of `cmd` which
         is run in the vm via ssh.

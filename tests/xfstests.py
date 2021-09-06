@@ -44,15 +44,12 @@ def excludes() -> List[str]:
     native_scratch = [
         # kernel needs XFS_ONLINE_SCRUB
         # "xfs/506",
-
         # this test requires a deprication warning to be absent, but it is present. I dont care about that though.
         "xfs/539",
-
         # works on ext4 but not on xfs
         # -Block grace time: 00:10; Inode grace time: 00:20
         # +Block grace time: DEF_TIME; Inode grace time: DEF_TIME
         "generic/594",
-
         # set grace to n but got grace n-2
         "generic/600",
     ]
@@ -62,18 +59,15 @@ def excludes() -> List[str]:
         # kernel printlns trace when this is run the first time
         # looks like an actual kernel bug
         # "generic/623"
-
         # wrong error code, probably fine if we used another mount
         # libmount throws error but instead "Structure needs cleaning." should happen.
         # -mount: SCRATCH_MNT: mount(2) system call failed: Structure needs cleaning.
         # +mount: SCRATCH_MNT: wrong fs type, bad option, bad superblock on SCRATCH_DEV, missing codepage or helper program, or other error.
         "xfs/154"
         "xfs/158"
-
         # quota stuff, similar to generic/594
         "xfs/050"
         "xfs/144"
-
         # /mnt shared mountpoint
         # do we need to make --make-shared the default for all mounts?
         "generic/632"

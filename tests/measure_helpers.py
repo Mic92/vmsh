@@ -2,6 +2,7 @@ import confmeasure
 from confmeasure import NOW
 from root import MEASURE_RESULTS
 from procs import run
+from qemu import QemuVm
 
 import os
 import json
@@ -22,6 +23,7 @@ GUEST_JAVDEV = "/dev/vdc"
 GUEST_QEMUBLK = "/dev/vdb"
 GUEST_QEMU9P = "/9p"
 GUEST_JAVDEV_MOUNT = "/javdev"
+GUEST_JAVDEV_PATH = Path(GUEST_JAVDEV_MOUNT)
 GUEST_QEMUBLK_MOUNT = "/blk"
 GUEST_QEMUBLK_PATH = Path(GUEST_QEMUBLK_MOUNT)
 
@@ -78,7 +80,7 @@ def testbench(
     with_vmsh: bool = True,
     ioregionfd: bool = False,
     mounts: bool = True,
-) -> Iterator[Any]:
+) -> Iterator[QemuVm]:
     if ioregionfd:
         mmiomode = "ioregionfd"
     else:
