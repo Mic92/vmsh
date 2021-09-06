@@ -74,13 +74,17 @@
 
         not-os-image = (pkgs.callPackage ./nix/not-os-image.nix {
           inherit not-os;
-          notos-config = ./nix/modules/not-os-config.nix;
+          notos-config = [
+            ./nix/modules/not-os-config.nix
+          ];
         }).json;
         measurement-image = (pkgs.callPackage ./nix/not-os-image.nix {
           inherit not-os;
-          notos-config = import ./nix/modules/measurement-config.nix {
-            inherit (self.nixosModules) linux-ioregionfd;
-          };
+          notos-config = [
+            ./nix/modules/measurement-config.nix
+            # we mainly need this for XFS_ONLINE_SCRUB
+            self.nixosModules.linux-ioregionfd
+          ];
         }).json;
         linux_ioregionfd = pkgs.callPackage ./nix/linux-ioregionfd.nix { };
       in {

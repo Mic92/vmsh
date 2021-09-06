@@ -9,8 +9,7 @@ let
     nixpkgs = pkgs.path;
     system = if useMusl then null else pkgs.system;
     configuration = { ... }: {
-      imports = [
-        notos-config
+      imports = notos-config ++ [
         (not-os  + "/qemu.nix")
       ];
 

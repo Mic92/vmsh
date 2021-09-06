@@ -1,10 +1,11 @@
 import confmeasure
 from confmeasure import NOW
 from root import MEASURE_RESULTS
+from procs import run
 
 import os
 import json
-from typing import List, Any, Iterator, Dict, DefaultDict, Optional, Text, IO, Union
+from typing import List, Any, Iterator, Dict, DefaultDict, Optional
 from collections import defaultdict
 from contextlib import contextmanager
 import subprocess
@@ -171,36 +172,6 @@ def testbench(
         if mounts:
             print(vm.ssh_cmd(["umount", GUEST_QEMUBLK_MOUNT]).stdout)
             print(vm.ssh_cmd(["umount", GUEST_QEMU9P]).stdout)
-
-
-ChildFd = Union[None, int, IO]
-
-
-def run(
-    cmd: List[str],
-    extra_env: Dict[str, str] = {},
-    stdout: ChildFd = subprocess.PIPE,
-    stderr: ChildFd = None,
-    input: Optional[str] = None,
-    stdin: ChildFd = None,
-    check: bool = True,
-) -> "subprocess.CompletedProcess[Text]":
-    env = os.environ.copy()
-    env.update(extra_env)
-    env_string = []
-    for k, v in extra_env.items():
-        env_string.append(f"{k}={v}")
-    print(f"$ {' '.join(env_string + cmd)}")
-    return subprocess.run(
-        cmd,
-        stdout=stdout,
-        stderr=stderr,
-        check=check,
-        env=env,
-        text=True,
-        input=input,
-        stdin=stdin,
-    )
 
 
 def blkdiscard() -> Any:

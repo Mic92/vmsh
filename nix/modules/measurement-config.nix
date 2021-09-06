@@ -1,4 +1,3 @@
-{ linux-ioregionfd }:
 { lib, pkgs, ... }:
 let
   phoronix = pkgs.callPackage ../phoronix.nix {};
@@ -6,8 +5,6 @@ let
 in {
   imports = [
     ./not-os-config.nix
-    # we mainly need this for XFS_ONLINE_SCRUB
-    linux-ioregionfd
   ];
   environment.systemPackages = [
     pkgs.hdparm
@@ -17,6 +14,13 @@ in {
     myxfstests
     pkgs.su
   ];
+  not-os.simpleStaticIp = false;
+  # no default gateway to isolate phoronix from internet
+  system.activationScripts.qemu-network = ''
+    ip addr add 10.0.2.15 dev eth0
+    ip link set eth0 up
+    ip route add 10.0.2.0/24 dev eth0
+  '';
   environment.etc.passwd.text = ''
     daemon:1:daemon:/usr/sbin:/noshell
     fsgqa:x:1001:1002:Fsgqa:/:/bin/sh
