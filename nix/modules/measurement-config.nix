@@ -16,10 +16,11 @@ in {
   ];
   not-os.simpleStaticIp = false;
   # no default gateway to isolate phoronix from internet
-  system.activationScripts.qemu-network = ''
-    ip addr add 10.0.2.15 dev eth0
+  environment.etc."service/network/run".source = pkgs.writeScript "network" ''
+    #!${pkgs.stdenv.shell}
     ip link set eth0 up
-    ip route add 10.0.2.0/24 dev eth0
+    # HACK: fake oneshot service
+    exec tail -f /dev/null
   '';
   environment.etc.passwd.text = ''
     daemon:1:daemon:/usr/sbin:/noshell
