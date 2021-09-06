@@ -14,7 +14,7 @@
   networking.timeServers = [];
 
   not-os.nix = true;
-  not-os.simpleStaticIp = true;
+  not-os.simpleStaticIp = lib.mkDefault true;
   not-os.preMount = ''
     echo 'nixos' > /proc/sys/kernel/hostname
     ip addr add 127.0.0.1/8 dev lo
@@ -48,13 +48,16 @@
   '';
 
   environment.etc = {
-    "hosts".text = ''
+    profile.text = ''
+      export PS1="\e[0;32m[\u@\h \w]\$ \e[0m"
+    '';
+    hosts.text = ''
       127.0.0.1 localhost
       ::1 localhost
       127.0.0.1 nixos
       ::1 nixos
     '';
-    "passwd".text = ''
+    passwd.text = ''
       sys:x:993:991::/var/empty:/run/current-system/sw/bin/nologin
       bin:x:994:992::/var/empty:/run/current-system/sw/bin/nologin
       daemon:x:995:993::/var/empty:/run/current-system/sw/bin/nologin
@@ -63,7 +66,7 @@
       123456-fsgqa:x:998:996::/var/empty:/bin/sh
       nobody:x:65534:65534:Unprivileged account (don't use!):/var/empty:/run/current-system/sw/bin/nologin
     '';
-    "group".text = ''
+    group.text = ''
       sys:x:991:
       bin:x:992:
       daemon:x:993:
@@ -98,7 +101,4 @@
       exec ${pkgs.utillinux}/bin/setsid -c ${pkgs.bash}/bin/bash -l
     '';
   };
-  environment.etc.profile.text = ''
-    export PS1="\e[0;32m[\u@\h \w]\$ \e[0m"
-  '';
 }
