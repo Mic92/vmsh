@@ -43,7 +43,7 @@
         kernel-deps = pkgs.callPackage ./nix/kernel-deps.nix {};
         kernel-deps-shell = (pkgs.callPackage ./nix/kernel-deps.nix {
           runScript = "bash";
-        }).env;
+        });
 
         measureDeps = [
           pkgs.numactl

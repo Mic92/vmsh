@@ -115,7 +115,7 @@ clone-linux:
   fi
 
 # Configure linux kernel build
-configure-linux: clone-linux
+configure-linux: #clone-linux
   #!/usr/bin/env bash
   set -xeuo pipefail
   if [[ ! -f {{linux_dir}}/.config ]]; then
@@ -167,7 +167,7 @@ sign-drone:
 
 # Linux kernel development shell
 build-linux-shell:
-  nix develop #devShells.x86_64-linux.kernel-deps-shell
+  {{kernel_shell}} bash
 
 # Clean build directory of linux
 clean-linux: configure-linux
@@ -178,6 +178,7 @@ build-linux: configure-linux
   #!/usr/bin/env bash
   set -xeu
   cd {{linux_dir}}
+  #{{kernel_shell}} "make -C {{linux_dir}} oldconfig"
   yes "" | {{kernel_shell}} "make -C {{linux_dir}} -j$(nproc)"
 
 # Build a disk image
@@ -202,7 +203,7 @@ passwd-image:
   just image passwd ""
 
 # Build kernel/disk image for not os
-notos-image:
+notos-image: build-linux
   nix build --out-link {{nix_results}}/notos-image '.#not-os-image'
   jq < {{nix_results}}/notos-image
 
@@ -277,7 +278,7 @@ firecracker-kernel:
    git -C {{linux_dir}} checkout v4.14.245
    just build-linux
 
-firecracker: build-linux nixos-image
+firecracker: #build-linux nixos-image
   firectl -m512 -c1 --kernel={{linux_dir}}/vmlinux \
     --kernel-opts "console=ttyS0" \
     --root-drive={{linux_dir}}/nixos.ext4
@@ -316,6 +317,7 @@ qemu-notos image="not-os-image": build-linux
   #image = notos_image()
   print("run {{image}}")
   image = notos_image(".#{{image}}")
+  #image = notos_image_custom_kernel(".#{{image}}")
   cmd = qemu_command(image, "qmp.sock", ssh_port={{qemu_ssh_port}})
   print(" ".join(cmd))
   subprocess.run(cmd)
