@@ -35,5 +35,9 @@ buildFHSUserEnv {
     openssl
     zlib
   ]);
+  profile = ''
+    export hardeningDisable=all
+  '';
+
   inherit runScript;
 }

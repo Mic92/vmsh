@@ -45,6 +45,7 @@
           runScript = "bash";
         });
 
+
         measureDeps = [
           pkgs.numactl
           pkgs.fio
@@ -106,6 +107,8 @@
           nixos-image = pkgs.callPackage ./nix/nixos-image.nix {};
           busybox-image = pkgs.callPackage ./nix/busybox-image.nix {};
           passwd-image = pkgs.callPackage ./nix/passwd-image.nix {};
+          alpine-sec-scanner = pkgs.callPackage ./nix/alpine-sec-scanner.nix {};
+          alpine-sec-scanner-image = pkgs.callPackage ./nix/alpine-sec-scanner-image.nix {};
           phoronix-image = pkgs.callPackage ./nix/phoronix-image.nix {};
 
           phoronix-test-suite = pkgs.callPackage ./nix/phoronix.nix {};
