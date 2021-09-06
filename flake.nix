@@ -20,13 +20,13 @@
         pkgs = nixpkgs.legacyPackages.${system};
         fenixPkgs = fenix.packages.${system};
         rustToolchain = with fenixPkgs; combine [
-          latest.cargo
-          latest.rustc
-          latest.rust-src
-          latest.rust-std
-          latest.clippy-preview
-          latest.rustfmt-preview
-          targets.x86_64-unknown-linux-musl.latest.rust-std
+          stable.cargo
+          stable.rustc
+          stable.rust-src
+          stable.rust-std
+          stable.clippy-preview
+          stable.rustfmt-preview
+          targets.x86_64-unknown-linux-musl.stable.rust-std
           # fenix.packages.x86_64-linux.targets.aarch64-unknown-linux-gnu.latest.rust-std
         ];
 
