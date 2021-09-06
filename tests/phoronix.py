@@ -6,7 +6,7 @@ import pandas as pd
 
 
 def parse_xml(path: Union[str, Path]) -> pd.DataFrame:
-    if path is Path:
+    if isinstance(path, Path):
         tree = etree.parse(str(path))
     else:
         tree = etree.fromstring(path)
