@@ -22,11 +22,12 @@ def run(
     input: Optional[str] = None,
     stdin: ChildFd = None,
     check: bool = True,
-    text: bool = True,
+    verbose: bool = True,
 ) -> "subprocess.CompletedProcess[Text]":
     env = os.environ.copy()
     env.update(extra_env)
-    pprint_cmd(cmd, extra_env)
+    if verbose:
+        pprint_cmd(cmd, extra_env)
     return subprocess.run(
         cmd,
         stdout=stdout,

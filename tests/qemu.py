@@ -159,7 +159,10 @@ class QemuVm:
         while True:
             if (
                 self.ssh_cmd(
-                    ["echo", "ok"], check=False, stderr=subprocess.DEVNULL
+                    ["echo", "ok"],
+                    check=False,
+                    stderr=subprocess.DEVNULL,
+                    verbose=False,
                 ).returncode
                 == 0
             ):
@@ -187,6 +190,7 @@ class QemuVm:
         stdin: Optional[int] = None,
         stdout: Optional[int] = subprocess.PIPE,
         stderr: Optional[int] = None,
+        verbose: bool = True,
     ) -> subprocess.CompletedProcess:
         """
         @return: CompletedProcess.stderr/stdout contains output of `cmd` which
