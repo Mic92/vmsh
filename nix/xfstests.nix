@@ -34,8 +34,9 @@ stdenv.mkDerivation {
     # fix using coreutils
     sed -i 's/SCRATCH_MNT\/ls_on_scratch/SCRATCH_MNT\/ls/' tests/generic/452 tests/generic/452.out
 
-    # This patch is WIP and does not work.
-    #sed -i 's/$here\/src\/detached_mounts_propagation/mount $SCRATCH_DEV $SCRATCH_MNT\nmount --make-shared $SCRATCH_MNT\n$here\/src\/detached_mounts_propagation/' tests/generic/632
+    # If the test expects the mount point to be shared i suppose it is
+    # appropriate to specify so when mounting. 
+    sed -i 's/\$here\/src\/detached_mounts_propagation/mount --make-shared $TEST_DIR; \$here\/src\/detached_mounts_propagation/' tests/generic/632
 
     # works natively:
     sed -i 's/$DMERROR_DEV/$TEST_DEV/' tests/xfs/006 tests/xfs/264

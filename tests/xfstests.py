@@ -42,43 +42,15 @@ def excludes() -> List[str]:
     # Some tests are skipped because xfsdump is missing. I don't think this is
     # packaged in nixos.
     native_scratch = [
-        # kernel needs XFS_ONLINE_SCRUB
-        # "xfs/506",
-        #
         # this test requires a deprication warning to be absent, but it is present. I dont care about that though.
         "xfs/539",
-        #
-        # those two suddenly are working again:
-        #
-        # works on ext4 but not on xfs
-        # -Block grace time: 00:10; Inode grace time: 00:20
-        # +Block grace time: DEF_TIME; Inode grace time: DEF_TIME
-        # "generic/594",
-        #
-        # set grace to n but got grace n-2
-        # "generic/600",
     ]
 
     qemu_blk_scratch = [
-        # works occasionally. "fixed" by retries.
-        # kernel printlns trace when this is run the first time
-        # looks like an actual kernel bug
-        # "generic/623"
-        #
-        # wrong error code, probably fine if we used another mount
-        # libmount throws error but instead "Structure needs cleaning." should happen.
-        # -mount: SCRATCH_MNT: mount(2) system call failed: Structure needs cleaning.
-        # +mount: SCRATCH_MNT: wrong fs type, bad option, bad superblock on SCRATCH_DEV, missing codepage or helper program, or other error.
-        "xfs/154"
-        "xfs/158"
-        #
         # quota stuff, similar to generic/594
         "xfs/050"
         "xfs/144"
-        #
-        # /mnt shared mountpoint
-        # do we need to make --make-shared the default for all mounts?
-        "generic/632"
+        "xfs/153"
     ]
 
     vmsh_blk_scratch: List[str] = []
@@ -177,7 +149,7 @@ def qemu_blk(helpers: confmeasure.Helpers, stats: Dict[str, str]) -> None:
     with util.testbench(helpers, with_vmsh=False, ioregionfd=False, mounts=False) as vm:
         vm.ssh_cmd(["mkdir", "-p", "/mnt"], check=True)
         vm.ssh_cmd(["mkdir", "-p", "/scratchmnt"], check=True)
-        breakpoint()
+        # breakpoint()
         env = f"TEST_DIR=/mnt TEST_DEV={GUEST_QEMUBLK}1"
         if WITH_SCRATCH:
             env += f" SCRATCH_DEV={GUEST_QEMUBLK}2 SCRATCH_MNT=/scratchmnt"
