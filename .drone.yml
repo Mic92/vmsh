@@ -26,35 +26,8 @@ steps:
 trigger:
   event:
   - push
-
----
-kind: pipeline
-type: ssh
-name: Nix build
-
-server:
-  host: martha.r
-  user: ci
-  ssh_key:
-    from_secret: SSH_KEY
-
-platform:
-  os: linux
-  arch: amd64
-
-clone:
-  depth: 1
-
-steps:
-- name: build all nix packages
-  commands:
-  - nix flake check
-trigger:
-  event:
-  - push
-
 ---
 kind: signature
-hmac: 8f99959ad2356b7581b5a6076dac5e56d2b3cddd6adb4d571598855dd8126b2d
+hmac: 20e385a488f1f8e6c34db88519ec78e2c0700d2c0ca7690e30a9b92a6bafb39c
 
 ...
