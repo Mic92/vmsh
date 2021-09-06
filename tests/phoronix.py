@@ -6,7 +6,10 @@ import pandas as pd
 
 
 def parse_xml(path: Union[str, Path]) -> pd.DataFrame:
-    tree = etree.parse(str(path))
+    if path is Path:
+        tree = etree.parse(str(path))
+    else:
+        tree = etree.fromstring(path)
     results = defaultdict(list)
     for result in tree.xpath("./Result"):
         for entry in result.xpath("./Data/Entry"):
