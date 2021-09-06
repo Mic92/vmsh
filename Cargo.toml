@@ -43,7 +43,7 @@ simple-error = "0.2.*"
 kvm-bindings = "0.5.*"
 env_logger = { version = "0.9.*", default-features = false }
 lazy_static = "*"
-container-pid = { git = "https://github.com/pogobanane/container-pid.git", rev = "8f5b6c13e9f305a9b72cfd27b5ce73899b038893" }
+container-pid = ">=0.2"
 num-traits = "0.2"
 num-derive = "0.3"
 

@@ -15,7 +15,6 @@ rustPlatform.buildRustPackage {
       "virtio-blk-0.1.0" = "sha256-3eXSPy3+5uI0FBpSVwRKWJmWxgrpwfl4rYpPLn0bf/4=";
       "vm-device-0.1.0" = "sha256-kHiEfk3/+ped39Dm4Lzo62E7IWiVDd+PnSsPr1YDj94=";
       "vm-memory-0.5.0" = "sha256-vnSWs9n5nRDO0R8eKII/7P5c731cVN02iQh3L7AdoQA=";
-      "container-pid-0.1.0" = "sha256-iTnrt4HdKLnrgSn981on8+6ejYu+QfglOw/OBxUrJvE=";
     };
   };
 }
