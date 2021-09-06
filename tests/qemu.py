@@ -15,6 +15,7 @@ from tempfile import TemporaryDirectory
 from typing import Any, Dict, Iterator, List, Optional
 
 from root import TEST_ROOT, PROJECT_ROOT
+from procs import run, pprint_cmd
 
 
 @dataclass
@@ -123,6 +124,23 @@ def get_ssh_port(session: QmpSession) -> int:
     return ssh_port
 
 
+def ssh_cmd(port: int) -> List[str]:
+    key_path = TEST_ROOT.joinpath("..", "nix", "ssh_key")
+    key_path.chmod(0o400)
+    return [
+        "ssh",
+        "-i",
+        str(key_path),
+        "-p",
+        str(port),
+        "-oBatchMode=yes",
+        "-oStrictHostKeyChecking=no",
+        "-oConnectTimeout=5",
+        "-oUserKnownHostsFile=/dev/null",
+        "root@127.0.1",
+    ]
+
+
 class QemuVm:
     def __init__(self, qmp_session: QmpSession, tmux_session: str, pid: int) -> None:
         self.qmp_session = qmp_session
@@ -157,59 +175,32 @@ class QemuVm:
         """
         opens a background process with an interactive ssh session
         """
-        key_path = TEST_ROOT.joinpath("..", "nix", "ssh_key")
-        key_path.chmod(0o400)
-        return subprocess.Popen(
-            [
-                "ssh",
-                "-i",
-                str(key_path),
-                "-p",
-                str(self.ssh_port),
-                "-oBatchMode=yes",
-                "-oStrictHostKeyChecking=no",
-                "-oConnectTimeout=5",
-                "-oUserKnownHostsFile=/dev/null",
-                "root@127.0.1",
-            ],
-            stdout=stdout,
-            stderr=stderr,
-            stdin=stdin,
-        )
+        cmd = ssh_cmd(self.ssh_port)
+        pprint_cmd(cmd)
+        return subprocess.Popen(cmd, stdin=stdin, stdout=stdout, stderr=stderr)
 
     def ssh_cmd(
         self,
         argv: List[str],
+        extra_env: Dict[str, str] = {},
         check: bool = True,
+        stdin: Optional[int] = None,
         stdout: Optional[int] = subprocess.PIPE,
         stderr: Optional[int] = None,
-        text: bool = True,
     ) -> subprocess.CompletedProcess:
         """
         @return: CompletedProcess.stderr/stdout contains output of `cmd` which
         is run in the vm via ssh.
         """
-        cmd = " ".join(map(quote, argv))
-        key_path = TEST_ROOT.joinpath("..", "nix", "ssh_key")
-        key_path.chmod(0o400)
-        return subprocess.run(
-            [
-                "ssh",
-                "-i",
-                str(key_path),
-                "-p",
-                str(self.ssh_port),
-                "-oBatchMode=yes",
-                "-oStrictHostKeyChecking=no",
-                "-oConnectTimeout=5",
-                "-oUserKnownHostsFile=/dev/null",
-                "root@127.0.1",
-                cmd,
-            ],
-            stdout=stdout,
-            stderr=stderr,
-            check=check,
-            text=text,
+        env_cmd = []
+        if len(extra_env):
+            env_cmd.append("env")
+            env_cmd.append("-")
+            for k, v in extra_env.items():
+                env_cmd.append(f"{k}={v}")
+        cmd = ssh_cmd(self.ssh_port) + ["--"] + env_cmd + [" ".join(map(quote, argv))]
+        return run(
+            cmd, stdin=stdin, stdout=stdout, stderr=stderr, check=check, verbose=verbose
         )
 
     def regs(self) -> Dict[str, int]:
