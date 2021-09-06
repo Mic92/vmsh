@@ -44,6 +44,8 @@ def phoronix_command(phoronix_path: Path, skip_tests: List[str]) -> Command:
         PTS_DOWNLOAD_CACHE=f"{phoronix_path.joinpath('download-cache')}/",
         TEST_RESULTS_NAME="vmsh",
         TEST_RESULTS_IDENTIFIER="vmsh",
+        # no goddamn auto-updates
+        http_proxy="127.0.1.2:28201",
     )
     # IOzone is marked as deprecated & unmaintained and does not work
     env["SKIP_TESTS"] = ",".join(skip_tests + ["iozone"])
