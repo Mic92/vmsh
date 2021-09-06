@@ -206,7 +206,8 @@ def fresh_fs_ssd(image: Optional[Path] = None) -> Iterator[Any]:
         run(["sudo", "resize2fs", "-f", HOST_SSD])
     else:
         run(["sudo", "mkfs.ext4", HOST_SSD])
-    Path(HOST_DIR).mkdir(exist_ok=True)
+    if not HOST_DIR_PATH.exists():
+        run(["sudo", "mkdir", "-p", HOST_DIR])
     run(["sudo", "mount", HOST_SSD, HOST_DIR])
     run(["sudo", "chown", os.getlogin(), HOST_DIR])
     run(["sudo", "chown", os.getlogin(), HOST_SSD])
