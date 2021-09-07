@@ -114,15 +114,21 @@ fn fd_transfer(pid: Pid, nr_fds: u32) -> Result<()> {
 
     let mut vm = try_with!(get_hypervisor(pid), "cannot get vms for process {}", pid);
     vm.stop()?;
-    vm.setup_transfer_sockets()?;
+    try_with!(
+        vm.setup_transfer_sockets(),
+        "failed to set up transfer sockets"
+    );
 
-    let mut fds = vec![];
-    for _ in 0..nr_fds {
-        let fd = try_with!(EventFd::new(EFD_NONBLOCK), "cannot create event fd").as_raw_fd();
-        fds.push(fd);
-    }
+    let event_files = [
+        try_with!(EventFd::new(EFD_NONBLOCK), "failed to create eventfd"),
+        try_with!(EventFd::new(EFD_NONBLOCK), "failed to create eventfd"),
+    ];
+    let fds = event_files
+        .iter()
+        .map(|ev| ev.as_raw_fd())
+        .collect::<Vec<_>>();
 
-    let remote_fds = vm.transfer(fds.as_slice())?;
+    let remote_fds = try_with!(vm.transfer(fds.as_slice()), "failed to transfer sockets");
     assert_eq!(remote_fds.len(), fds.len());
 
     for fd in remote_fds {
@@ -130,6 +136,7 @@ fn fd_transfer(pid: Pid, nr_fds: u32) -> Result<()> {
         let path = Path::new(&pathname);
         assert_eq!(path.exists(), true);
     }
+    dbg!(fds);
     vm.close_transfer_sockets()?;
 
     Ok(())
