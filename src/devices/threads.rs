@@ -3,8 +3,9 @@ use crate::stage1::DeviceStatus;
 use crate::stage1::DriverStatus;
 use event_manager::EventManager;
 use event_manager::MutEventSubscriber;
+use log::debug;
 use log::error;
-use log::{debug, info, log_enabled, trace, Level};
+use log::{info, log_enabled, trace, Level};
 use simple_error::{bail, require_with, simple_error, try_with};
 use stage1_interface::DeviceState;
 use std::path::{Path, PathBuf};
@@ -230,27 +231,20 @@ fn handle_mmio_exits(
     driver_notifier: &Arc<DriverNotifier>,
 ) -> Result<()> {
     let mut mmio_mgr = try_with!(ctx.mmio_mgr.lock(), "cannot lock mmio manager");
-    {
-        let mut wrapper_go = try_with!(wrapper_mo.lock(), "cannot obtain wrapper mutex");
-        let wrapper_g = require_with!(wrapper_go.as_mut(), "KvmRunWrapper not initialized");
-        try_with!(
-            wrapper_g.stop_on_syscall(),
-            "failed to wait for vmm exit_mmio"
-        );
-    };
+    let mut wrapper_go = try_with!(wrapper_mo.lock(), "cannot obtain wrapper mutex");
+    let wrapper_g = require_with!(wrapper_go.as_mut(), "KvmRunWrapper not initialized");
+    try_with!(
+        wrapper_g.stop_on_syscall(),
+        "failed to wait for vmm exit_mmio"
+    );
     info!("device ready!");
     driver_notifier.notify(DeviceState::Ready)?;
 
     loop {
-        let mut kvm_exit;
-        {
-            let mut wrapper_go = try_with!(wrapper_mo.lock(), "cannot obtain wrapper mutex");
-            let wrapper_g = require_with!(wrapper_go.as_mut(), "KvmRunWrapper not initialized");
-            kvm_exit = try_with!(
-                wrapper_g.wait_for_ioctl(),
-                "failed to wait for vmm exit_mmio"
-            );
-        };
+        let mut kvm_exit = try_with!(
+            wrapper_g.wait_for_ioctl(),
+            "failed to wait for vmm exit_mmio"
+        );
 
         if let Some(mmio_rw) = &mut kvm_exit {
             if ctx.first_mmio_addr <= mmio_rw.addr && mmio_rw.addr < ctx.last_mmio_addr {
@@ -285,7 +279,7 @@ fn mmio_exit_handler_thread(
         "mmio-exit-handler",
         err_sender,
         move |dev: &Option<Arc<DeviceContext>>, should_stop: Arc<AtomicBool>| {
-            let dev = dev.as_ref().unwrap();
+            let dev = require_with!(dev.as_ref(), "no device passed");
             if let Err(e) = vm.finish_thread_transfer() {
                 // don't shadow error here
                 let _ = driver_notifier.notify(DeviceState::Error);
@@ -397,7 +391,7 @@ impl DeviceSet {
         // instantiate blkdev
         let context = Arc::new(try_with!(
             DeviceContext::new(vm, allocator, &mut event_manager, backing_file, pts),
-            "cannot create vm"
+            "cannot create device context"
         ));
         Ok(DeviceSet {
             context,

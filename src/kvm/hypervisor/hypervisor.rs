@@ -5,9 +5,8 @@ use kvm_bindings as kvmb;
 use libc::c_int;
 use log::*;
 use nix::unistd::Pid;
-use simple_error::{bail, simple_error, try_with};
+use simple_error::{bail, require_with, simple_error, try_with};
 use std::ffi::OsStr;
-use std::marker::PhantomData;
 use std::mem::size_of;
 use std::os::unix::io::AsRawFd;
 use std::os::unix::prelude::RawFd;
@@ -56,6 +55,15 @@ impl VCPU {
     }
 }
 
+struct TransferContext {
+    local_sock: fd_transfer::Socket,
+    remote_sock: fd_transfer::HvSocket,
+    msg_hdr_mem: HvMem<libc::msghdr>,
+    iov_mem: HvMem<libc::iovec>,
+    iov_buf_mem: HvMem<[u8; 1]>,
+    cmsg_mem: HvMem<[u8; 64]>,
+}
+
 /// Owns the tracee to prevent that multiple tracees are created for a Hypervisor. The Hypervisor
 /// is used to handle the lock on `Self.tracee` and is used to instantiate `HvMem` and `VmMem`.
 pub struct Hypervisor {
@@ -64,11 +72,62 @@ pub struct Hypervisor {
     pub vcpus: Vec<VCPU>,
     pub(super) tracee: Arc<RwLock<Tracee>>,
     pub wrapper: Mutex<Option<KvmRunWrapper>>,
+    transfer_ctx: Mutex<Option<TransferContext>>,
 }
 
 impl Hypervisor {
     fn attach(pid: Pid, vm_fd: RawFd) -> Tracee {
         Tracee::new(pid, vm_fd, None)
+    }
+
+    pub fn setup_transfer_sockets(&mut self) -> Result<()> {
+        let msg_hdr_mem = self.alloc_mem()?;
+        let iov_mem = self.alloc_mem()?;
+        let iov_buf_mem = self.alloc_mem::<[u8; 1]>()?;
+        let cmsg_mem = self.alloc_mem::<[u8; 64]>()?; // should be of size CMSG_SPACE, but thats not possible at compile time
+
+        let addr_local_mem = self.alloc_mem()?;
+        let addr_remote_mem = self.alloc_mem()?;
+        let vmsh_id = format!("vmsh_fd_transfer_{}", nix::unistd::getpid());
+        let hypervisor_id = format!("vmsh_fd_transfer_{}", self.pid);
+        let local_sock = try_with!(
+            fd_transfer::Socket::new(&vmsh_id),
+            "failed to create socket"
+        );
+        // remote_sock needs to outlive tracee or we run in a deadlock
+        let remote_sock = try_with!(
+            fd_transfer::HvSocket::new(self.tracee.clone(), &hypervisor_id, &addr_local_mem),
+            "failed to create hypervisor socket"
+        );
+
+        try_with!(
+            local_sock.connect(&hypervisor_id),
+            "failed to connect vmsh socket"
+        );
+
+        let res = {
+            let tracee = try_with!(
+                self.tracee.write(),
+                "cannot obtain tracee write lock: poinsoned"
+            );
+            let proc = tracee.try_get_proc()?;
+            remote_sock.connect(proc, &vmsh_id, &addr_remote_mem)
+        };
+        try_with!(res, "failed to connect to local socket from hypervisor");
+        self.transfer_ctx = Mutex::new(Some(TransferContext {
+            local_sock,
+            remote_sock,
+            msg_hdr_mem,
+            iov_mem,
+            iov_buf_mem,
+            cmsg_mem,
+        }));
+        Ok(())
+    }
+
+    pub fn close_transfer_sockets(&self) -> Result<()> {
+        try_with!(self.transfer_ctx.lock(), "cannot take lock").take();
+        Ok(())
     }
 
     /// Must be called from the thread that created Hypervisor before using it in a different thread
@@ -148,7 +207,7 @@ impl Hypervisor {
         let wrapper: KvmRunWrapper;
         {
             let mut wguard = try_with!(self.wrapper.lock(), "cannot obtain wrapper mutex");
-            wrapper = wguard.take().expect("earlier in this fn we put it here");
+            wrapper = require_with!(wguard.take(), "earlier in this function we put it here");
         }
 
         // convert wrapper to tracee and attach it
@@ -253,54 +312,39 @@ impl Hypervisor {
             ptr: ptr as libc::uintptr_t,
             pid: self.pid,
             tracee: self.tracee.clone(),
-            phantom: PhantomData,
+            phantom: SendPhantom::default(),
         })
     }
 
     pub fn transfer(&self, fds: &[RawFd]) -> Result<Vec<RawFd>> {
-        let addr_local_mem = self.alloc_mem()?;
-        let addr_remote_mem = self.alloc_mem()?;
-        let msg_hdr_mem = self.alloc_mem()?;
-        let iov_mem = self.alloc_mem()?;
-        let iov_buf_mem = self.alloc_mem::<[u8; 1]>()?;
-        let cmsg_mem = self.alloc_mem::<[u8; 64]>()?; // should be of size CMSG_SPACE, but thats not possible at compile time
+        let tracee = try_with!(
+            self.tracee.write(),
+            "cannot obtain tracee write lock: poinsoned"
+        );
 
-        let ret;
-        let hv;
-        {
-            let tracee = try_with!(
-                self.tracee.write(),
-                "cannot obtain tracee write lock: poinsoned"
-            );
+        let message = [1u8; 1];
+        let m_slice = &message[0..1];
+        let mut messages = Vec::with_capacity(fds.len());
+        fds.iter().for_each(|_| messages.push(m_slice));
+        let ctx = try_with!(self.transfer_ctx.lock(), "cannot lock transfer context");
+        let ctx = require_with!(ctx.as_ref(), "transfer context was not set up");
 
-            let vmsh_id = format!("vmsh_fd_transfer_{}", nix::unistd::getpid());
-            let hypervisor_id = format!("vmsh_fd_transfer_{}", self.pid);
-            let vmsh = fd_transfer::Socket::new(&vmsh_id)?;
-            let proc = tracee.try_get_proc()?;
-            hv = fd_transfer::HvSocket::new(
-                self.tracee.clone(),
-                proc,
-                &hypervisor_id,
-                &addr_local_mem,
-            )?;
-
-            vmsh.connect(&hypervisor_id)?;
-            hv.connect(proc, &vmsh_id, &addr_remote_mem)?;
-
-            let message = [1u8; 1];
-            let m_slice = &message[0..1];
-            let mut messages = Vec::with_capacity(fds.len());
-            fds.iter().for_each(|_| messages.push(m_slice));
-
-            vmsh.send(messages.as_slice(), fds)?;
-            let (msg, fds) = hv.receive(proc, &msg_hdr_mem, &iov_mem, &iov_buf_mem, &cmsg_mem)?;
-            if msg != message {
-                bail!("received message differs from sent one");
-            }
-            ret = fds;
-        } // drop tracee write lock so that `hv: HvSock can obtain lock to drop itself
-
-        Ok(ret)
+        let proc = tracee.try_get_proc()?;
+        try_with!(
+            ctx.local_sock.send(messages.as_slice(), fds),
+            "failed to send fds"
+        );
+        let (msg, fds) = ctx.remote_sock.receive(
+            proc,
+            &ctx.msg_hdr_mem,
+            &ctx.iov_mem,
+            &ctx.iov_buf_mem,
+            &ctx.cmsg_mem,
+        )?;
+        if msg != message {
+            bail!("received message differs from sent one");
+        }
+        Ok(fds)
     }
 
     pub fn ioeventfd(&self, guest_addr: u64) -> Result<IoEventFd> {
@@ -570,12 +614,12 @@ pub fn get_hypervisor(pid: Pid) -> Result<Hypervisor> {
         bail!("found VCPUs but no mappings of their fds");
     }
     VCPU::match_maps(&mut vcpus, &vcpu_maps);
-
     Ok(Hypervisor {
         pid,
         tracee: Arc::new(RwLock::new(tracee)),
         vm_fd: vm_fds[0],
         vcpus,
         wrapper: Mutex::new(None),
+        transfer_ctx: Mutex::new(None),
     })
 }

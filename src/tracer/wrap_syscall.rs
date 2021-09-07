@@ -403,8 +403,10 @@ impl KvmRunWrapper {
             let ret = regs.syscall_ret();
             if ret != 0 {
                 log::warn!(
-                    "wrap_syscall: ioctl(KVM_RUN) failed: {}",
-                    Errno::from_i32(ret as i32)
+                    "wrap_syscall: ioctl(KVM_RUN) failed in thread: {}: {} ({})",
+                    pid,
+                    Errno::from_i32(-(ret as i32)),
+                    -(ret as i32)
                 );
                 // hope that hypervisor handles it correctly
                 return Ok(None);

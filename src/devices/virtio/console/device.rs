@@ -29,12 +29,12 @@ use crate::devices::virtio::features::{
 use crate::devices::virtio::{IrqAckHandler, MmioConfig, SingleFdSignalQueue, QUEUE_MAX_SIZE};
 use crate::devices::MaybeIoRegionFd;
 use crate::kvm::hypervisor::{
-    ioevent::IoEvent, ioregionfd::IoRegionFd, userspaceioeventfd::UserspaceIoEventFd, Hypervisor,
+    ioevent::IoEvent, ioregionfd::IoRegionFd, userspaceioeventfd::UserspaceIoEventFd,
 };
 
 //use super::queue_handler::QueueHandler;
 use super::{build_config_space, ConsoleArgs, Error, Result, CONSOLE_DEVICE_ID};
-use simple_error::map_err_with;
+use simple_error::{map_err_with, SimpleError};
 
 pub(super) const RX_QUEUE_IDX: u16 = 0;
 pub(super) const TX_QUEUE_IDX: u16 = 1;
@@ -44,10 +44,10 @@ pub struct Console<M: GuestAddressSpace> {
     pub mmio_cfg: MmioConfig,
     endpoint: RemoteEndpoint<Arc<Mutex<dyn MutEventSubscriber + Send>>>,
     pub irq_ack_handler: Arc<Mutex<IrqAckHandler>>,
-    vmm: Arc<Hypervisor>,
     irqfd: Arc<EventFd>,
     pub ioregionfd: Option<IoRegionFd>,
     pub uioefd: UserspaceIoEventFd,
+    tx_fd: Option<IoEvent>,
     /// only used when ioregionfd != None
     sub_id: Option<SubscriberId>,
     pts: Option<PathBuf>,
@@ -110,15 +110,26 @@ where
         let pts = args.pts;
         log::info!("pts is {:?}", pts);
 
+        //let rx_fd = IoEvent::register(&self.vmm, &mut self.uioefd, &self.mmio_cfg, RX_QUEUE_IDX as u64)
+        //.map_err(Error::Simple)?;
+        let mut uioefd = UserspaceIoEventFd::default();
+        let tx_fd = IoEvent::register(
+            &args.common.vmm,
+            &mut uioefd,
+            &mmio_cfg,
+            TX_QUEUE_IDX as u64,
+        )
+        .map_err(Error::Simple)?;
+
         let console = Arc::new(Mutex::new(Console {
             virtio_cfg,
             mmio_cfg,
             endpoint: args.common.event_mgr.remote_endpoint(),
             irq_ack_handler,
-            vmm: args.common.vmm.clone(),
             irqfd,
             ioregionfd,
-            uioefd: UserspaceIoEventFd::default(),
+            tx_fd: Some(tx_fd),
+            uioefd,
             sub_id: None,
             handler: None,
             pts,
@@ -174,19 +185,12 @@ where
             }
         };
 
-        //let rx_fd = IoEvent::register(&self.vmm, &mut self.uioefd, &self.mmio_cfg, RX_QUEUE_IDX as u64)
-        //.map_err(Error::Simple)?;
-        let tx_fd = IoEvent::register(
-            &self.vmm,
-            &mut self.uioefd,
-            &self.mmio_cfg,
-            TX_QUEUE_IDX as u64,
-        )
-        .map_err(Error::Simple)?;
-
         let handler = Arc::new(Mutex::new(LogQueueHandler {
             driver_notify,
-            tx_fd,
+            tx_fd: match self.tx_fd.take() {
+                Some(tx_fd) => tx_fd,
+                None => return Err(Error::Simple(SimpleError::new("no tx_fd set"))),
+            },
             rxq: self.virtio_cfg.queues[RX_QUEUE_IDX as usize].clone(),
             txq: self.virtio_cfg.queues[TX_QUEUE_IDX as usize].clone(),
             console_out,

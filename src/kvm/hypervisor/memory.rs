@@ -21,13 +21,29 @@ pub fn process_write<T: Sized + Copy>(pid: Pid, addr: *mut c_void, val: &T) -> R
     remote_mem::process_write(pid, addr, val).map_err(|e| simple_error!("{}", e))
 }
 
+#[derive(Debug)]
+pub struct SendPhantom<T> {
+    phantom: PhantomData<T>,
+}
+
+impl<T> Default for SendPhantom<T> {
+    fn default() -> Self {
+        Self {
+            phantom: PhantomData,
+        }
+    }
+}
+
+unsafe impl<T> Send for SendPhantom<T> {}
+unsafe impl<T> Sync for SendPhantom<T> {}
+
 /// Hypervisor Memory
 #[derive(Debug)]
 pub struct HvMem<T: Copy> {
     pub ptr: libc::uintptr_t,
     pub(super) pid: Pid,
     pub(super) tracee: Arc<RwLock<Tracee>>,
-    pub(super) phantom: PhantomData<T>,
+    pub(super) phantom: SendPhantom<T>,
 }
 
 impl<T: Copy> Drop for HvMem<T> {

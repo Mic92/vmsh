@@ -140,7 +140,9 @@ pub fn get_maps(tracee: &Tracee) -> Result<Vec<Mapping>> {
             let head = x.as_ptr() as *const size_t;
             let size = unsafe { ptr::read(head) };
             let memslots_slice = unsafe { make_slice(head.add(1) as *const MemSlot, size) };
-            sender.send(memslots_slice.to_vec()).unwrap();
+            sender
+                .send(memslots_slice.to_vec())
+                .expect("failed send memslots back");
         })
     });
     let mut perf_map = try_with!(builder.build(), "could not install perf event handler");

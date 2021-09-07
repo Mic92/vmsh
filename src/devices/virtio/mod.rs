@@ -13,12 +13,9 @@ use std::time::{Duration, Instant};
 
 use crate::kvm::hypervisor::{ioeventfd::IoEventFd, Hypervisor};
 use crate::result::Result;
-use crate::tracer::inject_syscall;
-use crate::tracer::wrap_syscall::KvmRunWrapper;
 use event_manager::{EventManager, MutEventSubscriber};
 use log::error;
 
-use simple_error::try_with;
 use vm_device::bus::MmioRange;
 use vmm_sys_util::eventfd::EventFd;
 
@@ -168,44 +165,11 @@ pub fn register_ioeventfd(
     mmio_cfg: &MmioConfig,
     queue_idx: u64,
 ) -> Result<IoEventFd> {
-    // Register the queue event fd. Something like this, but in a pirate fashion.
-    // let ioeventfd = EventFd::new(EFD_NONBLOCK).map_err(Error::EventFd)?;
-    // self.vm_fd
-    //     .register_ioevent(
-    //         &ioeventfd,
-    //         &IoEventAddress::Mmio(
-    //             self.mmio_cfg.range.base().0 + VIRTIO_MMIO_QUEUE_NOTIFY_OFFSET,
-    //         ),
-    //         0u32,
-    //     )
-    //     .map_err(Error::RegisterIoevent)?;
-    let mut wrapper_go = try_with!(vmm.wrapper.lock(), "cannot obtain wrapper mutex");
-
-    // wrapper -> injector
-    {
-        let wrapper = wrapper_go.take().unwrap();
-        let mut tracee = vmm.tracee_write_guard()?;
-
-        let err = "cannot re-attach injector after having detached it favour of KvmRunWrapper";
-        let injector = try_with!(inject_syscall::from_tracer(wrapper.into_tracer()?), err);
-        try_with!(tracee.attach_to(injector), &err);
-    }
-
-    // we need to drop tracee for ioeventfd_
     let ioeventfd = vmm.ioeventfd_(
         mmio_cfg.range.base().0 + VIRTIO_MMIO_QUEUE_NOTIFY_OFFSET,
         4,
         Some(queue_idx),
     )?;
 
-    // injector -> wrapper
-    {
-        let mut tracee = vmm.tracee_write_guard()?;
-        // we may unwrap because we just attached it.
-        let injector = tracee.detach().unwrap();
-        let wrapper =
-            KvmRunWrapper::from_tracer(inject_syscall::into_tracer(injector, vmm.vcpus.clone())?)?;
-        let _ = wrapper_go.replace(wrapper);
-    }
     Ok(ioeventfd)
 }

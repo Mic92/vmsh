@@ -306,8 +306,8 @@ pub fn find_kernel(guest_mem: &GuestMem, hv: &Hypervisor) -> Result<Kernel> {
         guest_mem.find_kernel_sections(hv, LINUX_KERNEL_KASLR_RANGE),
         "could not find Linux kernel in VM memory"
     );
-    let kernel_last = memory_sections.last().unwrap();
-    let kernel_start = memory_sections.first().unwrap().virt_start;
+    let kernel_last = require_with!(memory_sections.last(), "no sections found");
+    let kernel_start = require_with!(memory_sections.first(), "no sections found").virt_start;
     let kernel_end = kernel_last.virt_start + kernel_last.len;
     info!(
         "found linux kernel at {:#x}-{:#x}",
