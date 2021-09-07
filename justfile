@@ -58,7 +58,7 @@ xfstests: passwordless_sudo
   else \
     echo "Please use \`just capsh\` to elevate your privileges."; exit 1; \
   fi
-  python3 tests/xfstests.py
+  nix shell .#xfstests --command python3 tests/xfstests.py
 
 # Fuzz - or rather stress test the blkdev (run `just qemu` and `just attach-qemu-img` before)
 stress-test DEV="/dev/vda":
