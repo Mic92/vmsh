@@ -90,12 +90,20 @@ impl Hypervisor {
         let addr_remote_mem = self.alloc_mem()?;
         let vmsh_id = format!("vmsh_fd_transfer_{}", nix::unistd::getpid());
         let hypervisor_id = format!("vmsh_fd_transfer_{}", self.pid);
-        let local_sock = fd_transfer::Socket::new(&vmsh_id)?;
+        let local_sock = try_with!(
+            fd_transfer::Socket::new(&vmsh_id),
+            "failed to create socket"
+        );
         // remote_sock needs to outlive tracee or we run in a deadlock
-        let remote_sock =
-            fd_transfer::HvSocket::new(self.tracee.clone(), &hypervisor_id, &addr_local_mem)?;
+        let remote_sock = try_with!(
+            fd_transfer::HvSocket::new(self.tracee.clone(), &hypervisor_id, &addr_local_mem),
+            "failed to create hypervisor socket"
+        );
 
-        local_sock.connect(&hypervisor_id)?;
+        try_with!(
+            local_sock.connect(&hypervisor_id),
+            "failed to connect vmsh socket"
+        );
 
         let res = {
             let tracee = try_with!(
@@ -322,7 +330,10 @@ impl Hypervisor {
         let ctx = require_with!(ctx.as_ref(), "transfer context was not set up");
 
         let proc = tracee.try_get_proc()?;
-        ctx.local_sock.send(messages.as_slice(), fds)?;
+        try_with!(
+            ctx.local_sock.send(messages.as_slice(), fds),
+            "failed to send fds"
+        );
         let (msg, fds) = ctx.remote_sock.receive(
             proc,
             &ctx.msg_hdr_mem,
