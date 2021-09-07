@@ -2,6 +2,7 @@
 // Author of further modifications: Peter Okelmann
 // SPDX-License-Identifier: Apache-2.0 OR BSD-3-Clause
 
+use simple_error::SimpleError;
 use std::borrow::{Borrow, BorrowMut};
 use std::fs::OpenOptions;
 use std::ops::DerefMut;
@@ -26,7 +27,6 @@ use crate::devices::virtio::features::{
 };
 use crate::devices::virtio::{IrqAckHandler, MmioConfig, SingleFdSignalQueue, QUEUE_MAX_SIZE};
 use crate::devices::MaybeIoRegionFd;
-use crate::kvm::hypervisor::Hypervisor;
 use crate::kvm::hypervisor::{
     ioevent::IoEvent, ioregionfd::IoRegionFd, userspaceioeventfd::UserspaceIoEventFd,
 };
@@ -43,9 +43,9 @@ pub struct Block<M: GuestAddressSpace> {
     pub mmio_cfg: MmioConfig,
     endpoint: RemoteEndpoint<Arc<Mutex<dyn MutEventSubscriber + Send>>>,
     pub irq_ack_handler: Arc<Mutex<IrqAckHandler>>,
-    vmm: Arc<Hypervisor>,
     irqfd: Arc<EventFd>,
     pub ioregionfd: Option<IoRegionFd>,
+    ioeventfd: Option<IoEvent>,
     pub uioefd: UserspaceIoEventFd,
     /// only used when ioregionfd != None
     file_path: PathBuf,
@@ -115,16 +115,19 @@ where
                     .map_err(Error::Simple)?,
             );
         }
+        let mut uioefd = UserspaceIoEventFd::default();
+        let ioeventfd = IoEvent::register(&args.common.vmm, &mut uioefd, &mmio_cfg, 0)
+            .map_err(Error::Simple)?;
 
         let block = Arc::new(Mutex::new(Block {
             virtio_cfg,
             mmio_cfg,
             endpoint: args.common.event_mgr.remote_endpoint(),
             irq_ack_handler,
-            vmm: args.common.vmm.clone(),
             irqfd,
             ioregionfd,
-            uioefd: UserspaceIoEventFd::default(),
+            ioeventfd: Some(ioeventfd),
+            uioefd,
             file_path: args.file_path,
             read_only: args.read_only,
             sub_id: None,
@@ -180,10 +183,13 @@ where
             queue: self.virtio_cfg.queues[0].clone(),
             disk,
         };
-
-        let ioeventfd = IoEvent::register(&self.vmm, &mut self.uioefd, &self.mmio_cfg, 0)
-            .map_err(Error::Simple)?;
-        let handler = Arc::new(Mutex::new(QueueHandler { inner, ioeventfd }));
+        let handler = Arc::new(Mutex::new(QueueHandler {
+            inner,
+            ioeventfd: match self.ioeventfd.take() {
+                Some(fd) => fd,
+                None => return Err(Error::Simple(SimpleError::new("ioeventfd not set"))),
+            },
+        }));
 
         // Register the queue handler with the `EventManager`. We record the `sub_id`
         // (and/or keep a handler clone) to remove the subscriber when resetting the device

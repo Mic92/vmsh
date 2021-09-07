@@ -72,16 +72,12 @@ pub struct Hypervisor {
     pub vcpus: Vec<VCPU>,
     pub(super) tracee: Arc<RwLock<Tracee>>,
     pub wrapper: Mutex<Option<KvmRunWrapper>>,
-    transfer_ctx: Option<TransferContext>,
+    transfer_ctx: Mutex<Option<TransferContext>>,
 }
 
 impl Hypervisor {
     fn attach(pid: Pid, vm_fd: RawFd) -> Tracee {
         Tracee::new(pid, vm_fd, None)
-    }
-
-    pub fn close_transfer_sockets(&mut self) {
-        self.transfer_ctx.take();
     }
 
     pub fn setup_transfer_sockets(&mut self) -> Result<()> {
@@ -110,14 +106,19 @@ impl Hypervisor {
             remote_sock.connect(proc, &vmsh_id, &addr_remote_mem)
         };
         try_with!(res, "failed to connect to local socket from hypervisor");
-        self.transfer_ctx = Some(TransferContext {
+        self.transfer_ctx = Mutex::new(Some(TransferContext {
             local_sock,
             remote_sock,
             msg_hdr_mem,
             iov_mem,
             iov_buf_mem,
             cmsg_mem,
-        });
+        }));
+        Ok(())
+    }
+
+    pub fn close_transfer_sockets(&self) -> Result<()> {
+        try_with!(self.transfer_ctx.lock(), "cannot take lock").take();
         Ok(())
     }
 
@@ -317,7 +318,8 @@ impl Hypervisor {
         let m_slice = &message[0..1];
         let mut messages = Vec::with_capacity(fds.len());
         fds.iter().for_each(|_| messages.push(m_slice));
-        let ctx = require_with!(&self.transfer_ctx, "transfer context was not set up");
+        let ctx = try_with!(self.transfer_ctx.lock(), "cannot lock transfer context");
+        let ctx = require_with!(ctx.as_ref(), "transfer context was not set up");
 
         let proc = tracee.try_get_proc()?;
         ctx.local_sock.send(messages.as_slice(), fds)?;
@@ -607,6 +609,6 @@ pub fn get_hypervisor(pid: Pid) -> Result<Hypervisor> {
         vm_fd: vm_fds[0],
         vcpus,
         wrapper: Mutex::new(None),
-        transfer_ctx: None,
+        transfer_ctx: Mutex::new(None),
     })
 }

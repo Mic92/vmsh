@@ -36,7 +36,7 @@ pub fn attach(opts: &AttachOptions) -> Result<()> {
         vm.setup_transfer_sockets(),
         "failed to setup unix sockets for fd transfer"
     );
-    let mut vm = Arc::new(vm);
+    let vm = Arc::new(vm);
 
     let mut allocator = try_with!(
         kvm::PhysMemAllocator::new(Arc::clone(&vm)),
@@ -104,7 +104,7 @@ pub fn attach(opts: &AttachOptions) -> Result<()> {
     // now that we got the tracer back, we can cleanup physical memory and file descriptors
     drop(stage1);
     drop(contexts);
-    require_with!(Arc::get_mut(&mut vm), "cannot get vm").close_transfer_sockets();
+    try_with!(vm.close_transfer_sockets(), "cannot close transfer sockets");
     vm.resume()?;
 
     Ok(())
