@@ -160,12 +160,15 @@ impl Drop for HvSocket {
 impl HvSocket {
     pub fn new(
         tracee: Arc<RwLock<Tracee>>,
-        proc: &inject_syscall::Process,
         anon_name: &str,
         addr_local_mem: &HvMem<libc::sockaddr_un>,
     ) -> Result<HvSocket> {
         // socket
-        let fd = proc.socket(libc::AF_UNIX, libc::SOCK_DGRAM, 0)?;
+        let fd = {
+            let tracee = try_with!(tracee.write(), "cannot obtain tracee write lock: poinsoned");
+            let proc = tracee.try_get_proc()?;
+            proc.socket(libc::AF_UNIX, libc::SOCK_DGRAM, 0)?
+        };
         if fd <= 0 {
             // FIXME this fails sometimes with ENOSYS?
             bail!("cannot create socket: {}", nix::errno::from_i32(-fd));
@@ -182,11 +185,15 @@ impl HvSocket {
         );
         addr_local_mem.write(&local.0)?;
         let addr_len = size_of::<u16>() + local.1;
-        let ret = proc.bind(
-            server_fd.fd,
-            addr_local_mem.ptr as *const libc::sockaddr,
-            addr_len as u32,
-        )?;
+        let ret = {
+            let tracee = try_with!(tracee.write(), "cannot obtain tracee write lock: poinsoned");
+            let proc = tracee.try_get_proc()?;
+            proc.bind(
+                server_fd.fd,
+                addr_local_mem.ptr as *const libc::sockaddr,
+                addr_len as u32,
+            )?
+        };
         if ret != 0 {
             let err = -ret as i32;
             bail!("cannot bind: {} (#{})", nix::errno::from_i32(err), ret);

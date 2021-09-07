@@ -64,11 +64,44 @@ pub struct Hypervisor {
     pub vcpus: Vec<VCPU>,
     pub(super) tracee: Arc<RwLock<Tracee>>,
     pub wrapper: Mutex<Option<KvmRunWrapper>>,
+    local_sock: Option<fd_transfer::Socket>,
+    remote_sock: Option<fd_transfer::HvSocket>,
 }
 
 impl Hypervisor {
     fn attach(pid: Pid, vm_fd: RawFd) -> Tracee {
         Tracee::new(pid, vm_fd, None)
+    }
+
+    pub fn close_transfer_sockets(&mut self) {
+        self.local_sock.take();
+        self.remote_sock.take();
+    }
+
+    pub fn setup_transfer_sockets(&mut self) -> Result<()> {
+        let addr_local_mem = self.alloc_mem()?;
+        let addr_remote_mem = self.alloc_mem()?;
+        let vmsh_id = format!("vmsh_fd_transfer_{}", nix::unistd::getpid());
+        let hypervisor_id = format!("vmsh_fd_transfer_{}", self.pid);
+        let local_sock = fd_transfer::Socket::new(&vmsh_id)?;
+        // remote_sock needs to outlive tracee or we run in a deadlock
+        let remote_sock =
+            fd_transfer::HvSocket::new(self.tracee.clone(), &hypervisor_id, &addr_local_mem)?;
+
+        local_sock.connect(&hypervisor_id)?;
+
+        let res = {
+            let tracee = try_with!(
+                self.tracee.write(),
+                "cannot obtain tracee write lock: poinsoned"
+            );
+            let proc = tracee.try_get_proc()?;
+            remote_sock.connect(proc, &vmsh_id, &addr_remote_mem)
+        };
+        try_with!(res, "failed to connect to local socket from hypervisor");
+        self.local_sock = Some(local_sock);
+        self.remote_sock = Some(remote_sock);
+        Ok(())
     }
 
     /// Must be called from the thread that created Hypervisor before using it in a different thread
@@ -258,42 +291,29 @@ impl Hypervisor {
     }
 
     pub fn transfer(&self, fds: &[RawFd]) -> Result<Vec<RawFd>> {
-        let addr_local_mem = self.alloc_mem()?;
-        let addr_remote_mem = self.alloc_mem()?;
         let msg_hdr_mem = self.alloc_mem()?;
         let iov_mem = self.alloc_mem()?;
         let iov_buf_mem = self.alloc_mem::<[u8; 1]>()?;
         let cmsg_mem = self.alloc_mem::<[u8; 64]>()?; // should be of size CMSG_SPACE, but thats not possible at compile time
 
         let ret;
-        let hv;
         {
             let tracee = try_with!(
                 self.tracee.write(),
                 "cannot obtain tracee write lock: poinsoned"
             );
 
-            let vmsh_id = format!("vmsh_fd_transfer_{}", nix::unistd::getpid());
-            let hypervisor_id = format!("vmsh_fd_transfer_{}", self.pid);
-            let vmsh = fd_transfer::Socket::new(&vmsh_id)?;
-            let proc = tracee.try_get_proc()?;
-            hv = fd_transfer::HvSocket::new(
-                self.tracee.clone(),
-                proc,
-                &hypervisor_id,
-                &addr_local_mem,
-            )?;
-
-            vmsh.connect(&hypervisor_id)?;
-            hv.connect(proc, &vmsh_id, &addr_remote_mem)?;
-
             let message = [1u8; 1];
             let m_slice = &message[0..1];
             let mut messages = Vec::with_capacity(fds.len());
             fds.iter().for_each(|_| messages.push(m_slice));
+            let local = require_with!(&self.local_sock, "no local socket set up");
+            let remote = require_with!(&self.remote_sock, "no remote socket set up");
 
-            vmsh.send(messages.as_slice(), fds)?;
-            let (msg, fds) = hv.receive(proc, &msg_hdr_mem, &iov_mem, &iov_buf_mem, &cmsg_mem)?;
+            let proc = tracee.try_get_proc()?;
+            local.send(messages.as_slice(), fds)?;
+            let (msg, fds) =
+                remote.receive(proc, &msg_hdr_mem, &iov_mem, &iov_buf_mem, &cmsg_mem)?;
             if msg != message {
                 bail!("received message differs from sent one");
             }
@@ -570,12 +590,13 @@ pub fn get_hypervisor(pid: Pid) -> Result<Hypervisor> {
         bail!("found VCPUs but no mappings of their fds");
     }
     VCPU::match_maps(&mut vcpus, &vcpu_maps);
-
     Ok(Hypervisor {
         pid,
         tracee: Arc::new(RwLock::new(tracee)),
         vm_fd: vm_fds[0],
         vcpus,
         wrapper: Mutex::new(None),
+        remote_sock: None,
+        local_sock: None,
     })
 }

@@ -112,8 +112,9 @@ fn guest_add_mem(pid: Pid, re_get_slots: bool) -> Result<()> {
 fn fd_transfer(pid: Pid, nr_fds: u32) -> Result<()> {
     use std::path::Path;
 
-    let vm = try_with!(get_hypervisor(pid), "cannot get vms for process {}", pid);
+    let mut vm = try_with!(get_hypervisor(pid), "cannot get vms for process {}", pid);
     vm.stop()?;
+    vm.setup_transfer_sockets()?;
 
     let mut fds = vec![];
     for _ in 0..nr_fds {
@@ -129,6 +130,7 @@ fn fd_transfer(pid: Pid, nr_fds: u32) -> Result<()> {
         let path = Path::new(&pathname);
         assert_eq!(path.exists(), true);
     }
+    vm.close_transfer_sockets()?;
 
     Ok(())
 }

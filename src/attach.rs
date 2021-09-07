@@ -26,12 +26,17 @@ pub fn attach(opts: &AttachOptions) -> Result<()> {
 
     signal_handler::setup(&sender)?;
 
-    let vm = Arc::new(try_with!(
+    let mut vm = try_with!(
         kvm::hypervisor::get_hypervisor(opts.pid),
         "cannot get vms for process {}",
         opts.pid
-    ));
+    );
     vm.stop()?;
+    try_with!(
+        vm.setup_transfer_sockets(),
+        "failed to setup unix sockets for fd transfer"
+    );
+    let mut vm = Arc::new(vm);
 
     let mut allocator = try_with!(
         kvm::PhysMemAllocator::new(Arc::clone(&vm)),
@@ -99,6 +104,7 @@ pub fn attach(opts: &AttachOptions) -> Result<()> {
     // now that we got the tracer back, we can cleanup physical memory and file descriptors
     drop(stage1);
     drop(contexts);
+    require_with!(Arc::get_mut(&mut vm), "cannot get vm").close_transfer_sockets();
     vm.resume()?;
 
     Ok(())
