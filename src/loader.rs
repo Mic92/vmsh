@@ -65,7 +65,10 @@ impl<'a> Loader<'a> {
         allocator: &'a mut PhysMemAllocator,
     ) -> Result<Loader<'a>> {
         let elf = try_core_res!(ElfBinary::new(binary), "cannot parse elf binary");
-        let dyn_symbol_section = elf.file.find_section_by_name(".dynsym").unwrap();
+        let dyn_symbol_section = require_with!(
+            elf.file.find_section_by_name(".dynsym"),
+            "binary has no .dynsym section"
+        );
         let dyn_symbol_table = dyn_symbol_section.get_data(&elf.file)?;
         let dyn_syms = match dyn_symbol_table {
             SectionData::DynSymbolTable64(entries) => entries,
@@ -78,7 +81,10 @@ impl<'a> Loader<'a> {
         // we use symtab instead of dynsym here because rust does not allow us
         // to export our assembly trampoline (_init_vmsh) from the stage1 build
         // via .dynsym
-        let symbol_section = elf.file.find_section_by_name(".symtab").unwrap();
+        let symbol_section = require_with!(
+            elf.file.find_section_by_name(".symtab"),
+            "binary has no .symtab section"
+        );
         let symbol_table = symbol_section.get_data(&elf.file)?;
         let sym_entries = match symbol_table {
             SectionData::SymbolTable64(entries) => entries,
@@ -95,7 +101,6 @@ impl<'a> Loader<'a> {
             .filter(|sym| sym.shndx() != SHN_UNDEF)
             .map(|sym| {
                 let name = try_core_res!(sym.get_name(&elf.file), "cannot get name of function");
-                sym.get_binding().unwrap();
                 Ok((name, vbase + sym.value() as usize))
             })
             .collect::<Result<HashMap<_, _>>>()?;
@@ -156,14 +161,9 @@ impl<'a> Loader<'a> {
         command: &[String],
         mmio_ranges: Vec<u64>,
     ) -> Result<(DeviceStatus, DriverStatus)> {
-        let string_mapping = self
-            .virt_mem
-            .as_ref()
-            .unwrap()
-            .mappings
-            .last()
-            .unwrap()
-            .clone();
+        let virt_mem = require_with!(self.virt_mem.as_ref(), "no virtual memory assigned");
+        let string_mapping =
+            require_with!(virt_mem.mappings.last(), "no virtual mappings found").clone();
 
         let mut strings: Vec<u8> = Vec::with_capacity(self.string_arg_size);
 
@@ -243,7 +243,8 @@ impl<'a> Loader<'a> {
         );
 
         try_with!(self.upload_binary(), "failed to upload binary to vm");
-        Ok((self.virt_mem.take().unwrap(), device_status, driver_status))
+        let mem = require_with!(self.virt_mem.take(), "BUG, no virtual memory assigned");
+        Ok((mem, device_status, driver_status))
     }
 }
 
@@ -305,7 +306,14 @@ impl<'a> ElfLoader for Loader<'a> {
         });
         let mut allocs = allocs.collect::<Vec<_>>();
         allocs.sort_by_key(|k| k.virt_start);
-        let last_addr = allocs.last().unwrap().virt_end();
+        let last_addr = match allocs.last() {
+            Some(a) => a.virt_end(),
+            None => {
+                return Err(ElfLoaderErr::ElfParser {
+                    source: "elf has no section",
+                })
+            }
+        };
 
         // put strings for stage1 args before elf binary
         let last = VirtAlloc {

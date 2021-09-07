@@ -58,7 +58,7 @@ fn deinit(p: &mut Process) -> Option<Vec<ptrace::Thread>> {
                 )
             };
             let _ = main_thread.setregs(&p.saved_regs);
-            Some(p.threads.take().unwrap())
+            p.threads.take()
         }
         None => None,
     }
@@ -157,7 +157,10 @@ macro_rules! syscall_args {
 impl Process {
     // PID of the traced process
     pub fn pid(&self) -> Pid {
-        self.threads.as_ref().unwrap()[self.process_idx].tid
+        self.threads
+            .as_ref()
+            .expect("no threads associated with process")[self.process_idx]
+            .tid
     }
 
     fn check_owner(&self) -> Result<()> {
@@ -185,11 +188,11 @@ impl Process {
         }
         if let Some(mut threads) = self.threads.take() {
             threads.retain(|t| attach_seize(t.tid).is_ok());
+            let (saved_regs, saved_text) = init(&threads, self.process_idx)?;
+            self.saved_regs = saved_regs;
+            self.saved_text = saved_text;
             self.threads = Some(threads);
         }
-        let (saved_regs, saved_text) = init(self.threads.as_ref().unwrap(), self.process_idx)?;
-        self.saved_regs = saved_regs;
-        self.saved_text = saved_text;
         self.owner = Some(current().id());
         Ok(())
     }
@@ -202,10 +205,11 @@ impl Process {
         if self.owner.is_none() {
             bail!("thread is already disowned");
         }
-        self.threads = Some(deinit(self).expect("process was deinited before it was dropped!"));
-        for thread in self.threads.as_ref().unwrap() {
+        let threads = deinit(self).expect("process was deinited before it was dropped!");
+        for thread in &threads {
             thread.detach()?;
         }
+        self.threads = Some(threads);
         self.owner = None;
         Ok(())
     }
@@ -361,7 +365,7 @@ impl Process {
     /// if no threads are associated with tracer
     #[must_use]
     pub fn main_thread(&self) -> &ptrace::Thread {
-        &(self.threads.as_ref().unwrap()[self.process_idx])
+        &(self.threads.as_ref().expect("No threads associated")[self.process_idx])
     }
 }
 

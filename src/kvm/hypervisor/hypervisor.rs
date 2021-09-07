@@ -5,7 +5,7 @@ use kvm_bindings as kvmb;
 use libc::c_int;
 use log::*;
 use nix::unistd::Pid;
-use simple_error::{bail, simple_error, try_with};
+use simple_error::{bail, require_with, simple_error, try_with};
 use std::ffi::OsStr;
 use std::marker::PhantomData;
 use std::mem::size_of;
@@ -148,7 +148,7 @@ impl Hypervisor {
         let wrapper: KvmRunWrapper;
         {
             let mut wguard = try_with!(self.wrapper.lock(), "cannot obtain wrapper mutex");
-            wrapper = wguard.take().expect("earlier in this fn we put it here");
+            wrapper = require_with!(wguard.take(), "earlier in this function we put it here");
         }
 
         // convert wrapper to tracee and attach it

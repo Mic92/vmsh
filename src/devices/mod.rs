@@ -130,7 +130,7 @@ impl DeviceContext {
         // IoManager replacement:
         let device_manager = Arc::new(Mutex::new(IoPirate::default()));
         let blkdev = {
-            let guard = device_manager.lock().unwrap();
+            let guard = try_with!(device_manager.lock(), "cannot lock device manager");
             guard.mmio_device(block_mmio_cfg.range.base());
 
             let common = CommonArgs {
@@ -153,7 +153,7 @@ impl DeviceContext {
             }
         };
         let console = {
-            let guard = device_manager.lock().unwrap();
+            let guard = try_with!(device_manager.lock(), "cannot lock device manager");
             guard.mmio_device(console_mmio_cfg.range.base());
 
             let common = CommonArgs {

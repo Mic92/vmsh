@@ -1,7 +1,9 @@
 use nix::unistd::{sysconf, SysconfVar};
 
 pub fn page_size() -> usize {
-    sysconf(SysconfVar::PAGE_SIZE).unwrap().unwrap() as usize
+    sysconf(SysconfVar::PAGE_SIZE)
+        .expect("sysconf failed")
+        .expect("page size unknown") as usize
 }
 
 pub fn huge_page_size(level: u8) -> usize {

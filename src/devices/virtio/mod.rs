@@ -18,7 +18,7 @@ use crate::tracer::wrap_syscall::KvmRunWrapper;
 use event_manager::{EventManager, MutEventSubscriber};
 use log::error;
 
-use simple_error::try_with;
+use simple_error::{require_with, try_with};
 use vm_device::bus::MmioRange;
 use vmm_sys_util::eventfd::EventFd;
 
@@ -183,7 +183,7 @@ pub fn register_ioeventfd(
 
     // wrapper -> injector
     {
-        let wrapper = wrapper_go.take().unwrap();
+        let wrapper = require_with!(wrapper_go.take(), "no wrapper assigned");
         let mut tracee = vmm.tracee_write_guard()?;
 
         let err = "cannot re-attach injector after having detached it favour of KvmRunWrapper";
@@ -202,7 +202,7 @@ pub fn register_ioeventfd(
     {
         let mut tracee = vmm.tracee_write_guard()?;
         // we may unwrap because we just attached it.
-        let injector = tracee.detach().unwrap();
+        let injector = require_with!(tracee.detach(), "no tracee assigned");
         let wrapper =
             KvmRunWrapper::from_tracer(inject_syscall::into_tracer(injector, vmm.vcpus.clone())?)?;
         let _ = wrapper_go.replace(wrapper);

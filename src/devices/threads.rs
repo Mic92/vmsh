@@ -285,7 +285,7 @@ fn mmio_exit_handler_thread(
         "mmio-exit-handler",
         err_sender,
         move |dev: &Option<Arc<DeviceContext>>, should_stop: Arc<AtomicBool>| {
-            let dev = dev.as_ref().unwrap();
+            let dev = require_with!(dev.as_ref(), "no device passed");
             if let Err(e) = vm.finish_thread_transfer() {
                 // don't shadow error here
                 let _ = driver_notifier.notify(DeviceState::Error);
