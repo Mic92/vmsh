@@ -117,7 +117,7 @@ impl Socket {
 }
 
 pub struct HvSocket {
-    fd: RawFd,
+    fd: libc::c_int,
     tracee: Arc<RwLock<Tracee>>,
 }
 
@@ -125,14 +125,14 @@ impl Drop for HvSocket {
     fn drop(&mut self) {
         let tracee = match self.tracee.write() {
             Err(e) => {
-                warn!("cannot aquire lock to drop HvMem: {}", e);
+                warn!("cannot aquire lock to drop HvSocket: {}", e);
                 return;
             }
             Ok(t) => t,
         };
         let proc = match tracee.try_get_proc() {
             Err(e) => {
-                warn!("cannot drop HvMem: {}", e);
+                warn!("cannot drop HvSocket: {}", e);
                 return;
             }
             Ok(t) => t,
@@ -141,7 +141,7 @@ impl Drop for HvSocket {
         let ret = match proc.close(self.fd) {
             Err(e) => {
                 warn!(
-                    "cannot execute close socket to drop HvMem (fd {}): {}",
+                    "cannot execute close socket to drop HvSocket (fd {}): {}",
                     self.fd, e
                 );
                 return;
@@ -150,7 +150,7 @@ impl Drop for HvSocket {
         };
         if ret != 0 {
             warn!(
-                "cannot close hypervisor socket to drop HvMem (fd {}): {}",
+                "cannot close hypervisor socket to drop HvSocket (fd {}): {}",
                 self.fd, ret
             );
         }
@@ -165,10 +165,15 @@ impl HvSocket {
         addr_local_mem: &HvMem<libc::sockaddr_un>,
     ) -> Result<HvSocket> {
         // socket
-        let server_fd = proc.socket(libc::AF_UNIX, libc::SOCK_DGRAM, 0)?;
-        if server_fd <= 0 {
-            bail!("cannot create socket: {}", nix::errno::from_i32(-server_fd));
+        let fd = proc.socket(libc::AF_UNIX, libc::SOCK_DGRAM, 0)?;
+        if fd <= 0 {
+            // FIXME this fails sometimes with ENOSYS?
+            bail!("cannot create socket: {}", nix::errno::from_i32(-fd));
         }
+        let server_fd = HvSocket {
+            fd,
+            tracee: Arc::clone(&tracee),
+        };
 
         // bind
         let local = try_with!(
@@ -178,7 +183,7 @@ impl HvSocket {
         addr_local_mem.write(&local.0)?;
         let addr_len = size_of::<u16>() + local.1;
         let ret = proc.bind(
-            server_fd,
+            server_fd.fd,
             addr_local_mem.ptr as *const libc::sockaddr,
             addr_len as u32,
         )?;
@@ -187,10 +192,7 @@ impl HvSocket {
             bail!("cannot bind: {} (#{})", nix::errno::from_i32(err), ret);
         }
 
-        Ok(HvSocket {
-            fd: server_fd,
-            tracee,
-        })
+        Ok(server_fd)
     }
 
     pub fn connect(
