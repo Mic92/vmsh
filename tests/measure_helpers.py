@@ -80,6 +80,8 @@ def testbench(
     with_vmsh: bool = True,
     ioregionfd: bool = False,
     mounts: bool = True,
+    vcpus: int = 4,
+    mem: int = 8000,
 ) -> Iterator[QemuVm]:
     if ioregionfd:
         mmiomode = "ioregionfd"
@@ -95,6 +97,7 @@ def testbench(
         helpers.notos_image(),
         virtio_blk=HOST_SSD,
         virtio_9p=virtio_9p,
+        extra_args=["-smp", str(vcpus), "-m", str(mem)],
     ) as vm:
         vm.wait_for_ssh()
         if mounts:

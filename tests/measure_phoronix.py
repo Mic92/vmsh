@@ -44,6 +44,9 @@ def phoronix_command(phoronix_path: Path, skip_tests: List[str]) -> Command:
         PTS_DOWNLOAD_CACHE=f"{phoronix_path.joinpath('download-cache')}/",
         TEST_RESULTS_NAME="vmsh",
         TEST_RESULTS_IDENTIFIER="vmsh",
+        PTS_NPROC="4",
+        NUMBER_OF_PROCESSORS="4",
+        PTS_PHYSICAL_CORES="4",
         # no goddamn auto-updates
         http_proxy="127.0.1.2:28201",
     )
@@ -77,6 +80,34 @@ def link_phoronix_test_suite(test_suite: Path) -> List[str]:
     ]
 
 
+def systemd_run(
+    cpus: int = 4, memory_gigabytes: int = 8, env: Dict[str, str] = {}
+) -> List[str]:
+    """
+    Since we limit memory inside our VM we also limit the number of CPUs for the benchmark
+    """
+    assert memory_gigabytes >= 1
+    # if 0 this is an empty string, which means no restrictions
+    mask = ",".join(map(str, range(cpus)))
+    high_mem = (memory_gigabytes - 0.5) * 1000
+    cmd = [
+        "systemd-run",
+        "--pty",
+        "--wait",
+        "--collect",
+        "-p",
+        f"MemoryHigh={high_mem}M",
+        "-p",
+        f"MemoryMax={memory_gigabytes}G",
+        "-p",
+        f"AllowedCPUs={mask}",
+    ]
+    for k, v in env.items():
+        cmd.append(f"--setenv={k}={v}")
+    cmd.append("--")
+    return cmd
+
+
 def native(skip_tests: List[str]) -> pd.DataFrame:
     with fresh_fs_ssd():
         test_suite = util.HOST_DIR_PATH.joinpath("phoronix-test-suite")
@@ -84,9 +115,10 @@ def native(skip_tests: List[str]) -> pd.DataFrame:
         cmd = phoronix_command(test_suite, skip_tests)
         # this is gross but so is phoronix test suite
         util.run(["sudo"] + link_phoronix_test_suite(test_suite))
+        prefix = systemd_run(env=cmd.env)
 
         util.run(
-            ["sudo", "taskset", "--cpu-list", "0", "env"] + cmd.env_vars + cmd.args,
+            ["sudo"] + prefix + cmd.args,
             extra_env=cmd.env,
             stdout=None,
             stderr=None,
@@ -141,11 +173,12 @@ def main() -> None:
         df = pd.read_csv(STATS_PATH, sep="\t")
 
     for name, benchmark in benchmarks:
-        # skip_tests = "fio,sqlite,fs-mark,dbench,ior,compilebench,postmark".split(",")
-        skip_tests = "fio,sqlite,dbench,ior,compilebench,postmark".split(",")
+        # Useful for testing
+        # skip_tests = "fio,sqlite,dbench,ior,compilebench,postmark".split(",")
+        skip_tests = []
         if df is not None:
             skip_tests = list(df[df.identifier == name].benchmark_name.unique())
-            if len(skip_tests) == 6:
+            if len(skip_tests) == 7:
                 # result of len(df.benchmark_name.unique())
                 continue
         new_df = benchmark(skip_tests)
