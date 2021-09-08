@@ -65,3 +65,9 @@ def test_attach(
             res = vm.ssh_cmd(["echo", "ping"], check=False)
             assert res.stdout == "ping\n"
             assert res.returncode == 0
+
+
+def test_attach_multiple_cpus(
+    helpers: conftest.Helpers,
+) -> None:
+    test_attach(helpers=helpers, vcpus=8)
