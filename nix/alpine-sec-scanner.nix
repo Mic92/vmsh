@@ -4,8 +4,8 @@ buildGoModule {
   src = fetchFromGitHub {
     owner = "Mic92";
     repo = "alpine-sec-scanner";
-    rev = "a1c2f7f318df8d2950740a2444416980cdb32564";
-    sha256 = "sha256-AR2qoTxrAvpz2Ye1fHQejq6ZOp8KgRKFuHjVGZKOM/c=";
+    rev = "c97cf8c758ecbd645ea089fb63c5ab371ed74759";
+    sha256 = "sha256-s42CJHSsdRF+KBBqxrmSXp8phz1j8HgeZ9dNO6+GZdM=";
   };
 
   # static linking

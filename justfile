@@ -244,19 +244,6 @@ qemu EXTRA_CMDLINE="nokalsr": build-linux nixos-image
     -mon chardev=char0,mode=readline \
     -device virtconsole,chardev=char0,id=vmsh,nr=0
 
-qemu2 EXTRA_CMDLINE="nokalsr": build-linux nixos-image
-  qemu-system-x86_64 \
-    -kernel {{linux_dir}}/arch/x86/boot/bzImage \
-    -drive format=raw,file={{linux_dir}}/nixos.ext4 \
-    -append "root=/dev/sda console=ttyS0 {{EXTRA_CMDLINE}}" \
-    -net nic,netdev=user.0,model=virtio \
-    -m 512M \
-    -netdev user,id=user.0,hostfwd=tcp:127.0.0.1:{{qemu_ssh_port}}-:22 \
-    -cpu host \
-    -virtfs local,path={{justfile_directory()}}/..,security_model=none,mount_tag=home \
-    -virtfs local,path={{linux_dir}},security_model=none,mount_tag=linux \
-    -nographic -enable-kvm \
-
 alias cl := cloud-hypervisor
 cloud-hypervisor: build-linux nixos-image
   cloud-hypervisor \
@@ -278,16 +265,60 @@ firecracker-kernel:
    git -C {{linux_dir}} checkout v4.14.245
    just build-linux
 
-firecracker: #build-linux nixos-image
+# run firecracker hypervisor
+firecracker: build-linux nixos-image
   firectl -m512 -c1 --kernel={{linux_dir}}/vmlinux \
     --kernel-opts "console=ttyS0" \
     --root-drive={{linux_dir}}/nixos.ext4
 
+# run crosvm hypervisor
 crosvm: build-linux nixos-image
   crosvm run -m500 -c1 --rwdisk {{linux_dir}}/nixos.ext4 \
     --disable-sandbox --serial type=stdout,console=true,stdin=true \
     -p "console=ttyS0 root=/dev/vda" \
     {{linux_dir}}/vmlinux
+
+# download alpine iso
+# this version is intentionally out-of-date so we can test our alpine-sec-scanner
+alpine-initrd:
+  mkdir -p {{linux_dir}}
+  [[ -f {{linux_dir}}/alpine-initramfs ]] || curl -o {{linux_dir}}/alpine-initramfs https://dl-cdn.alpinelinux.org/alpine/v3.10/releases/x86_64/netboot-3.10.0/initramfs-virt
+  [[ -f {{linux_dir}}/alpine.iso ]] || curl -o {{linux_dir}}/alpine.iso https://dl-cdn.alpinelinux.org/alpine/v3.10/releases/x86_64/alpine-virt-3.10.0-x86_64.iso
+
+alpine-sec-scanner-image:
+  #!/usr/bin/env bash
+  set -eux -o pipefail
+  if [[ -f {{linux_dir}}/alpine-sec-scanner-image.ext4 ]]; then
+    exit 0
+  fi
+  nix build --out-link {{nix_results}}/alpine-sec-scanner-image --builders '' .#alpine-sec-scanner-image
+  install -m755 -D {{nix_results}}/alpine-sec-scanner-image {{linux_dir}}/alpine-sec-scanner-image.ext4
+
+# run alpine linux in qemu
+qemu-alpine: alpine-initrd
+  qemu-system-x86_64 \
+    -enable-kvm \
+    -name test-os \
+    -m 512 \
+    -kernel {{linux_dir}}/arch/x86/boot/bzImage \
+    -initrd {{linux_dir}}/alpine-initramfs \
+    -drive id=drive1,file={{linux_dir}}/alpine.iso,format=raw,if=none \
+    -device virtio-blk-pci,drive=drive1,bootindex=1 \
+    -net nic,netdev=user.0,model=virtio \
+    -netdev user,id=user.0 \
+    -append "console=hvc0 ip=dhcp" \
+    -no-reboot \
+    -nographic \
+    -device virtio-rng-pci \
+    -serial null \
+    -device virtio-serial \
+    -chardev stdio,mux=on,id=char0,signal=off \
+    -mon chardev=char0,mode=readline \
+    -device virtconsole,chardev=char0,id=vmsh,nr=0
+
+# scan alpine vm for security vulnerabilities
+scan-alpine-linux: alpine-sec-scanner-image
+  cargo run -- attach -f "{{linux_dir}}/alpine-sec-scanner-image.ext4" $(pgrep -n -u $(id -u) qemu) -- /bin/alpine-sec-scanner /var/lib/vmsh
 
 qemu-ramdisk EXTRA_CMDLINE="nokalsr": build-linux nixos-image
   just mkramdisk {{linux_dir}}/nixos.ext4 nixos.ext4 4
