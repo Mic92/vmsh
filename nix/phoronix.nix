@@ -22,9 +22,8 @@ let
     src = fetchFromGitHub {
       owner = "Mic92";
       repo = "phoronix-test-suite";
-      rev = "e9941415d2d8260697ceba18783dc85c75910e85";
-
-      sha256 = "sha256-U0eW314nJ0r55OjrYFrR0EY8IS97YFESgOlVa9gs3UI=";
+      rev = "bbbd001d3e679673fe5f2b8d45858f988159fd07";
+      sha256 = "sha256-jcCV/0KyemIX+XUp89VYyRiLma2AulEt1iNnnir4uMo=";
     };
 
     buildInputs = [ php ];
@@ -81,9 +80,12 @@ let
       glibc
       glibc.static
       openmpi
+      openssh # ior wants either rsh or ssh
       # for systemd-detect-virt
       systemd
       which
+      python2
+      pciutils
     ] ++ lib.optionals (enableBuildDeps') [
       binutils
       automake
@@ -92,7 +94,6 @@ let
       bc
       perl
       gcc
-      python2
       python3
     ];
     multiPkgs = null;
