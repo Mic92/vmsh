@@ -7,6 +7,7 @@ use nix::{mount, sched, unistd};
 use nix::{mount::MsFlags, unistd::getpid};
 use simple_error::try_with;
 use simple_error::SimpleError;
+use std::fs::File;
 use std::fs::{create_dir_all, metadata, remove_dir};
 use std::fs::{set_permissions, Permissions};
 use std::io;
@@ -148,20 +149,6 @@ pub fn setup_bindmounts(mounts: &[&str]) -> Result<()> {
         let source_buf = PathBuf::from("/var/lib/vmsh").join(m);
         let source = source_buf.as_path();
 
-        let mountpoint_stat = match metadata(mountpoint) {
-            Err(e) => {
-                if e.kind() == io::ErrorKind::NotFound {
-                    continue;
-                }
-                return try_with!(
-                    Err(e),
-                    "failed to get metadata of path {}",
-                    mountpoint.display()
-                );
-            }
-            Ok(data) => data,
-        };
-
         let source_stat = match metadata(source) {
             Err(e) => {
                 if e.kind() == io::ErrorKind::NotFound {
@@ -171,6 +158,32 @@ pub fn setup_bindmounts(mounts: &[&str]) -> Result<()> {
                     Err(e),
                     "failed to get metadata of path {}",
                     source.display()
+                );
+            }
+            Ok(data) => data,
+        };
+
+        if !mountpoint.exists() {
+            // degrade gracefully if fs is read-only
+            if source_stat.is_dir() {
+                if mkdir_p(&mountpoint).is_err() {
+                    continue;
+                };
+            } else {
+                if mkdir_p(&mountpoint.parent().unwrap()).is_err() {
+                    continue;
+                };
+                if File::create(mountpoint).is_err() {
+                    continue;
+                }
+            }
+        }
+        let mountpoint_stat = match metadata(mountpoint) {
+            Err(e) => {
+                return try_with!(
+                    Err(e),
+                    "failed to get metadata of path {}",
+                    mountpoint.display()
                 );
             }
             Ok(data) => data,
