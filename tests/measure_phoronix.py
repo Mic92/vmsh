@@ -84,6 +84,7 @@ def native(skip_tests: List[str]) -> pd.DataFrame:
         cmd = phoronix_command(test_suite, skip_tests)
         # this is gross but so is phoronix test suite
         util.run(["sudo"] + link_phoronix_test_suite(test_suite))
+
         util.run(
             ["sudo", "taskset", "--cpu-list", "0", "env"] + cmd.env_vars + cmd.args,
             extra_env=cmd.env,
@@ -120,7 +121,6 @@ def qemu_blk(skip_tests: List[str]) -> pd.DataFrame:
 
 
 def vmsh_blk(skip_tests: List[str]) -> pd.DataFrame:
-    skip_tests = "fio,sqlite,dbench,ior,compilebench,postmark".split(",")
     with fresh_fs_ssd(), util.testbench(
         Helpers(), with_vmsh=True, ioregionfd=True, mounts=True
     ) as vm:
