@@ -5,7 +5,7 @@ use std::ptr;
 use elfloader::{
     ElfBinary, ElfLoader, ElfLoaderErr, Entry, Flags, LoadableHeaders, Rela, TypeRela64, VAddr, P64,
 };
-use log::{debug, error, info, warn};
+use log::{debug, error, warn};
 use nix::sys::mman::ProtFlags;
 use nix::sys::uio::{process_vm_writev, IoVec, RemoteIoVec};
 use simple_error::{bail, require_with, try_with};
@@ -281,7 +281,7 @@ macro_rules! require_elf {
 impl<'a> ElfLoader for Loader<'a> {
     fn allocate(&mut self, headers: LoadableHeaders) -> ElfResult {
         let allocs = headers.map(|h| {
-            info!(
+            debug!(
                 "allocate base = {:#x} size = {:#x} flags = {}",
                 h.virtual_addr(),
                 h.mem_size(),
@@ -343,7 +343,7 @@ impl<'a> ElfLoader for Loader<'a> {
 
         allocs.iter().for_each(|a| {
             if a.virt_start > self.vbase() {
-                error!(
+                debug!(
                     "{:#x}-{:#x} ({:?})",
                     a.virt_start - self.vbase(),
                     a.virt_start + a.len - self.vbase(),
@@ -369,7 +369,7 @@ impl<'a> ElfLoader for Loader<'a> {
     fn load(&mut self, flags: Flags, base: VAddr, region: &[u8]) -> ElfResult {
         let start = self.vbase() + base as usize;
         let end = self.vbase() + base as usize + region.len() as usize;
-        info!(
+        debug!(
             "load region into = {:#x} -- {:#x} ({:?})",
             start, end, flags
         );
