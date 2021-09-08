@@ -340,7 +340,10 @@ unsafe fn run_stage2() -> Result<(), ()> {
                 }
             }
             Err(res) => {
-                printkln!("stage1: failed to register block mmio device: %d", res);
+                printkln!(
+                    "stage1: failed to register block mmio device: errno=%d",
+                    res
+                );
                 return Err(());
             }
         };
@@ -355,7 +358,11 @@ unsafe fn run_stage2() -> Result<(), ()> {
     ) {
         Ok(f) => f,
         Err(e) => {
-            printkln!("stage1: cannot open %s: %d", VMSH_STAGE1_ARGS.argv[0], e);
+            printkln!(
+                "stage1: cannot open %s: errno=%d",
+                VMSH_STAGE1_ARGS.argv[0],
+                e
+            );
             return Err(());
         }
     };
@@ -372,7 +379,11 @@ unsafe fn run_stage2() -> Result<(), ()> {
             }
         }
         Err(res) => {
-            printkln!("stage1: cannot write %s: %d", VMSH_STAGE1_ARGS.argv[0], res);
+            printkln!(
+                "stage1: cannot write %s: errno=%d",
+                VMSH_STAGE1_ARGS.argv[0],
+                res
+            );
             return Err(());
         }
     }
@@ -395,12 +406,11 @@ unsafe fn run_stage2() -> Result<(), ()> {
             continue;
         }
         if res != 0 {
-            printkln!("stage1: failed to spawn stage2: %d", res);
+            printkln!("stage1: failed to spawn stage2: errno=%d", res);
+            return Err(());
         }
-        break;
+        return Ok(());
     }
-
-    Ok(())
 }
 
 unsafe extern "C" fn spawn_stage2() {
@@ -436,10 +446,11 @@ unsafe extern "C" fn spawn_stage2() {
     }
     printkln!("stage1: initializing drivers");
     let res = run_stage2();
-    printkln!("stage1: ready");
     if res.is_ok() {
+        printkln!("stage1: ready");
         VMSH_STAGE1_ARGS.driver_status = DeviceState::Ready;
     } else {
+        printkln!("stage1: failed");
         DEVICES.iter_mut().for_each(|d| {
             d.take();
         });

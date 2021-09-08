@@ -552,9 +552,9 @@ attach-nested-cloud-hypervisor: busybox-image build
 inspect-qemu:
   cargo run -- inspect "{{qemu_pid}}"
 
-# Set root password in qemu VM
-change-password pts TARGET="qemu": passwd-image
-  cargo run -- attach --pts {{pts}} -f "{{linux_dir}}/passwd.ext4" $(pgrep -n -u $(id -u) {{TARGET}}) -- /bin/strace -f /bin/passwd -R /var/lib/vmsh
+# Set password in qemu VM, expects input in the form of username:password
+change-password user_password TARGET="qemu": passwd-image
+  cargo run -- attach -f "{{linux_dir}}/passwd.ext4" $(pgrep -n -u $(id -u) {{TARGET}}) -- /bin/sh -c "echo '{{user_password}}' | /bin/chpasswd -R /var/lib/vmsh"
 
 inspect-cl:
   cargo run -- inspect $(pgrep cloud-hyperviso)

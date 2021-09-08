@@ -38,6 +38,8 @@ fn run_stage2(opts: &Options) -> Result<()> {
     // get a console to report errors as quick as possible
     try_with!(console::setup(), "failed to setup console");
 
+    // cleanup ourself
+    let _ = fs::remove_file("/dev/.vmsh");
     let dev = try_with!(find_vmsh_blockdev(), "cannot find block_device");
 
     let (uid_map, gid_map) = try_with!(
