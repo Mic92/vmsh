@@ -391,7 +391,7 @@ unsafe fn run_stage2() -> Result<(), ()> {
             // Ideally we could use flush_delayed_fput to close the binary but not
             // all kernel versions support this.
             // Hence we just sleep until the file is closed.
-            ffi::usleep_range(100, 1000);
+            ffi::usleep_range(10 * 1000, 100 * 1000);
             continue;
         }
         if res != 0 {
@@ -421,7 +421,7 @@ unsafe extern "C" fn spawn_stage2() {
             VMSH_STAGE1_ARGS.device_status,
             &VMSH_STAGE1_ARGS.device_status
         );
-        ffi::usleep_range(100, 1000);
+        ffi::usleep_range(10 * 1000, 100 * 1000);
         retries += 1;
         if retries == 20 {
             printkln!("stage1: timeout waiting for device to be initialized");
@@ -448,7 +448,7 @@ unsafe extern "C" fn spawn_stage2() {
     };
 
     while VMSH_STAGE1_ARGS.device_status == DeviceState::Ready {
-        ffi::usleep_range(300, 1000);
+        ffi::usleep_range(50 * 1000, 500 * 1000);
     }
 
     DEVICES.iter_mut().for_each(|d| {
