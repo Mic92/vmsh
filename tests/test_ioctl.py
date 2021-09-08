@@ -41,14 +41,9 @@ def test_ioctl_guest_add_mem_get_maps(helpers: conftest.Helpers) -> None:
         run_ioctl_test("guest_add_mem_get_maps", vm)
 
 
-def test_fd_transfer1(helpers: conftest.Helpers) -> None:
+def test_fd_transfer(helpers: conftest.Helpers) -> None:
     with helpers.spawn_qemu(helpers.notos_image()) as vm:
-        run_ioctl_test("fd_transfer1", vm)
-
-
-def test_fd_transfer2(helpers: conftest.Helpers) -> None:
-    with helpers.spawn_qemu(helpers.notos_image()) as vm:
-        run_ioctl_test("fd_transfer2", vm)
+        run_ioctl_test("fd_transfer", vm)
 
 
 def test_get_vcpu_maps(helpers: conftest.Helpers) -> None:

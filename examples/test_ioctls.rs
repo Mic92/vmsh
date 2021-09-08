@@ -109,7 +109,7 @@ fn guest_add_mem(pid: Pid, re_get_slots: bool) -> Result<()> {
     Ok(())
 }
 
-fn fd_transfer(pid: Pid, nr_fds: u32) -> Result<()> {
+fn fd_transfer(pid: Pid) -> Result<()> {
     use std::path::Path;
 
     let mut vm = try_with!(get_hypervisor(pid), "cannot get vms for process {}", pid);
@@ -326,8 +326,7 @@ fn main() {
         .subcommand(subtest("inject"))
         .subcommand(subtest("guest_add_mem"))
         .subcommand(subtest("guest_add_mem_get_maps"))
-        .subcommand(subtest("fd_transfer1"))
-        .subcommand(subtest("fd_transfer2"))
+        .subcommand(subtest("fd_transfer"))
         .subcommand(subtest("cpuid2"))
         .subcommand(subtest("guest_userfaultfd"))
         .subcommand(subtest("guest_kvm_exits"))
@@ -347,8 +346,7 @@ fn main() {
         "cpuid2" => cpuid2(pid),
         "guest_add_mem" => guest_add_mem(pid, false),
         "guest_add_mem_get_maps" => guest_add_mem(pid, true),
-        "fd_transfer1" => fd_transfer(pid, 1),
-        "fd_transfer2" => fd_transfer(pid, 2),
+        "fd_transfer" => fd_transfer(pid),
         "guest_userfaultfd" => guest_userfaultfd(pid),
         "guest_kvm_exits" => guest_kvm_exits(pid),
         "vcpu_maps" => vcpu_maps(pid),
