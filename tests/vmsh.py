@@ -13,7 +13,7 @@ from shlex import quote
 EOF = 1
 
 
-def cargo_build(target: Optional[str] = None) -> Path:
+def cargo_build(target: str = "debug") -> Path:
     env = os.environ.copy()
     env["KERNELDIR"] = str(notos_image().kerneldir)
     extra_flags = []
@@ -29,7 +29,7 @@ def cargo_build(target: Optional[str] = None) -> Path:
             env=env,
             check=True,
         )
-    return PROJECT_ROOT.joinpath("target", "debug")
+    return PROJECT_ROOT.joinpath("target", target)
 
 
 _build_artifacts: Dict[str, Path] = {}
