@@ -180,11 +180,21 @@ def testbench(
 
 
 def blkdiscard() -> Any:
-    run(["sudo", "blkdiscard", "-f", HOST_SSD])
+    run(["sudo", "chown", os.getlogin(), HOST_SSD])
+    proc = run(
+        ["sudo", "blkdiscard", "-f", HOST_SSD], check=False, stderr=subprocess.PIPE
+    )
+    while "Device or resource busy" in proc.stderr:
+        print("blkdiscard: waiting for target not to be busy")
+        time.sleep(1)
+        proc = run(
+            ["sudo", "blkdiscard", "-f", HOST_SSD], check=False, stderr=subprocess.PIPE
+        )
+    proc.check_returncode()
 
 
 @contextmanager
-def fresh_fs_ssd(image: Optional[Path] = None) -> Iterator[Any]:
+def fresh_fs_ssd(image: Optional[Path] = None, filesize: int = 10) -> Iterator[Any]:
     while (
         "target is busy"
         in run(["sudo", "umount", HOST_SSD], check=False, stderr=subprocess.PIPE).stderr
@@ -216,6 +226,8 @@ def fresh_fs_ssd(image: Optional[Path] = None) -> Iterator[Any]:
     run(["sudo", "chown", os.getlogin(), HOST_SSD])
     try:
         run(["touch", f"{HOST_DIR}/file"], check=True)
+        # writing 1TB takes 10min. Fallocate a few seconds.
+        # run(["fallocate", "-l", f"{filesize}G", f"{HOST_DIR}/file"], check=True)
         yield
     finally:
         run(["sudo", "chown", "0", HOST_SSD])
@@ -231,6 +243,10 @@ def check_ssd() -> None:
     input_ = input(f"Delete {HOST_SSD} to use for benchmark? [Y/n] ")
     if input_ != "Y" and input_ != "y" and input_ != "":
         print("Aborting.")
+        exit(1)
+
+    if HOST_SSD in open("/proc/mounts", "r").read():
+        print("Please unmount the device first. ")
         exit(1)
 
 
