@@ -167,8 +167,8 @@ STATS_PATH = util.MEASURE_RESULTS.joinpath("phoronix-stats.tsv")
 def main() -> None:
     util.check_ssd()
     util.check_intel_turbo()
-    # benchmarks = [("native", native), ("vmsh_blk", vmsh_blk), ("qemu_blk", qemu_blk)]
-    benchmarks = [("vmsh_blk", vmsh_blk), ("qemu_blk", qemu_blk)]
+    # benchmarks = [("native", native), ("vmsh-blk", vmsh_blk), ("qemu-blk", qemu_blk)]
+    benchmarks = [("vmsh-blk", vmsh_blk), ("qemu-blk", qemu_blk)]
     df = None
     if STATS_PATH.exists():
         df = pd.read_csv(STATS_PATH, sep="\t")
