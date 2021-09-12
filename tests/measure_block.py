@@ -62,9 +62,9 @@ def hdparm(vm: QemuVm, device: str) -> Optional[float]:
         return None
     out = term.stdout
     print(out)
-    out = re.sub(" +", " ", out).split(" ")
-    mb = float(out[5])
-    sec = float(out[8])
+    fields = re.sub(" +", " ", out).split(" ")
+    mb = float(fields[5])
+    sec = float(fields[8])
     return mb / sec
 
 
@@ -245,6 +245,7 @@ def fio_suite(
     if name in stats["system"]:
         print(f"skip {name}")
         return
+    print(f"run {name}")
 
     if not file:
         util.blkdiscard()
