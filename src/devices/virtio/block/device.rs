@@ -2,9 +2,11 @@
 // Author of further modifications: Peter Okelmann
 // SPDX-License-Identifier: Apache-2.0 OR BSD-3-Clause
 
+use nix::unistd::Pid;
 use simple_error::SimpleError;
 use std::borrow::{Borrow, BorrowMut};
 use std::fs::OpenOptions;
+use std::io::{Seek, SeekFrom};
 use std::ops::DerefMut;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -21,7 +23,10 @@ use vm_memory::GuestAddressSpace;
 use vmm_sys_util::eventfd::EventFd;
 
 use crate::devices::use_ioregionfd;
-use crate::devices::virtio::block::{BLOCK_DEVICE_ID, VIRTIO_BLK_F_FLUSH, VIRTIO_BLK_F_RO};
+use crate::devices::virtio::block::inorder_handler::Mmap;
+use crate::devices::virtio::block::{
+    BLOCK_DEVICE_ID, SECTOR_SHIFT, VIRTIO_BLK_F_FLUSH, VIRTIO_BLK_F_RO,
+};
 use crate::devices::virtio::features::{
     VIRTIO_F_IN_ORDER, VIRTIO_F_RING_EVENT_IDX, VIRTIO_F_VERSION_1,
 };
@@ -51,6 +56,8 @@ pub struct Block<M: GuestAddressSpace> {
     file_path: PathBuf,
     read_only: bool,
     sub_id: Option<SubscriberId>,
+    guest_memory: Arc<Mutex<Option<M>>>,
+    pid: Pid,
 
     // Before resetting we return the handler to the mmio thread for cleanup
     #[allow(dead_code)]
@@ -85,6 +92,7 @@ where
         }
 
         // A block device has a single queue.
+        let mem = args.common.mem.clone();
         let queues = vec![Queue::new(args.common.mem, QUEUE_MAX_SIZE)];
         let config_space = build_config_space(&args.file_path)?;
         let virtio_cfg = VirtioConfig::new(device_features, queues, config_space);
@@ -130,9 +138,11 @@ where
             uioefd,
             file_path: args.file_path,
             read_only: args.read_only,
+            pid: args.common.vmm.pid,
             sub_id: None,
             handler: None,
             _root_device: args.root_device,
+            guest_memory: Arc::new(Mutex::new(Some(mem))),
         }));
 
         // Register the device on the MMIO bus.
@@ -154,11 +164,36 @@ where
             return Err(Error::BadFeatures(self.virtio_cfg.driver_features));
         }
 
-        let file = OpenOptions::new()
+        let guest_mem = match self.guest_memory.lock() {
+            Ok(mut m) => match m.take() {
+                Some(m) => m,
+                None => return Err(Error::Simple(SimpleError::new("guest_mem is not set"))),
+            },
+            Err(e) => {
+                return Err(Error::Simple(SimpleError::new(format!(
+                    "cannot lock guest memory: {}",
+                    e
+                ))))
+            }
+        };
+
+        let mut file = OpenOptions::new()
             .read(true)
             .write(!self.read_only)
             .open(&self.file_path)
             .map_err(Error::OpenFile)?;
+
+        let disk_size = file.seek(SeekFrom::End(0)).map_err(Error::Seek)?;
+
+        let mmap = match Mmap::new(&file, disk_size as usize) {
+            Ok(m) => m,
+            Err(e) => {
+                return Err(Error::Simple(SimpleError::new(format!(
+                    "cannot mmap disk: {}",
+                    e
+                ))))
+            }
+        };
 
         let mut features = self.virtio_cfg.driver_features;
         if self.read_only {
@@ -179,9 +214,14 @@ where
         };
 
         let inner = InOrderQueueHandler {
+            pid: self.pid,
             driver_notify,
             queue: self.virtio_cfg.queues[0].clone(),
             disk,
+            sectors: disk_size >> SECTOR_SHIFT,
+            mmap,
+            guest_addresspace: guest_mem.memory(),
+            remote_iovs: vec![],
         };
         let handler = Arc::new(Mutex::new(QueueHandler {
             inner,

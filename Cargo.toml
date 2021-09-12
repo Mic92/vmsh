@@ -70,4 +70,4 @@ log = "0.4.6"
 # vm-memory = { git = "https://github.com/pogobanane/vm-memory.git", rev = "ecf1d8e0fd765759559c586d83760dfaf9812a8c", features = ["backend-mmap"] }
 # atomicity support
 vm-memory = { git = "https://github.com/pogobanane/vm-memory.git", rev = "3846add06a58f3df2bdd0b55b4ad064c20d21f53", features = ["backend-mmap"] }
-#vm-memory = { path = "../vm-memory", features = ["backend-mmap"] }
+#vm-memory = { path = "../rust-vmm/vm-memory", features = ["backend-mmap"] }
