@@ -64,11 +64,7 @@ class Helpers:
             "-C",
             CORES_QEMU,
         ]
-        extra_args_ = [  # TODO more CPUs
-            "-m",
-            "3583",
-        ]
-        extra_args_ += extra_args
+        extra_args_ = extra_args.copy()
         if virtio_blk is not None:
             extra_args_ += [
                 "-drive",

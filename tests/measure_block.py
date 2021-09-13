@@ -60,11 +60,11 @@ def hdparm(vm: QemuVm, device: str) -> Optional[float]:
     term = vm.ssh_cmd(["hdparm", "-t", device], check=False)
     if term.returncode != 0:
         return None
-    out = term.stdout
-    print(out)
-    fields = re.sub(" +", " ", out).split(" ")
-    mb = float(fields[5])
-    sec = float(fields[8])
+    out_ = term.stdout
+    print(out_)
+    out = re.sub(" +", " ", out_).split(" ")
+    mb = float(out[5])
+    sec = float(out[8])
     return mb / sec
 
 
@@ -82,6 +82,13 @@ class Rw(Enum):
     rw = 3
 
 
+FIO_RUNTIME = 240
+FIO_SIZE = 100  # 1700  # filesize in GB
+if QUICK:
+    FIO_RUNTIME = 10
+    FIO_SIZE = 100
+
+
 def fio(
     vm: Optional[QemuVm],
     device: str,
@@ -97,18 +104,19 @@ def fio(
     @param file: target is file vs blockdevice
     @return (read_mean, stddev, write_mean, stdev) in kiB/s
     """
-    runtime = 120
-    size = 100  # filesize in GB
-    if QUICK:
-        runtime = 10
-        size = 10
     cmd = []
     if not vm and not file:
         cmd += ["sudo"]
+
+    cmd += [
+        "numactl",
+        "-C",
+        "2",
+    ]
     cmd += ["fio"]
 
     if file:
-        cmd += [f"--filename={device}/file", f"--size={size}GB"]
+        cmd += [f"--filename={device}/file", f"--size={FIO_SIZE}GB"]
     else:
         cmd += [f"--filename={device}", "--direct=1"]
 
@@ -128,13 +136,12 @@ def fio(
 
     if iops:
         # fio/examples uses 16 here as well
-        cmd += ["--bs=4k", "--ioengine=libaio", "--iodepth=64"]
+        cmd += ["--bs=4k", "--ioengine=libaio", "--iodepth=64", "--numjobs=1"]
     else:
-        cmd += ["--bs=64k", "--ioengine=libaio", "--iodepth=16"]
+        cmd += ["--bs=64k", "--ioengine=libaio", "--iodepth=16", "--numjobs=1"]
 
     cmd += [
-        f"--runtime={runtime}",
-        "--numjobs=1",
+        f"--runtime={FIO_RUNTIME}",
         "--time_based",
         "--group_reporting",
         "--name=generic_name",
@@ -291,7 +298,7 @@ def fio_suite(
 
 def main() -> None:
     """
-    not quick: 5 * fio_suite(5min) + 2 * sample(5min) = 35min
+    not quick: 11 * fio_suite(10min) = 2h
     """
     util.check_ssd()
     util.check_intel_turbo()
@@ -312,19 +319,19 @@ def main() -> None:
         fio_suite(vm, fio_stats, GUEST_JAVDEV, "direct_iorefd_javdev", file=False)
 
     # file based benchmarks don't blkdiscard on their own, so we do it as often as possible
-    with util.fresh_fs_ssd():
+    with util.fresh_fs_ssd(filesize=FIO_SIZE):
         with util.testbench(helpers, with_vmsh=False, ioregionfd=False) as vm:
             lsblk(vm)
             fio_suite(vm, fio_stats, GUEST_QEMUBLK_MOUNT, "detached_qemublk")
-    with util.fresh_fs_ssd():
+    with util.fresh_fs_ssd(filesize=FIO_SIZE):
         with util.testbench(helpers, with_vmsh=False, ioregionfd=False) as vm:
             fio_suite(vm, fio_stats, GUEST_QEMU9P, "detached_qemu9p")
 
-    with util.fresh_fs_ssd():
+    with util.fresh_fs_ssd(filesize=FIO_SIZE):
         with util.testbench(helpers, with_vmsh=True, ioregionfd=False) as vm:
             fio_suite(vm, fio_stats, GUEST_JAVDEV_MOUNT, "attached_ws_javdev")
 
-    with util.fresh_fs_ssd():
+    with util.fresh_fs_ssd(filesize=FIO_SIZE):
         with util.testbench(helpers, with_vmsh=True, ioregionfd=True) as vm:
             fio_suite(vm, fio_stats, GUEST_JAVDEV_MOUNT, "attached_iorefd_javdev")
 

@@ -11,7 +11,7 @@ def pprint_cmd(cmd: List[str], extra_env: Dict[str, str] = {}) -> None:
     env_string = []
     for k, v in extra_env.items():
         env_string.append(f"{k}={v}")
-    print(f"$ {' '.join(env_string + cmd)}")
+    print(f"$ {' '.join(env_string + cmd)}", flush=True)
 
 
 def run(

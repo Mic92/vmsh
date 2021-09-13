@@ -13,6 +13,7 @@ in {
     phoronix
     myxfstests
     pkgs.su
+    pkgs.numactl
   ];
   not-os.simpleStaticIp = false;
   # no default gateway to isolate phoronix from internet
