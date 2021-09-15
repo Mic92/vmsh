@@ -249,8 +249,16 @@ unsafe fn get_kernel_version() -> Result<KernelVersion, ()> {
     let mut file = match KFile::open(path, ffi::O_RDONLY, 0) {
         Ok(f) => f,
         Err(e) => {
-            printkln!("stage1: cannot open /proc/sys/kernel/osrelease: %d", e);
-            return Err(());
+            printkln!(
+                "stage1: warning: cannot open /proc/sys/kernel/osrelease: %d",
+                e
+            );
+            // procfs not mounted? -> assume newer kernel
+            return Ok(KernelVersion {
+                major: 5,
+                minor: 5,
+                patch: 0,
+            });
         }
     };
     // leave one byte null to make it a valid c string
@@ -299,12 +307,19 @@ unsafe fn get_kernel_version() -> Result<KernelVersion, ()> {
     let major = parse_version_part(split.next(), version_str)?;
     let minor = parse_version_part(split.next(), version_str)?;
     let patch = parse_version_part(split.next(), version_str)?;
-
-    Ok(KernelVersion {
+    let v = KernelVersion {
         major,
         minor,
         patch,
-    })
+    };
+    printkln!(
+        "stage1: detected linux version %u.%u.%u",
+        v.major as c_uint,
+        v.minor as c_uint,
+        v.patch as c_uint
+    );
+
+    Ok(v)
 }
 
 // cannot put this onto the stack without stackoverflows?
@@ -313,12 +328,6 @@ static mut DEVICES: [Option<PlatformDevice>; MAX_DEVICES] = [None, None, None];
 unsafe fn run_stage2() -> Result<(), ()> {
     let version = get_kernel_version()?;
 
-    printkln!(
-        "stage1: detected linux version %u.%u.%u",
-        version.major as c_uint,
-        version.minor as c_uint,
-        version.patch as c_uint
-    );
     for (i, addr) in VMSH_STAGE1_ARGS.device_addrs.iter().enumerate() {
         if *addr == 0 {
             continue;
@@ -358,12 +367,30 @@ unsafe fn run_stage2() -> Result<(), ()> {
     ) {
         Ok(f) => f,
         Err(e) => {
-            printkln!(
-                "stage1: cannot open %s: errno=%d",
-                VMSH_STAGE1_ARGS.argv[0],
-                e
-            );
-            return Err(());
+            if e == -ffi::ENOENT {
+                // /dev/ does not exists, let's try /
+                match KFile::open(
+                    c_str!("/.vmsh").as_ptr() as *const c_char,
+                    ffi::O_WRONLY | ffi::O_CREAT,
+                    0o755,
+                ) {
+                    Ok(f) => {
+                        VMSH_STAGE1_ARGS.argv[0] = c_str!("/.vmsh").as_ptr() as *mut c_char;
+                        f
+                    }
+                    Err(e) => {
+                        printkln!("stage1: cannot open /.vmsh: errno=%d", e);
+                        return Err(());
+                    }
+                }
+            } else {
+                printkln!(
+                    "stage1: cannot open %s: errno=%d",
+                    VMSH_STAGE1_ARGS.argv[0],
+                    e
+                );
+                return Err(());
+            }
         }
     };
     match file.write_all(STAGE2_EXE, 0) {
