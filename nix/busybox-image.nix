@@ -14,6 +14,7 @@ buildDiskImage {
   extraCommands = ''
     pushd root
     ln -s ${busybox}/bin bin
+    mkdir -p proc dev tmp sys
     popd
   '';
 }
