@@ -88,6 +88,7 @@
           ];
         }).json;
         linux_ioregionfd = pkgs.callPackage ./nix/linux-ioregionfd.nix { };
+        kvmtool = pkgs.callPackage ./nix/kvmtool.nix { };
       in {
         # default target for `nix build`
         defaultPackage = vmsh;
@@ -96,6 +97,9 @@
 
           # see justfile/build-linux-shell
           inherit kernel-deps;
+
+          # for testing
+          inherit kvmtool;
 
           # used in tests/xfstests.py
           xfstests = pkgs.callPackage ./nix/xfstests.nix { };
@@ -147,6 +151,7 @@
             pkgs.cloud-hypervisor
             pkgs.crosvm
             pkgs.firectl
+            kvmtool
             (pkgs.writeShellScriptBin "firecracker" ''
               exec ${pkgs.firecracker}/bin/firecracker --seccomp-level 0 "$@"
             '')

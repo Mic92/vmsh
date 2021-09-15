@@ -255,6 +255,11 @@ cloud-hypervisor: build-linux nixos-image
       --disk path={{linux_dir}}/nixos.ext4 \
       --api-socket {{hypervisor_socket}}
 
+# run qemu with kernel build by `build-linux` and filesystem image build by `busybox-image`
+kvmtool: build-linux busybox-image
+  lkvm run --debug --name nixos -m 512 -c 1 --disk {{linux_dir}}/busybox.ext4 --rng -k {{linux_dir}}/arch/x86/boot/bzImage \
+    -p "root=/dev/vda init=/bin/sh"
+
 stop-cloud-hypervisor:
   curl --unix-socket {{hypervisor_socket}} -X PUT http://localhost/api/v1/vm.power-button
 
@@ -464,7 +469,7 @@ attach-firecracker: busybox-image
   just attach firecracker
 
 attach-kvmtool: busybox-image
-  just attach kvmtool
+  just attach lkvm
 
 measure-block: passwordless_sudo
   rm tests/measurements/stats.json || true

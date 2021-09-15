@@ -18,8 +18,7 @@ impl TempDir {
     }
 }
 
-pub fn tempdir() -> Result<TempDir> {
-    let mut template = env::temp_dir();
+pub fn _tempdir(mut template: PathBuf) -> Result<TempDir> {
     template.push("vmsh.XXXXXX");
     let mut bytes = template.into_os_string().into_vec();
     // null byte
@@ -33,6 +32,24 @@ pub fn tempdir() -> Result<TempDir> {
         let name = PathBuf::from(OsString::from_vec(bytes));
         Ok(TempDir { name: Some(name) })
     }
+}
+
+pub fn tempdir() -> Result<TempDir> {
+    let tmp = env::temp_dir();
+    let templates = &[
+        tmp.as_path(),
+        Path::new("/dev/shm"),
+        Path::new("/tmp"),
+        Path::new("/dev"),
+    ];
+    let mut last_err = None;
+    for t in templates {
+        match _tempdir(t.into()) {
+            Ok(v) => return Ok(v),
+            Err(e) => last_err = Some(e),
+        };
+    }
+    Err(last_err.unwrap())
 }
 
 impl Drop for TempDir {

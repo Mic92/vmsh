@@ -8,13 +8,14 @@ use nix::{mount::MsFlags, unistd::getpid};
 use simple_error::try_with;
 use simple_error::SimpleError;
 use std::fs::File;
-use std::fs::{create_dir_all, metadata, remove_dir};
+use std::fs::{metadata, remove_dir};
 use std::fs::{set_permissions, Permissions};
 use std::io;
 use std::os::unix::prelude::*;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use crate::block::BlockDevice;
+use crate::dir::mkdir_p;
 use crate::namespace::{self, MOUNT};
 use crate::result::Result;
 
@@ -132,15 +133,6 @@ impl Drop for MountNamespace {
 }
 
 const NONE: Option<&'static [u8]> = None;
-
-fn mkdir_p<P: AsRef<Path>>(path: &P) -> io::Result<()> {
-    if let Err(e) = create_dir_all(path) {
-        if e.kind() != io::ErrorKind::AlreadyExists {
-            return Err(e);
-        }
-    }
-    Ok(())
-}
 
 pub fn setup_bindmounts(mounts: &[&str]) -> Result<()> {
     for m in mounts {
