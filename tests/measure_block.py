@@ -46,7 +46,7 @@ import json
 from enum import Enum
 
 
-# overwrite the number of samples to take to a minimum
+# overwrite the test duration and test file size to make the run shorter
 # TODO turn this to False for releases. Results look very different.
 QUICK = True
 
@@ -220,19 +220,23 @@ def fio_read_write(
     iops: bool = False,
     file: bool = False,
 ) -> FioResult:
-    read = fio(
-        vm,
-        device,
-        random=random,
-        rw=Rw.r,
-        iops=iops,
-        file=file,
-    )
+    if not file:
+        util.blkdiscard()
     write = fio(
         vm,
         device,
         random=random,
         rw=Rw.w,
+        iops=iops,
+        file=file,
+    )
+    if not file:
+        util.blkdiscard()
+    read = fio(
+        vm,
+        device,
+        random=random,
+        rw=Rw.r,
         iops=iops,
         file=file,
     )
@@ -254,9 +258,6 @@ def fio_suite(
         return
     print(f"run {name}")
 
-    if not file:
-        util.blkdiscard()
-
     bw = fio_read_write(
         vm,
         device,
@@ -264,10 +265,6 @@ def fio_suite(
         iops=False,
         file=file,
     )
-
-    if not file:
-        util.blkdiscard()
-
     iops = fio_read_write(
         vm,
         device,
