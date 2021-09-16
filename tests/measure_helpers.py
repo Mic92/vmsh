@@ -13,6 +13,7 @@ import subprocess
 import pandas as pd
 from pathlib import Path
 import time
+import psutil
 
 
 HOST_SSD = os.environ.get("HOST_SSD", "/dev/nvme0n1")
@@ -259,6 +260,23 @@ def check_intel_turbo() -> None:
                     """Please run: echo 1 | sudo tee /sys/devices/system/cpu/intel_pstate/no_turbo"""
                 )
                 exit(1)
+
+
+MEMORY_HOG = bytearray(0)
+
+
+def check_memory() -> None:
+    global MEMORY_HOG
+    avail = psutil.virtual_memory().available
+    GB = 1024 * 1024 * 1024
+    needed = 12 * GB
+    if avail > needed:
+        print(
+            f"""
+Your system has {avail/GB:.1f} GB of memory available. To prevent excessive use of page caches, we are now allocating {(avail - needed)/GB:.1f} GB of memory which will leave you with {needed/GB:.1f} GB of available memory for the test.
+        """
+        )
+        MEMORY_HOG = bytearray(avail - needed)
 
 
 # look at those caches getting warm
