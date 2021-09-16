@@ -8,7 +8,7 @@ use core::include_bytes;
 use core::panic::PanicInfo;
 use core::ptr;
 use core::str;
-use stage1_interface::{DeviceState, Stage1Args, IRQ_NUM, MAX_ARGV, MAX_DEVICES};
+use stage1_interface::{DeviceState, Stage1Args, MAX_ARGV, MAX_DEVICES};
 
 use chlorine::{c_char, c_int, c_long, c_uint, c_void, size_t};
 use ffi::loff_t;
@@ -24,6 +24,7 @@ const STAGE2_EXE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/stage2"));
 static mut VMSH_STAGE1_ARGS: Stage1Args = Stage1Args {
     device_addrs: [0; MAX_DEVICES],
     argv: [ptr::null_mut(); MAX_ARGV],
+    irq_num: 0,
     device_status: DeviceState::Undefined,
     driver_status: DeviceState::Undefined,
 };
@@ -328,6 +329,11 @@ static mut DEVICES: [Option<PlatformDevice>; MAX_DEVICES] = [None, None, None];
 unsafe fn run_stage2() -> Result<(), ()> {
     let version = get_kernel_version()?;
 
+    if VMSH_STAGE1_ARGS.irq_num == 0 {
+        printkln!("stage1: no irq number set in stage1 args");
+        return Err(());
+    }
+
     for (i, addr) in VMSH_STAGE1_ARGS.device_addrs.iter().enumerate() {
         if *addr == 0 {
             continue;
@@ -337,7 +343,7 @@ unsafe fn run_stage2() -> Result<(), ()> {
             MMIO_DEVICE_ID + (i as i32),
             *addr as usize,
             MMIO_SIZE,
-            IRQ_NUM, //irq as usize,
+            VMSH_STAGE1_ARGS.irq_num,
             &version,
         ) {
             Ok(v) => {

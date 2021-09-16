@@ -6,7 +6,6 @@ use chlorine::{c_char, c_ulonglong};
 pub const MAX_DEVICES: usize = 3;
 pub const MAX_ARGV: usize = 256;
 /// ideally we could have our own IRQ here... 6 seems so far shareable with other devices
-pub const IRQ_NUM: usize = 6;
 
 #[derive(PartialEq, Copy, Clone, Debug)]
 #[repr(C)]
@@ -25,6 +24,8 @@ pub struct Stage1Args {
     /// null terminated array
     /// the first argument is always stage2_path, the actual arguments come after
     pub argv: [*mut c_char; MAX_ARGV],
+    /// HACK we need to set IRQs depending on the hypervisor
+    pub irq_num: usize,
     pub device_status: DeviceState,
     pub driver_status: DeviceState,
 }

@@ -255,7 +255,7 @@ cloud-hypervisor: build-linux nixos-image
       --disk path={{linux_dir}}/nixos.ext4 \
       --api-socket {{hypervisor_socket}}
 
-# run qemu with kernel build by `build-linux` and filesystem image build by `busybox-image`
+# run kvmtool with kernel build by `build-linux` and filesystem image build by `busybox-image`
 kvmtool: build-linux busybox-image
   lkvm run --debug --name nixos -m 512 -c 1 --disk {{linux_dir}}/busybox.ext4 --rng -k {{linux_dir}}/arch/x86/boot/bzImage \
     -p "root=/dev/vda init=/bin/sh"
@@ -587,6 +587,12 @@ attach-nested-cloud-hypervisor: busybox-image build
 # Inspect first qemu vm found by pidof and owned by our own user
 inspect-qemu:
   cargo run -- inspect "{{qemu_pid}}"
+
+inspect-firecracker:
+  cargo run -- inspect $(pidof firecracker)
+
+inspect-crosvm:
+  cargo run -- inspect $(pidof crosvm)
 
 # Set password in qemu VM, expects input in the form of username:password
 change-password user_password TARGET="qemu": passwd-image

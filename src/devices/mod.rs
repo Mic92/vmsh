@@ -14,7 +14,6 @@ use crate::result::Result;
 use crate::tracer::proc::Mapping;
 use libc::pid_t;
 use simple_error::{bail, try_with};
-use stage1_interface::IRQ_NUM;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
@@ -105,6 +104,7 @@ impl DeviceContext {
         vmm: &Arc<Hypervisor>,
         allocator: &mut PhysMemAllocator,
         event_mgr: &mut SubscriberEventManager,
+        irq_num: usize,
         backing: &Path,
         pts: Option<PathBuf>,
     ) -> Result<DeviceContext> {
@@ -116,12 +116,12 @@ impl DeviceContext {
 
         let block_mmio_cfg = MmioConfig {
             range: allocator.alloc_mmio_range(0x1000)?,
-            gsi: IRQ_NUM as u32,
+            gsi: irq_num as u32,
         };
 
         let console_mmio_cfg = MmioConfig {
             range: allocator.alloc_mmio_range(0x1000)?,
-            gsi: IRQ_NUM as u32,
+            gsi: irq_num as u32,
         };
 
         let first_mmio_addr = console_mmio_cfg.range.base().0;

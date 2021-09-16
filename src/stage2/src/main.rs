@@ -1,11 +1,10 @@
+use kmsg::kmsg_log;
 use nix::sys::statfs::{statfs, FsType};
 use nix::unistd;
 use nix::unistd::Pid;
 use simple_error::{bail, try_with};
 use std::ffi::OsString;
 use std::fs;
-use std::fs::OpenOptions;
-use std::io::Write;
 use std::os::unix::fs::MetadataExt;
 use std::path::Path;
 use std::process::exit;
@@ -22,6 +21,7 @@ mod capabilities;
 mod cmd;
 mod console;
 mod dir;
+mod kmsg;
 mod lsm;
 mod mount_context;
 mod mountns;
@@ -252,16 +252,8 @@ fn run_stage2(opts: &Options) -> Result<()> {
     Ok(())
 }
 
-fn log_to_kmsg(msg: &str) {
-    let mut v = match OpenOptions::new().write(true).open("/dev/kmsg") {
-        Ok(v) => v,
-        Err(_) => return,
-    };
-    let _ = v.write_all(msg.as_bytes());
-}
-
 fn main() {
-    log_to_kmsg("[stage2] start\n");
+    kmsg_log("[stage2] start\n");
     let args = env::args().collect::<Vec<_>>();
     let command = if args.len() > 2 {
         Some(args[1].clone())
@@ -277,7 +269,7 @@ fn main() {
     };
     if let Err(e) = run_stage2(&opts) {
         // print to both allocated pty and kmsg
-        log_to_kmsg(&format!("[stage2] {}\n", e));
+        kmsg_log(&format!("[stage2] {}\n", e));
         eprintln!("{}", &e);
         exit(1);
     }
