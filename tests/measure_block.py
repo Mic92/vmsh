@@ -82,11 +82,13 @@ class Rw(Enum):
     rw = 3
 
 
-FIO_RUNTIME = 240
-FIO_SIZE = 100  # 1700  # filesize in GB
+FIO_RAMPUP = 10
+FIO_RUNTIME = FIO_RAMPUP + 120
+FIO_SIZE = 100  # filesize in GB
 if QUICK:
-    FIO_RUNTIME = 10
-    FIO_SIZE = 100
+    FIO_RAMPUP = 2
+    FIO_RUNTIME = FIO_RAMPUP + 8
+    FIO_SIZE = 10
 
 
 def fio(
@@ -136,12 +138,13 @@ def fio(
 
     if iops:
         # fio/examples uses 16 here as well
-        cmd += ["--bs=4k", "--ioengine=libaio", "--iodepth=64", "--numjobs=1"]
+        cmd += ["--bs=4k", "--ioengine=libaio", "--iodepth=16", "--numjobs=1"]
     else:
-        cmd += ["--bs=64k", "--ioengine=libaio", "--iodepth=16", "--numjobs=1"]
+        cmd += ["--bs=256k", "--ioengine=libaio", "--iodepth=16", "--numjobs=1"]
 
     cmd += [
         f"--runtime={FIO_RUNTIME}",
+        f"--ramp_time={FIO_RAMPUP}",
         "--time_based",
         "--group_reporting",
         "--name=generic_name",
@@ -268,7 +271,7 @@ def fio_suite(
     iops = fio_read_write(
         vm,
         device,
-        random=True,
+        random=False,
         iops=True,
         file=file,
     )
@@ -298,7 +301,9 @@ def main() -> None:
     not quick: 11 * fio_suite(10min) = 2h
     """
     util.check_ssd()
+    util.check_memory()
     util.check_intel_turbo()
+    util.blkdiscard()
     helpers = confmeasure.Helpers()
 
     fio_stats = util.read_stats(STATS_PATH)

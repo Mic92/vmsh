@@ -13,6 +13,7 @@ import subprocess
 import pandas as pd
 from pathlib import Path
 import time
+import psutil
 
 
 HOST_SSD = os.environ.get("HOST_SSD", "/dev/nvme0n1")
@@ -259,6 +260,26 @@ def check_intel_turbo() -> None:
                     """Please run: echo 1 | sudo tee /sys/devices/system/cpu/intel_pstate/no_turbo"""
                 )
                 exit(1)
+
+
+def check_memory() -> None:
+    avail = psutil.virtual_memory().available / 1024 / 1024 / 1024  # GB
+    limit = 26.0
+    if avail > limit:
+        print(
+            f"""
+            =====================
+                Warning:
+
+                Your system has {avail:.1f} GB of memory available. This can
+                disturb the results because of excessive caching.
+                Please reduce the amount of available memory to something
+                around or smaller than {limit:.1f} GB:
+
+                dd if=/dev/zero of=/dev/shm/vmsh_measure_block bs=1k count=40240k
+            =====================
+       """
+        )
 
 
 # look at those caches getting warm
