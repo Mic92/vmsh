@@ -383,6 +383,7 @@ impl DeviceSet {
     pub fn new(
         vm: &Arc<Hypervisor>,
         allocator: &mut PhysMemAllocator,
+        irq_num: usize,
         backing_file: &Path,
         pts: Option<PathBuf>,
     ) -> Result<DeviceSet> {
@@ -390,7 +391,14 @@ impl DeviceSet {
             try_with!(SubscriberEventManager::new(), "cannot create event manager");
         // instantiate blkdev
         let context = Arc::new(try_with!(
-            DeviceContext::new(vm, allocator, &mut event_manager, backing_file, pts),
+            DeviceContext::new(
+                vm,
+                allocator,
+                &mut event_manager,
+                irq_num,
+                backing_file,
+                pts
+            ),
             "cannot create device context"
         ));
         Ok(DeviceSet {

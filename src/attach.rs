@@ -1,6 +1,7 @@
 use log::{error, info};
 use nix::unistd::Pid;
 use simple_error::{require_with, try_with};
+use std::fs::read_to_string;
 use std::path::PathBuf;
 use std::sync::mpsc::sync_channel;
 use std::sync::Arc;
@@ -17,6 +18,23 @@ pub struct AttachOptions {
     pub command: Vec<String>,
     pub backing: PathBuf,
     pub pts: Option<PathBuf>,
+}
+
+pub fn get_irq_num(pid: Pid) -> Result<usize> {
+    let mut comm_path = PathBuf::from("/proc");
+    comm_path.push(pid.as_raw().to_string());
+    comm_path.push("comm");
+    let comm = try_with!(
+        read_to_string(&comm_path),
+        "failed to read {}",
+        comm_path.display()
+    );
+    // dirty hack until we have a better way to find out what IRQs we can use
+    if comm.contains("crosvm") {
+        Ok(4)
+    } else {
+        Ok(6)
+    }
 }
 
 pub fn attach(opts: &AttachOptions) -> Result<()> {
@@ -43,8 +61,16 @@ pub fn attach(opts: &AttachOptions) -> Result<()> {
         "cannot create allocator"
     );
 
+    let irq_num = try_with!(get_irq_num(opts.pid), "failed to get irq num");
+
     let devices = try_with!(
-        DeviceSet::new(&vm, &mut allocator, &opts.backing, opts.pts.clone()),
+        DeviceSet::new(
+            &vm,
+            &mut allocator,
+            irq_num,
+            &opts.backing,
+            opts.pts.clone()
+        ),
         "cannot create devices"
     );
 
@@ -54,7 +80,7 @@ pub fn attach(opts: &AttachOptions) -> Result<()> {
 
     let addrs = devices.mmio_addrs()?;
     let mut stage1 = try_with!(
-        Stage1::new(allocator, &opts.command, addrs),
+        Stage1::new(allocator, &opts.command, irq_num, addrs),
         "failed to initialize stage1"
     );
     let driver_status = require_with!(stage1.driver_status.take(), "no driver status set");

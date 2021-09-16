@@ -57,6 +57,7 @@ impl Stage1 {
     pub fn new(
         mut allocator: kvm::PhysMemAllocator,
         command: &[String],
+        irq_num: usize,
         mmio_ranges: Vec<u64>,
     ) -> Result<Stage1> {
         let kernel = find_kernel(&allocator.guest_mem, &allocator.hv)?;
@@ -74,7 +75,7 @@ impl Stage1 {
         let init_func = loader.init_func;
 
         let (virt_mem, device_status, driver_status) = try_with!(
-            loader.load_binary(command, mmio_ranges),
+            loader.load_binary(command, irq_num, mmio_ranges),
             "cannot load stage1"
         );
 

@@ -159,6 +159,7 @@ impl<'a> Loader<'a> {
     fn write_stage1_args(
         &mut self,
         command: &[String],
+        irq_num: usize,
         mmio_ranges: Vec<u64>,
     ) -> Result<(DeviceStatus, DriverStatus)> {
         let virt_mem = require_with!(self.virt_mem.as_ref(), "no virtual memory assigned");
@@ -208,6 +209,7 @@ impl<'a> Loader<'a> {
         stage1_args.argv[0..argv.len()].clone_from_slice(argv.as_slice());
         stage1_args.device_addrs[0..mmio_ranges.len()].clone_from_slice(&mmio_ranges);
         stage1_args.device_status = DeviceState::Initializing;
+        stage1_args.irq_num = irq_num;
 
         let stage1_args_addr = stage1_args as *const Stage1Args as usize;
 
@@ -230,6 +232,7 @@ impl<'a> Loader<'a> {
     pub fn load_binary(
         &mut self,
         command: &[String],
+        irq_num: usize,
         mmio_ranges: Vec<u64>,
     ) -> Result<(VirtMem, DeviceStatus, DriverStatus)> {
         let binary = try_core_res!(ElfBinary::new(self.binary), "cannot parse elf binary");
@@ -238,7 +241,7 @@ impl<'a> Loader<'a> {
         try_core_res!(binary.load(self), "cannot load elf binary");
 
         let (device_status, driver_status) = try_with!(
-            self.write_stage1_args(command, mmio_ranges),
+            self.write_stage1_args(command, irq_num, mmio_ranges),
             "failed to write stage1 arguments"
         );
 
