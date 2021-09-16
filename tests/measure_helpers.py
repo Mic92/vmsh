@@ -262,24 +262,21 @@ def check_intel_turbo() -> None:
                 exit(1)
 
 
+MEMORY_HOG = bytearray(0)
+
+
 def check_memory() -> None:
-    avail = psutil.virtual_memory().available / 1024 / 1024 / 1024  # GB
-    limit = 26.0
-    if avail > limit:
+    global MEMORY_HOG
+    avail = psutil.virtual_memory().available
+    GB = 1024 * 1024 * 1024
+    needed = 12 * GB
+    if avail > needed:
         print(
             f"""
-            =====================
-                Warning:
-
-                Your system has {avail:.1f} GB of memory available. This can
-                disturb the results because of excessive caching.
-                Please reduce the amount of available memory to something
-                around or smaller than {limit:.1f} GB:
-
-                dd if=/dev/zero of=/dev/shm/vmsh_measure_block bs=1k count=40240k
-            =====================
-       """
+Your system has {avail/GB:.1f} GB of memory available. To prevent excessive use of page caches, we are now allocating {(avail - needed)/GB:.1f} GB of memory which will leave you with {needed/GB:.1f} GB of available memory for the test.
+        """
         )
+        MEMORY_HOG = bytearray(avail - needed)
 
 
 # look at those caches getting warm
