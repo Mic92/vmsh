@@ -4,10 +4,13 @@
 mod ffi;
 mod printk;
 
+use chlorine::c_ulong;
 use core::include_bytes;
 use core::panic::PanicInfo;
 use core::ptr;
 use core::str;
+use ffi::resource;
+use ffi::ssize_t;
 use stage1_interface::{DeviceState, Stage1Args, MAX_ARGV, MAX_DEVICES};
 
 use chlorine::{c_char, c_int, c_long, c_uint, c_void, size_t};
@@ -61,21 +64,42 @@ impl Drop for PlatformDevice {
 // we put this in stack to avoid stack overflows
 static mut RESOURCES: [ffi::resource; 2] = [
     ffi::resource {
-        name: ptr::null(),
-        flags: ffi::IORESOURCE_MEM,
         start: 0,
         end: 0,
+        name: ptr::null(),
+        flags: ffi::IORESOURCE_MEM,
         desc: 0,
         parent: ptr::null_mut(),
         sibling: ptr::null_mut(),
         child: ptr::null_mut(),
     },
     ffi::resource {
-        name: ptr::null(),
-        flags: ffi::IORESOURCE_IRQ,
         start: 0,
         end: 0,
+        name: ptr::null(),
+        flags: ffi::IORESOURCE_IRQ,
         desc: 0,
+        parent: ptr::null_mut(),
+        sibling: ptr::null_mut(),
+        child: ptr::null_mut(),
+    },
+];
+
+static mut RESOURCES_4_4: [ffi::resource_4_4; 2] = [
+    ffi::resource_4_4 {
+        start: 0,
+        end: 0,
+        name: ptr::null(),
+        flags: ffi::IORESOURCE_MEM,
+        parent: ptr::null_mut(),
+        sibling: ptr::null_mut(),
+        child: ptr::null_mut(),
+    },
+    ffi::resource_4_4 {
+        start: 0,
+        end: 0,
+        name: ptr::null(),
+        flags: ffi::IORESOURCE_IRQ,
         parent: ptr::null_mut(),
         sibling: ptr::null_mut(),
         child: ptr::null_mut(),
@@ -131,6 +155,13 @@ unsafe fn register_virtio_mmio(
 
     let dev = if version.major < 5 || version.major == 5 && version.minor == 0 {
         INFO_5_0.id = id;
+        if version.major < 4 || version.major == 4 && version.minor < 5 {
+            RESOURCES_4_4[0].start = RESOURCES[0].start;
+            RESOURCES_4_4[0].end = RESOURCES[0].end;
+            RESOURCES_4_4[1].start = RESOURCES[1].start;
+            RESOURCES_4_4[1].end = RESOURCES[1].start;
+            INFO_5_0.res = RESOURCES_4_4.as_ptr() as *const resource;
+        }
         let info = &*core::mem::transmute::<_, *const ffi::platform_device_info>(&INFO_5_0);
         ffi::platform_device_register_full(info)
     } else {
@@ -155,6 +186,7 @@ fn err_value(ptr: *const c_void) -> c_long {
 
 struct KFile {
     file: *mut ffi::file,
+    linux_4_13: bool,
 }
 
 impl KFile {
@@ -162,12 +194,13 @@ impl KFile {
         name: *const c_char,
         flags: c_int,
         mode: ffi::umode_t,
+        linux_4_13: bool,
     ) -> core::result::Result<KFile, c_int> {
         let file = unsafe { ffi::filp_open(name, flags, mode) };
         if is_err_value(file) {
             return Err(err_value(file) as c_int);
         }
-        Ok(KFile { file })
+        Ok(KFile { file, linux_4_13 })
     }
 
     fn read_all(&mut self, data: &mut [u8], pos: loff_t) -> core::result::Result<size_t, c_int> {
@@ -176,7 +209,14 @@ impl KFile {
         let mut p = data.as_ptr();
         let mut lpos = pos;
         loop {
-            let rv = unsafe { ffi::kernel_read(self.file, p as *mut c_void, count, &mut lpos) };
+            let rv = if self.linux_4_13 {
+                unsafe {
+                    ffi::kernel_read_4_13(self.file, lpos, p as *mut c_char, count as c_ulong)
+                        as ssize_t
+                }
+            } else {
+                unsafe { ffi::kernel_read(self.file, p as *mut c_void, count, &mut lpos) }
+            };
             match -rv as c_int {
                 0 => break,
                 ffi::EINTR | ffi::EAGAIN => continue,
@@ -186,6 +226,9 @@ impl KFile {
             p = unsafe { p.add(rv as usize) };
             out += rv as usize;
             count -= rv as usize;
+            if self.linux_4_13 {
+                lpos += rv as i64;
+            }
         }
         Ok(out)
     }
@@ -198,7 +241,11 @@ impl KFile {
 
         /* sys_write only can write MAX_RW_COUNT aka 2G-4K bytes at most */
         while count != 0 {
-            let rv = unsafe { ffi::kernel_write(self.file, p as *const c_void, count, &mut lpos) };
+            let rv = if self.linux_4_13 {
+                unsafe { ffi::kernel_write_4_13(self.file, p as *const c_char, count, lpos) }
+            } else {
+                unsafe { ffi::kernel_write(self.file, p as *const c_void, count, &mut lpos) }
+            };
 
             match -rv as c_int {
                 0 => break,
@@ -210,6 +257,9 @@ impl KFile {
             p = unsafe { p.add(rv as usize) };
             out += rv as usize;
             count -= rv as usize;
+            if self.linux_4_13 {
+                lpos += rv as i64;
+            }
         }
 
         Ok(out)
@@ -247,7 +297,14 @@ fn parse_version_part(split: Option<&[u8]>, full_version: &str) -> Result<u16, (
 
 unsafe fn get_kernel_version() -> Result<KernelVersion, ()> {
     let path = c_str!("/proc/sys/kernel/osrelease").as_ptr() as *const i8;
-    let mut file = match KFile::open(path, ffi::O_RDONLY, 0) {
+    // might fail if the older kernel version has TCP disabled...
+    let is_4_13_or_older =
+        !ffi::__symbol_get(c_str!("tcp_prequeue").as_ptr() as *const c_char).is_null();
+    printkln!(
+        "stage1: detected old linux 4.13 version: %d",
+        is_4_13_or_older as c_int
+    );
+    let mut file = match KFile::open(path, ffi::O_RDONLY, 0, is_4_13_or_older) {
         Ok(f) => f,
         Err(e) => {
             printkln!(
@@ -273,7 +330,11 @@ unsafe fn get_kernel_version() -> Result<KernelVersion, ()> {
     let count = match file.read_all(buf, 0) {
         Ok(n) => n,
         Err(e) => {
-            printkln!("stage1: failed to read /proc/sys/kernel/osrelease: %d", e);
+            printkln!(
+                "stage1: failed to read /proc/sys/kernel/osrelease: %d: %s",
+                e,
+                buf.as_ptr()
+            );
             return Err(());
         }
     };
@@ -366,10 +427,12 @@ unsafe fn run_stage2() -> Result<(), ()> {
 
     // we never delete this file, however deleting files is complex and requires accessing
     // internal structs that might change.
+    let linux_4_13_or_older = version.major < 4 || version.major == 4 && version.minor < 13;
     let mut file = match KFile::open(
         VMSH_STAGE1_ARGS.argv[0],
         ffi::O_WRONLY | ffi::O_CREAT,
         0o755,
+        linux_4_13_or_older,
     ) {
         Ok(f) => f,
         Err(e) => {
@@ -379,6 +442,7 @@ unsafe fn run_stage2() -> Result<(), ()> {
                     c_str!("/.vmsh").as_ptr() as *const c_char,
                     ffi::O_WRONLY | ffi::O_CREAT,
                     0o755,
+                    linux_4_13_or_older,
                 ) {
                     Ok(f) => {
                         VMSH_STAGE1_ARGS.argv[0] = c_str!("/.vmsh").as_ptr() as *mut c_char;

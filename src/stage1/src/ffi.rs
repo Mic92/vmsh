@@ -80,6 +80,17 @@ pub struct resource {
     pub child: *mut resource,
 }
 
+#[repr(C)]
+pub struct resource_4_4 {
+    pub start: resource_size_t,
+    pub end: resource_size_t,
+    pub name: *const c_char,
+    pub flags: c_ulong,
+    pub parent: *mut resource,
+    pub sibling: *mut resource,
+    pub child: *mut resource,
+}
+
 // from the linux kernel, see `struct platform_device_info`
 #[repr(C)]
 pub struct platform_device_info {
@@ -143,6 +154,34 @@ pub struct execute_work {
 }
 
 pub type workqueue_struct = c_void;
+
+pub unsafe fn kernel_read_4_13(
+    file: *mut file,
+    pos: loff_t,
+    buf: *mut c_char,
+    count: c_ulong,
+) -> c_int {
+    kernel_read(
+        file,
+        pos as *mut c_void,
+        buf as size_t,
+        count as *mut loff_t,
+    ) as c_int
+}
+
+pub unsafe fn kernel_write_4_13(
+    file: *mut file,
+    buf: *const c_char,
+    count: size_t,
+    pos: loff_t,
+) -> ssize_t {
+    kernel_write(
+        file,
+        buf as *const c_void,
+        count as size_t,
+        pos as *mut loff_t,
+    ) as ssize_t
+}
 
 extern "C" {
     pub fn platform_device_register_full(
