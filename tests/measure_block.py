@@ -82,8 +82,8 @@ class Rw(Enum):
     rw = 3
 
 
-FIO_RAMPUP = 10
-FIO_RUNTIME = FIO_RAMPUP + 120
+FIO_RAMPUP = 30
+FIO_RUNTIME = FIO_RAMPUP + 300
 FIO_SIZE = 100  # filesize in GB
 if QUICK:
     FIO_RAMPUP = 2
@@ -225,21 +225,21 @@ def fio_read_write(
 ) -> FioResult:
     if not file:
         util.blkdiscard()
-    write = fio(
-        vm,
-        device,
-        random=random,
-        rw=Rw.w,
-        iops=iops,
-        file=file,
-    )
-    if not file:
-        util.blkdiscard()
     read = fio(
         vm,
         device,
         random=random,
         rw=Rw.r,
+        iops=iops,
+        file=file,
+    )
+    if not file:
+        util.blkdiscard()
+    write = fio(
+        vm,
+        device,
+        random=random,
+        rw=Rw.w,
         iops=iops,
         file=file,
     )
