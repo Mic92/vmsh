@@ -52,6 +52,7 @@
           (pkgs.python3.withPackages (ps: [
             ps.matplotlib
             ps.pandas
+            ps.psutil
           ]))
         ];
 
