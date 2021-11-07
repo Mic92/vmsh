@@ -6,7 +6,7 @@ edition = "2018"
 license = "MIT"
 
 [dependencies]
-nix = "0.22.*"
+nix = "0.23.*"
 libc = "0.2.*"
 simple-error = "0.2.*"
 ioutils = { path = "../ioutils" }
