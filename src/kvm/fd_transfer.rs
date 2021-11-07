@@ -183,8 +183,8 @@ impl HvSocket {
             UnixAddr::new_abstract(anon_name.as_bytes()),
             "cannot create abstract addr"
         );
-        addr_local_mem.write(&local.0)?;
-        let addr_len = size_of::<u16>() + local.1;
+        addr_local_mem.write(unsafe { &*local.as_ptr() })?;
+        let addr_len = size_of::<u16>() + local.path_len();
         let ret = {
             let tracee = try_with!(tracee.write(), "cannot obtain tracee write lock: poinsoned");
             let proc = tracee.try_get_proc()?;
@@ -212,8 +212,8 @@ impl HvSocket {
             UnixAddr::new_abstract(anon_name.as_bytes()),
             "cannot create abstract addr"
         );
-        addr_remote_mem.write(&remote.0)?;
-        let addr_len = size_of::<u16>() + remote.1;
+        addr_remote_mem.write(unsafe { &*remote.as_ptr() })?;
+        let addr_len = size_of::<u16>() + remote.path_len();
         let ret = proc.connect(
             self.fd,
             addr_remote_mem.ptr as *const libc::sockaddr,
