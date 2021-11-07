@@ -31,7 +31,7 @@ elfloader = "*"
 xmas-elf = "*"
 clap = { version = "2", default-features = false }
 ioutils = { path = "src/ioutils" }
-nix = "0.22.*"
+nix = "0.23.*"
 libc = "0.2.*"
 bitflags = "1.2.1"
 stage1-interface = { path = "src/stage1-interface" }
