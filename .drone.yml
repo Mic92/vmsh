@@ -14,7 +14,7 @@ steps:
 - name: build nix packages
   commands:
   - nix flake check -L .#
-  - if [[ -n "$CACHIX_SIGNING_KEY" ]]; then nix eval --raw .#checks.x86_64-linux --apply builtins.toJSON | nix shell nixpkgs#jq nixpkgs#cachix -c bash -c "jq -r 'to_entries[] | .value' | cachix push mic92"; fi
+  - if [[ -n "$CACHIX_SIGNING_KEY" ]]; then nix eval --raw .#checks.x86_64-linux --apply builtins.toJSON | nix shell nixpkgs#jq nixpkgs#cachix -c bash -c "jq -r 'del(.\"nixos-image\", .\"phoronix-image\", .\"measurement-image\") | to_entries[] | .value' | cachix push mic92"; fi
   environment:
     CACHIX_SIGNING_KEY:
       from_secret: cachix_signing_key
@@ -52,6 +52,6 @@ trigger:
   - push
 ---
 kind: signature
-hmac: 91851690db523f3033aaa3788143b6d9c51713919046cd51a546304c8c62d1f0
+hmac: c85eb67b4b5b4f7d6e6fca8f9aa0cecfbff50d76a7d779ec4f2075d829b0db14
 
 ...
