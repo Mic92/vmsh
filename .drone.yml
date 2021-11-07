@@ -1,5 +1,29 @@
 ---
 kind: pipeline
+type: exec
+name: Packages
+
+platform:
+  os: linux
+  arch: amd64
+
+clone:
+  depth: 1
+
+steps:
+- name: build nix packages
+  commands:
+  - nix flake check -L .#
+  - if [[ -n "$CACHIX_SIGNING_KEY" ]]; then nix eval --raw .#checks.x86_64-linux --apply builtins.toJSON | nix shell nixpkgs#jq nixpkgs#cachix -c bash -c "jq -r 'del(.\"nixos-image\", .\"phoronix-image\", .\"measurement-image\") | to_entries[] | .value' | cachix push mic92"; fi
+  environment:
+    CACHIX_SIGNING_KEY:
+      from_secret: cachix_signing_key
+trigger:
+  event:
+  - push
+  - pull_request
+---
+kind: pipeline
 type: ssh
 name: Test
 
@@ -28,6 +52,6 @@ trigger:
   - push
 ---
 kind: signature
-hmac: 20e385a488f1f8e6c34db88519ec78e2c0700d2c0ca7690e30a9b92a6bafb39c
+hmac: c85eb67b4b5b4f7d6e6fca8f9aa0cecfbff50d76a7d779ec4f2075d829b0db14
 
 ...
