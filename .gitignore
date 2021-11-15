@@ -30,7 +30,6 @@ __pycache__/
 dmypy.json
 
 # For our debug kernel module, taken from the linux tree
-.*
 *.a
 *.asn1.[ch]
 *.bin
