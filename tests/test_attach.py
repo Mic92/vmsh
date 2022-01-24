@@ -41,19 +41,12 @@ def test_attach(
                     print("stdout:\n", res.stdout)
                 assert res.returncode == 0
 
-                # with DeviceMmioSpace instead of KvmRunWrapper:
-                # assert (
-                #     res.stdout.find("virtio_mmio: unknown parameter 'device' ignored") < 0
-                # )
-                # assert (
-                #     res.stdout.find(
-                #         "New virtio-mmio devices (version 2) must provide VIRTIO_F_VERSION_1 feature!"
-                #     )
-                #     >= 0
-                # )
-
-                # with KvmRunWrapper:
-                assert res.stdout.find("ext4 filesystem being mounted at /tmp/") > 0
+                assert (
+                    res.stdout.find(
+                        "EXT4-fs (vdb): mounted filesystem with ordered data mode"
+                    )
+                    > 0
+                )
             try:
                 os.kill(vmsh.pid, 0)
             except ProcessLookupError:
