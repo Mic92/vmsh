@@ -9,7 +9,7 @@
     not-os.flake = false;
     flake-utils.url = "github:numtide/flake-utils";
     fenix = {
-      url = "github:nix-community/fenix";
+      url = "github:nix-community/fenix/b3e5ce9985c380c8fe1b9d14879a14b749d1af51";
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };
@@ -24,8 +24,8 @@
           stable.rustc
           stable.rust-src
           stable.rust-std
-          stable.clippy-preview
-          stable.rustfmt-preview
+          stable.clippy
+          stable.rustfmt
           targets.x86_64-unknown-linux-musl.stable.rust-std
           # fenix.packages.x86_64-linux.targets.aarch64-unknown-linux-gnu.latest.rust-std
         ];
