@@ -2,10 +2,7 @@ use log::*;
 use std::path::PathBuf;
 use std::sync::atomic::Ordering;
 
-use clap::{
-    crate_authors, crate_version, value_t, value_t_or_exit, values_t, App, AppSettings, Arg,
-    ArgMatches, SubCommand,
-};
+use clap::{crate_authors, crate_version, App, AppSettings, Arg, ArgMatches};
 use nix::unistd::Pid;
 
 use vmsh::attach::{self, AttachOptions};
@@ -16,31 +13,32 @@ use vmsh::{coredump, inspect};
 
 const VM_TYPES: &[&str] = &["process_id", "kubernetes", "vhive", "vhive_fc_vmid"];
 
-fn _pid_arg(index: u64) -> Arg<'static, 'static> {
-    Arg::with_name("pid")
+fn _pid_arg(index: usize) -> Arg<'static> {
+    Arg::new("pid")
         .help("Pid of the hypervisor we get the information from")
         .required(true)
         .index(index)
 }
 
 fn _parse_pid_arg(args: &ArgMatches) -> Pid {
-    Pid::from_raw(value_t_or_exit!(args, "pid", i32))
+    Pid::from_raw(args.value_of_t_or_exit("pid"))
 }
 
-fn vmid_arg(index: u64) -> Arg<'static, 'static> {
-    Arg::with_name("id")
+fn vmid_arg(index: usize) -> Arg<'static> {
+    Arg::new("id")
         .help("VM/Hypervisor pid or pod name to target")
         .required(true)
         .index(index)
 }
 
-fn vmid_type_arg() -> Arg<'static, 'static> {
-    Arg::with_name("type")
-        .short("t")
+fn vmid_type_arg() -> Arg<'static> {
+    Arg::new("type")
+        .short('t')
         .long("type")
         .takes_value(true)
-        .empty_values(false)
+        .forbid_empty_values(false)
         .require_delimiter(true)
+        .value_delimiter(',')
         .value_name("TYPE")
         .help("VM id lookups to try (seperated by ','). [default: all]")
         .possible_values(VM_TYPES)
@@ -49,7 +47,9 @@ fn vmid_type_arg() -> Arg<'static, 'static> {
 fn parse_vmid_arg(args: &ArgMatches) -> Pid {
     let mut container_types = vec![];
     if args.is_present("type") {
-        let types = values_t!(args.values_of("type"), String).unwrap_or_else(|e| e.exit());
+        let types = args
+            .values_of_t::<String>("type")
+            .unwrap_or_else(|e| e.exit());
         container_types = types
             .into_iter()
             .filter_map(|t| container_pid::lookup_container_type(&t))
@@ -66,10 +66,10 @@ fn parse_vmid_arg(args: &ArgMatches) -> Pid {
     }
 }
 
-fn command_args(index: u64) -> Arg<'static, 'static> {
-    Arg::with_name("command")
+fn command_args(index: usize) -> Arg<'static> {
+    Arg::new("command")
         .help("Command to run in the VM")
-        .multiple(true)
+        .multiple_occurrences(true)
         .required(false)
         .index(index)
 }
@@ -86,19 +86,19 @@ fn inspect(args: &ArgMatches) {
 }
 
 fn attach(args: &ArgMatches) {
-    let mut command = values_t!(args, "command", String).unwrap_or_else(|_| vec![]);
-    let stage2_path = value_t_or_exit!(args, "stage2-path", String);
+    let mut command = args.values_of_t("command").unwrap_or_else(|_| vec![]);
+    let stage2_path = args.value_of_t_or_exit::<String>("stage2-path");
     command.insert(0, stage2_path);
 
     let opts = AttachOptions {
         pid: parse_vmid_arg(args),
         command,
-        backing: PathBuf::from(value_t!(args, "backing-file", String).unwrap_or_else(|e| e.exit())),
-        pts: value_t!(args, "pts", String).ok().map(PathBuf::from),
+        backing: PathBuf::from(args.value_of_t_or_exit::<String>("backing-file")),
+        pts: args.value_of_t::<String>("pts").ok().map(PathBuf::from),
     };
 
     USE_IOREGIONFD.store(
-        value_t_or_exit!(args, "mmio", String) == "ioregionfd",
+        args.value_of_t_or_exit::<String>("mmio") == "ioregionfd",
         Ordering::Release,
     );
 
@@ -110,8 +110,9 @@ fn attach(args: &ArgMatches) {
 
 fn coredump(args: &ArgMatches) {
     let pid = parse_vmid_arg(args);
-    let path =
-        value_t!(args, "PATH", PathBuf).unwrap_or_else(|_| PathBuf::from(format!("core.{}", pid)));
+    let path = args
+        .value_of_t("PATH")
+        .unwrap_or_else(|_| PathBuf::from(format!("core.{}", pid)));
 
     let opts = CoredumpOptions { pid, path };
 
@@ -138,21 +139,21 @@ fn setup_logging(matches: &clap::ArgMatches) {
 }
 
 fn main() {
-    let inspect_command = SubCommand::with_name("inspect")
+    let inspect_command = App::new("inspect")
         .about("Inspect a virtual machine.")
         .version(crate_version!())
         .author(crate_authors!("\n"))
         .arg(vmid_arg(1))
         .arg(vmid_type_arg());
 
-    let attach_command = SubCommand::with_name("attach")
+    let attach_command = App::new("attach")
         .about("Attach (a block device) to a virtual machine.")
         .version(crate_version!())
         .author(crate_authors!("\n"))
         .arg(vmid_arg(1))
         .arg(vmid_type_arg())
         .arg(
-            Arg::with_name("stage2-path")
+            Arg::new("stage2-path")
                 .long("stage2-path")
                 .takes_value(true)
                 .default_value("/dev/.vmsh")
@@ -160,15 +161,15 @@ fn main() {
         )
         .arg(command_args(2))
         .arg(
-            Arg::with_name("backing-file")
-                .short("f")
+            Arg::new("backing-file")
+                .short('f')
                 .long("backing-file")
                 .takes_value(true)
                 .default_value("/dev/null")
                 .help("File which shall be served as a block device."),
         )
         .arg(
-            Arg::with_name("mmio")
+            Arg::new("mmio")
                 .long("mmio")
                 .takes_value(true)
                 .possible_values(&["wrap_syscall", "ioregionfd"])
@@ -176,20 +177,20 @@ fn main() {
                 .long_help("Backend used to serve Virtio MMIO memory of devices."),
         )
         .arg(
-            Arg::with_name("pts")
+            Arg::new("pts")
                 .long("pts")
                 .takes_value(true)
                 .help("Pseudoterminal seat to use for the command run in the VM. Use this when interactivity is required. "),
         );
 
-    let coredump_command = SubCommand::with_name("coredump")
+    let coredump_command = App::new("coredump")
         .about("Get a coredump of a virtual machine.")
         .version(crate_version!())
         .author(crate_authors!("\n"))
         .arg(vmid_arg(1))
         .arg(vmid_type_arg())
         .arg(
-            Arg::with_name("PATH")
+            Arg::new("PATH")
                 .help("path to coredump. Defaults to core.${pid}")
                 .index(2),
         );
@@ -199,26 +200,29 @@ fn main() {
         .version(crate_version!())
         .author(crate_authors!("\n"))
         .setting(AppSettings::SubcommandRequiredElseHelp)
-        .arg(Arg::with_name("verbose")
-             .short("v")
+        .setting(AppSettings::SubcommandRequiredElseHelp)
+        .arg(Arg::new("verbose")
+             .short('v')
              .conflicts_with("loglevel")
              .help("shorthand for --loglevel debug)"))
-        .arg(Arg::with_name("loglevel")
-             .short("l")
+        .arg(Arg::new("loglevel")
+             .short('l')
              .takes_value(true)
              .help("Finegrained verbosity control. See docs.rs/env_logger. Examples: [error, warn, info, debug, trace]"))
-        .subcommand(inspect_command)
-        .subcommand(attach_command)
-        .subcommand(coredump_command);
+        .subcommands([
+            inspect_command,
+            attach_command,
+            coredump_command
+        ]);
 
     let matches = main_app.get_matches();
     setup_logging(&matches);
     match matches.subcommand() {
-        ("inspect", Some(sub_matches)) => inspect(sub_matches),
-        ("attach", Some(sub_matches)) => attach(sub_matches),
-        ("coredump", Some(sub_matches)) => coredump(sub_matches),
-        ("", None) => unreachable!(), // beause of AppSettings::SubCommandRequiredElseHelp
-        _ => unreachable!(),
+        Some(("inspect", sub_matches)) => inspect(sub_matches),
+        Some(("attach", sub_matches)) => attach(sub_matches),
+        Some(("coredump", sub_matches)) => coredump(sub_matches),
+        Some((_, _)) => unreachable!(),
+        None => unreachable!(),
     }
 }
 
