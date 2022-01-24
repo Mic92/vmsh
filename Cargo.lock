@@ -10,8 +10,9 @@ checksum = "cdb031dd78e28731d87d56cc8ffef4a8f36ca26c38fe2de700543e627f8a464a"
 
 [[package]]
 name = "bcc"
-version = "0.0.32-alpha.0"
-source = "git+https://github.com/rust-bpf/rust-bcc.git?rev=f456aa57cd969c241773b872219ea54f1d43bd3b#f456aa57cd969c241773b872219ea54f1d43bd3b"
+version = "0.0.32"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ba2c196094bae3582a200edcb36436cc2a6bc766c29b25496ff5618a8ebd2283"
 dependencies = [
  "bcc-sys",
  "bitflags",
@@ -22,9 +23,9 @@ dependencies = [
 
 [[package]]
 name = "bcc-sys"
-version = "0.18.0"
+version = "0.23.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ce1c5b91450a45f6a536b4e657c698ef2dd3c636739450350a58582b47e8fa0c"
+checksum = "5f40afb3abbf90895dda3ddbc6d8734d24215130a22d646067690f5e318f81bc"
 
 [[package]]
 name = "bitflags"
@@ -151,9 +152,9 @@ checksum = "e2abad23fbc42b3700f2f279844dc832adb2b2eb069b2df918f455c4e18cc646"
 
 [[package]]
 name = "libc"
-version = "0.2.107"
+version = "0.2.113"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fbe5e23404da5b4f555ef85ebed98fb4083e55a00c317800bc2a50ede9f3d219"
+checksum = "eef78b64d87775463c549fbd80e19249ef436ea3bf1de2a1eb7e717ec7fab1e9"
 
 [[package]]
 name = "log"
