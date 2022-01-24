@@ -1,4 +1,4 @@
-use clap::{value_t, App, Arg, SubCommand};
+use clap::{App, Arg};
 use kvm_bindings as kvmb;
 use nix::unistd::Pid;
 use simple_error::{bail, require_with, try_with};
@@ -314,7 +314,7 @@ fn vcpu_maps(pid: Pid) -> Result<()> {
 }
 
 fn subtest(name: &str) -> App {
-    SubCommand::with_name(name).arg(Arg::with_name("pid").required(true).index(1))
+    App::new(name).arg(Arg::new("pid").required(true).index(1))
 }
 
 fn main() {
@@ -337,7 +337,7 @@ fn main() {
     let matches = app.get_matches();
     let subcommand_name = matches.subcommand_name().expect("subcommad required");
     let subcommand_matches = matches.subcommand_matches(subcommand_name).expect("foo");
-    let pid = value_t!(subcommand_matches, "pid", i32).unwrap_or_else(|e| e.exit());
+    let pid = subcommand_matches.value_of_t_or_exit("pid");
     let pid = Pid::from_raw(pid);
 
     let result = match subcommand_name {
