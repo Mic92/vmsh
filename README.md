@@ -18,6 +18,11 @@ registry can save up to 60% of their size on average, and (iii) VMSH enables
 cloud providers to offer services to customers, such as recovery shells, without
 interfering with their VM’s execution.
 
+# Reproducing the paper results
+
+VMSH was published in Eurosys 2022. To reproduce the results shown in the
+evaluation of the paper, we provide [dedicated documentation](REPRODUCING.md).
+
 # Usage
 
 - Run `just pts` in one terminal to get a `/dev/pts/x`.
