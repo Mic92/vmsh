@@ -21,7 +21,7 @@ interfering with their VM’s execution.
 # Reproducing the paper results
 
 VMSH was published in Eurosys 2022. To reproduce the results shown in the
-evaluation of the paper, we provide [dedicated documentation](REPRODUCING.md).
+evaluation of the paper, we provide [dedicated documentation](EVALUATION.md).
 
 # Usage
 
