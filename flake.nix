@@ -90,6 +90,7 @@
         }).json;
         linux_ioregionfd = pkgs.callPackage ./nix/linux-ioregionfd.nix { };
         kvmtool = pkgs.callPackage ./nix/kvmtool.nix { };
+        xfstests = pkgs.callPackage ./nix/xfstests.nix { };
       in {
         # default target for `nix build`
         defaultPackage = vmsh;
@@ -103,7 +104,7 @@
           inherit kvmtool;
 
           # used in tests/xfstests.py
-          xfstests = pkgs.callPackage ./nix/xfstests.nix { };
+          inherit xfstests;
 
           # see justfile/not-os
           inherit not-os-image measurement-image;
@@ -160,6 +161,7 @@
             # for xfstests:
             pkgs.parted
             pkgs.xfsprogs
+            xfstests
           ];
 
           shellHook = ''

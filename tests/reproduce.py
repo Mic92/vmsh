@@ -48,50 +48,74 @@ def run(
     )
 
 
-def robustness() -> None:
+def nix_develop(command: List[str], extra_env: Dict[str, str]) -> None:
+    run(
+        [
+            "nix",
+            "develop",
+            "--extra-experimental-features",
+            "flakes nix-command",
+            "--command",
+        ]
+        + command,
+        extra_env=extra_env,
+    )
+
+
+# medium
+def robustness(extra_env: Dict[str, str]) -> None:
+    nix_develop(["python", "tests/xfstests.py"], extra_env=extra_env)
+
+
+# medium
+def generality_hypervisors(extra_env: Dict[str, str]) -> None:
     pass
 
 
-def generality_hypervisors() -> None:
+# medium
+def generality_kernels(extra_env: Dict[str, str]) -> None:
     pass
 
 
-def generality_kernels() -> None:
+# hässlich
+def throughput(extra_env: Dict[str, str]) -> None:
     pass
 
 
-def throughput() -> None:
+# easy
+def iops(extra_env: Dict[str, str]) -> None:
     pass
 
 
-def iops() -> None:
+# easy
+def console(extra_env: Dict[str, str]) -> None:
     pass
 
 
-def console() -> None:
+# hässlich
+def docker_hub(extra_env: Dict[str, str]) -> None:
     pass
 
 
-def docker_hub() -> None:
+# hässlich
+def usecase1(extra_env: Dict[str, str]) -> None:
     pass
 
 
-def usecase1() -> None:
+# easy
+def usecase2(extra_env: Dict[str, str]) -> None:
     pass
 
 
-def usecase2() -> None:
+# easy
+def usecase3(extra_env: Dict[str, str]) -> None:
     pass
 
 
-def usecase3() -> None:
-    pass
-
-
-def evaluation() -> None:
+def evaluation(extra_env: Dict[str, str]) -> None:
     info("Run evaluations")
     experiments = {
-        "6.1 Robustness": robustness,
+        "6.1 Robustness (xfstests)": robustness,
         "6.2 Generality, hypervisors": generality_hypervisors,
         "6.2 Generality, kernels": generality_kernels,
         "Figure 6 a) IO bandwidth/throughput. Best-case scenario.": throughput,
@@ -106,7 +130,7 @@ def evaluation() -> None:
         info(figure)
         for i in range(3):
             try:
-                function()
+                function(extra_env)
                 break
             except subprocess.TimeoutExpired:
                 warn(f"'{figure}' took too long to run: retry ({i + 1}/3)!")
@@ -154,7 +178,13 @@ def main() -> None:
     if sudo is None:
         warn("During the evaluation we need the 'sudo' command")
         sys.exit(1)
-    evaluation()
+
+    host_ssd = os.environ.get("HOST_SSD")
+    if not host_ssd:
+        warn("HOST_SSD environment variable is not set. Not running evaluation!")
+        sys.exit(1)
+
+    evaluation(extra_env=dict(HOST_SSD=host_ssd))
     generate_graphs()
 
 
