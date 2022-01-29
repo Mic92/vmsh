@@ -188,7 +188,7 @@ image NAME="nixos" PATH="/nixos.img":
   if [[ nix/{{NAME}}-image.nix -nt {{linux_dir}}/{{NAME}}.ext4 ]] \
      || [[ flake.lock -nt {{linux_dir}}/{{NAME}}.ext4 ]]; then
      nix build --out-link {{nix_results}}/{{NAME}}-image/ --builders '' .#{{NAME}}-image
-     install -m600 "{{nix_results}}/{{NAME}}-image{{PATH}}" {{linux_dir}}/{{NAME}}.ext4
+     install -D -m600 "{{nix_results}}/{{NAME}}-image{{PATH}}" {{linux_dir}}/{{NAME}}.ext4
   fi
 
 # Build kernel-less disk image for NixOS
