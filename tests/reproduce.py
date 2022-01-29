@@ -179,6 +179,8 @@ def main() -> None:
         warn("During the evaluation we need the 'sudo' command")
         sys.exit(1)
 
+    run(["sudo", "tee", "/sys/devices/system/cpu/intel_pstate/no_turbo"], input="1\n")
+
     host_ssd = os.environ.get("HOST_SSD")
     if not host_ssd:
         warn("HOST_SSD environment variable is not set. Not running evaluation!")
