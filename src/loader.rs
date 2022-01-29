@@ -281,6 +281,29 @@ macro_rules! require_elf {
     };
 }
 
+fn resolve_symbol(
+    name: &str,
+    syms: &HashMap<String, usize>,
+    lib_syms: &HashMap<&str, usize>,
+) -> Option<usize> {
+    if let Some(sym) = syms.get(name) {
+        return Some(*sym);
+    }
+
+    if let Some(sym) = lib_syms.get(name) {
+        return Some(*sym);
+    }
+
+    // usleep_range/_printk were introduced in linux 5.16
+    if name == "usleep_range" {
+        syms.get("usleep_range_state").copied()
+    } else if name == "printk" {
+        syms.get("_printk").copied()
+    } else {
+        None
+    }
+}
+
 impl<'a> ElfLoader for Loader<'a> {
     fn allocate(&mut self, headers: LoadableHeaders) -> ElfResult {
         let allocs = headers.map(|h| {
@@ -438,13 +461,13 @@ impl<'a> ElfLoader for Loader<'a> {
 
                 let sym_name = sym.get_name(&self.elf.file)?;
                 debug!("R_GLOB_DAT *{:#x} = @ {}", addr, sym_name);
-                let res = syms.get(sym_name).or_else(|| lib_syms.get(sym_name));
+                let res = resolve_symbol(sym_name, syms, lib_syms);
                 let symbol = require_elf!(res, {
                     error!("binary requires unknown symbol: {}", sym_name);
                     "cannot find symbol"
                 });
                 let dest_addr = (symbol + entry.get_addend() as usize).to_ne_bytes();
-                let range = start..(start + size_of_val(symbol));
+                let range = start..(start + size_of_val(&symbol));
                 loadable.content[range].clone_from_slice(&dest_addr);
 
                 Ok(())
