@@ -113,7 +113,18 @@ Info:      Processes: 326
 </summary>
 
 
-This script only depends on Python and Nix as referenced above. All other dependencies will be loaded through nix. If the script fails at any point it can be restarted and it will only not yet done builds or experiments. Each command it runs will be printed to during evaluation along with environment variable set.
+This script only depends on Python and Nix as referenced above. All other
+dependencies will be loaded through nix. If the script fails at any point it can
+be restarted and it will only not yet done builds or experiments. Each command
+it runs will be printed to during evaluation along with environment variable
+set. 
+
+For disk benchmarks our scripts a assume a nvme block device that can be reformatted during
+the benchmark. To configure the disk set the `HOST_SSD` environment variable:
+
+```
+export HOST_SSD=/dev/nvme0n1  # the block device set here will be ereased prior to use!
+```
 
 To run the evaluation script use the following command:
 
@@ -122,7 +133,8 @@ $ cd rkt-io
 $ python reproduce.py 
 ```
 
-After the build is finished, it will start evaluations and generate graphs for each afterwards. The graphs will be written to ./results.
+After the build is finished, it will start evaluations and generate graphs for
+each afterwards. The graphs will be written to ./results.
 
 The following figures are reproduced:
 
