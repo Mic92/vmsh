@@ -10,6 +10,13 @@ in
     (modulesPath + "/profiles/qemu-guest.nix")
     ./nested-vms.nix
   ];
+  # somehow udev does not pick up hvc0?
+  systemd.services."serial-getty" = {
+    wantedBy = [ "multi-user.target" ];
+    serviceConfig.ExecStart = "${pkgs.util-linux}/sbin/agetty  --login-program ${pkgs.shadow}/bin/login --autologin root hvc0 --keep-baud vt100";
+  };
+  systemd.services."serial-getty@hvc0".enable = false;
+
   boot.loader.grub.enable = false;
   boot.initrd.enable = false;
   boot.isContainer = true;
