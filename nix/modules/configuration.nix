@@ -17,6 +17,9 @@ in
   };
   systemd.services."serial-getty@hvc0".enable = false;
 
+  # slows things down
+  systemd.services.systemd-networkd-wait-online.enable = false;
+
   boot.loader.grub.enable = false;
   boot.initrd.enable = false;
   boot.isContainer = true;
