@@ -46,7 +46,7 @@ pub const KVM_IOREGION_POSTED_WRITES: u32 = 1 << kvm_ioregion_flag_nr::posted_wr
 //#define KVM_IOREGION_VALID_FLAG_MASK ((1 << kvm_ioregion_flag_nr_max) - 1)
 pub const KVM_IOREGION_VALID_FLAG_MASK: u32 = (1 << kvm_ioregion_flag_nr::max as u32) - 1;
 
-pub const KVM_CAP_IOREGIONFD: u32 = 195;
+pub const KVM_CAP_IOREGIONFD: u32 = 207;
 
 /// wire protocol guest->host
 #[repr(C)]
