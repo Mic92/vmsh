@@ -71,9 +71,9 @@ def generality_hypervisors(extra_env: Dict[str, str]) -> None:
     pass
 
 
-# medium
 def generality_kernels(extra_env: Dict[str, str]) -> None:
-    pass
+    info("run unittest for all kernel versions")
+    nix_develop(["pytest", "-s", "tests/kernels.py"], extra_env=extra_env)
 
 
 def phoronix(extra_env: Dict[str, str]) -> None:

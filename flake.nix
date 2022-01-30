@@ -74,12 +74,18 @@
           ]))
         ] ++ vmsh.nativeBuildInputs ++ measureDeps;
 
-        not-os-image = (pkgs.callPackage ./nix/not-os-image.nix {
+        not-os-image' = (pkgs.callPackage ./nix/not-os-image.nix {
           inherit not-os;
           notos-config = [
             ./nix/modules/not-os-config.nix
           ];
-        }).json;
+        });
+        not-os-image_4_4 = (not-os-image'.override { linuxPackages = pkgs.linuxPackages_4_4; }).json;
+        not-os-image_4_19 = (not-os-image'.override { linuxPackages = pkgs.linuxPackages_4_19; }).json;
+        not-os-image_5_10 = (not-os-image'.override { linuxPackages = pkgs.linuxPackages_5_10; }).json;
+        not-os-image_5_15 = (not-os-image'.override { linuxPackages = pkgs.linuxPackages_5_15; }).json;
+        not-os-image_5_16 = (not-os-image'.override { linuxPackages = pkgs.linuxPackages_5_16; }).json;
+
         measurement-image = (pkgs.callPackage ./nix/not-os-image.nix {
           inherit not-os;
           notos-config = [
@@ -88,6 +94,7 @@
             self.nixosModules.linux-ioregionfd
           ];
         }).json;
+
         linux_ioregionfd = pkgs.callPackage ./nix/linux-ioregionfd.nix { };
         kvmtool = pkgs.callPackage ./nix/kvmtool.nix { };
         xfstests = pkgs.callPackage ./nix/xfstests.nix { };
@@ -107,7 +114,14 @@
           inherit xfstests;
 
           # see justfile/not-os
-          inherit not-os-image measurement-image;
+          not-os-image = not-os-image'.json;
+          inherit
+            not-os-image_4_4
+            not-os-image_4_19
+            not-os-image_5_10
+            not-os-image_5_15
+            not-os-image_5_16;
+          inherit measurement-image;
 
           # see justfile/nixos-image
           nixos-image = pkgs.callPackage ./nix/nixos-image.nix {};
@@ -172,8 +186,8 @@
           #  "${pkgs.pkgsCross.aarch64-multiplatform.stdenv.cc}/bin/aarch64-unknown-linux-gnu-gcc";
         };
       })) // {
-        nixosModules.linux-ioregionfd = { pkgs, ... }: {
-          boot.kernelPackages = self.packageSets.${pkgs.system}.linuxPackages_ioregionfd;
+        nixosModules.linux-ioregionfd = { pkgs, lib, ... }: {
+          boot.kernelPackages = lib.mkForce self.packageSets.${pkgs.system}.linuxPackages_ioregionfd;
         };
         lib.nixpkgsRev = nixpkgs.shortRev;
       };

@@ -2,15 +2,18 @@ import conftest
 
 import os
 
+from nix import notos_image
+
 
 def test_attach(
     helpers: conftest.Helpers,
     attach_repetitions: int = 1,
     vcpus: int = 1,
     mmio: str = "wrap_syscall",
+    image: str = ".#not-os-image",
 ) -> None:
     with helpers.busybox_image() as img, helpers.spawn_qemu(
-        helpers.notos_image(), extra_args=["-smp", str(vcpus)]
+        notos_image(image), extra_args=["-smp", str(vcpus)]
     ) as vm:
         vm.wait_for_ssh()
         for i in range(attach_repetitions):
@@ -60,7 +63,25 @@ def test_attach(
             assert res.returncode == 0
 
 
-def test_attach_multiple_cpus(
-    helpers: conftest.Helpers,
-) -> None:
+def test_attach_multiple_cpus(helpers: conftest.Helpers) -> None:
     test_attach(helpers=helpers, vcpus=8)
+
+
+def test_attach_4_4(helpers: conftest.Helpers) -> None:
+    test_attach(helpers=helpers, image=".#not-os-image_4_4")
+
+
+def test_attach_4_19(helpers: conftest.Helpers) -> None:
+    test_attach(helpers=helpers, image=".#not-os-image_4_19")
+
+
+def test_attach_5_10(helpers: conftest.Helpers) -> None:
+    test_attach(helpers=helpers, image=".#not-os-image_5_10")
+
+
+def test_attach_5_15(helpers: conftest.Helpers) -> None:
+    test_attach(helpers=helpers, image=".#not-os-image_5_15")
+
+
+def test_attach_5_16(helpers: conftest.Helpers) -> None:
+    test_attach(helpers=helpers, image=".#not-os-image_5_16")
