@@ -87,7 +87,6 @@ def iops(extra_env: Dict[str, str]) -> None:
     pass
 
 
-# easy
 def console(extra_env: Dict[str, str]) -> None:
     nix_develop(["python", "tests/measure_console.py"], extra_env=extra_env)
 
