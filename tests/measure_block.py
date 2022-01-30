@@ -311,31 +311,68 @@ def main() -> None:
     fio_suite(None, fio_stats, HOST_SSD, "direct_host1", file=False)
     fio_suite(None, fio_stats, HOST_SSD, "direct_host2", file=False)
 
-    with util.testbench(helpers, with_vmsh=False, ioregionfd=False, mounts=False) as vm:
-        fio_suite(vm, fio_stats, GUEST_QEMUBLK, "direct_detached_qemublk", file=False)
-    with util.testbench(helpers, with_vmsh=True, ioregionfd=False, mounts=False) as vm:
-        fio_suite(vm, fio_stats, GUEST_QEMUBLK, "direct_ws_qemublk", file=False)
-        fio_suite(vm, fio_stats, GUEST_JAVDEV, "direct_ws_javdev", file=False)
-    with util.testbench(helpers, with_vmsh=True, ioregionfd=True, mounts=False) as vm:
-        fio_suite(vm, fio_stats, GUEST_QEMUBLK, "direct_iorefd_qemublk", file=False)
-        fio_suite(vm, fio_stats, GUEST_JAVDEV, "direct_iorefd_javdev", file=False)
+    if "direct_detached_qemublk" in fio_stats["system"]:
+        print("skip direct_detached_qemublk")
+    else:
+        with util.testbench(
+            helpers, with_vmsh=False, ioregionfd=False, mounts=False
+        ) as vm:
+            fio_suite(
+                vm, fio_stats, GUEST_QEMUBLK, "direct_detached_qemublk", file=False
+            )
+
+    if (
+        "direct_ws_qemublk" in fio_stats["system"]
+        and "direct_ws_javdev" in fio_stats["system"]
+    ):
+        print("skip direct_detached_qemublk, direct_ws_javdev")
+    else:
+        with util.testbench(
+            helpers, with_vmsh=True, ioregionfd=False, mounts=False
+        ) as vm:
+            fio_suite(vm, fio_stats, GUEST_QEMUBLK, "direct_ws_qemublk", file=False)
+            fio_suite(vm, fio_stats, GUEST_JAVDEV, "direct_ws_javdev", file=False)
+
+    if (
+        "direct_iorefd_qemublk" in fio_stats["system"]
+        and "direct_iorefd_javdev" in fio_stats["system"]
+    ):
+        print("skip direct_detached_qemublk, direct_iorefd_javdev")
+    else:
+        with util.testbench(
+            helpers, with_vmsh=True, ioregionfd=True, mounts=False
+        ) as vm:
+            fio_suite(vm, fio_stats, GUEST_QEMUBLK, "direct_iorefd_qemublk", file=False)
+            fio_suite(vm, fio_stats, GUEST_JAVDEV, "direct_iorefd_javdev", file=False)
 
     # file based benchmarks don't blkdiscard on their own, so we do it as often as possible
-    with util.fresh_fs_ssd(filesize=FIO_SIZE):
-        with util.testbench(helpers, with_vmsh=False, ioregionfd=False) as vm:
-            lsblk(vm)
-            fio_suite(vm, fio_stats, GUEST_QEMUBLK_MOUNT, "detached_qemublk")
-    with util.fresh_fs_ssd(filesize=FIO_SIZE):
-        with util.testbench(helpers, with_vmsh=False, ioregionfd=False) as vm:
-            fio_suite(vm, fio_stats, GUEST_QEMU9P, "detached_qemu9p")
+    if "detached_qemublk" in fio_stats["system"]:
+        print("skip detached_qemublk")
+    else:
+        with util.fresh_fs_ssd(filesize=FIO_SIZE):
+            with util.testbench(helpers, with_vmsh=False, ioregionfd=False) as vm:
+                lsblk(vm)
+                fio_suite(vm, fio_stats, GUEST_QEMUBLK_MOUNT, "detached_qemublk")
+    if "detached_qemu9p" in fio_stats["system"]:
+        print("skip detached_qemu9p")
+    else:
+        with util.fresh_fs_ssd(filesize=FIO_SIZE):
+            with util.testbench(helpers, with_vmsh=False, ioregionfd=False) as vm:
+                fio_suite(vm, fio_stats, GUEST_QEMU9P, "detached_qemu9p")
 
-    with util.fresh_fs_ssd(filesize=FIO_SIZE):
-        with util.testbench(helpers, with_vmsh=True, ioregionfd=False) as vm:
-            fio_suite(vm, fio_stats, GUEST_JAVDEV_MOUNT, "attached_ws_javdev")
+    if "attached_ws_javdev" in fio_stats["system"]:
+        print("skip attached_ws_javdev")
+    else:
+        with util.fresh_fs_ssd(filesize=FIO_SIZE):
+            with util.testbench(helpers, with_vmsh=True, ioregionfd=False) as vm:
+                fio_suite(vm, fio_stats, GUEST_JAVDEV_MOUNT, "attached_ws_javdev")
 
-    with util.fresh_fs_ssd(filesize=FIO_SIZE):
-        with util.testbench(helpers, with_vmsh=True, ioregionfd=True) as vm:
-            fio_suite(vm, fio_stats, GUEST_JAVDEV_MOUNT, "attached_iorefd_javdev")
+    if "attached_iorefd_javdev" in fio_stats["system"]:
+        print("skip attached_iorefd_javdev")
+    else:
+        with util.fresh_fs_ssd(filesize=FIO_SIZE):
+            with util.testbench(helpers, with_vmsh=True, ioregionfd=True) as vm:
+                fio_suite(vm, fio_stats, GUEST_JAVDEV_MOUNT, "attached_iorefd_javdev")
 
     util.export_fio("fio", fio_stats)
 
