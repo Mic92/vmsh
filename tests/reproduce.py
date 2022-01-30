@@ -62,7 +62,6 @@ def nix_develop(command: List[str], extra_env: Dict[str, str]) -> None:
     )
 
 
-# medium
 def robustness(extra_env: Dict[str, str]) -> None:
     nix_develop(["python", "tests/xfstests.py"], extra_env=extra_env)
 
@@ -77,17 +76,14 @@ def generality_kernels(extra_env: Dict[str, str]) -> None:
     pass
 
 
-# hässlich
-def throughput(extra_env: Dict[str, str]) -> None:
-    pass
+def phoronix(extra_env: Dict[str, str]) -> None:
+    nix_develop(["python", "tests/measure_phoronix.py"], extra_env=extra_env)
 
 
-# easy
-def iops(extra_env: Dict[str, str]) -> None:
-    pass
+def block(extra_env: Dict[str, str]) -> None:
+    nix_develop(["python", "tests/measure_block.py"], extra_env=extra_env)
 
 
-# easy
 def console(extra_env: Dict[str, str]) -> None:
     nix_develop(["python", "tests/measure_console.py"], extra_env=extra_env)
 
@@ -118,8 +114,8 @@ def evaluation(extra_env: Dict[str, str]) -> None:
         "6.1 Robustness (xfstests)": robustness,
         "6.2 Generality, hypervisors": generality_hypervisors,
         "6.2 Generality, kernels": generality_kernels,
-        "Figure 6 a) IO bandwidth/throughput. Best-case scenario.": throughput,
-        "Figure 6 b) IO operations per second (IOPS). Worst case scenario.": iops,
+        "Figure 5 Relative performance of vmsh-blk for the Phoronix Test Suite compared to qemu-blk.": phoronix,
+        "Figure 6. fio with different configurations featuring qemu-blk and vmsh-blk with direct IO, and file IO with qemu-9p.": block,
         "Figure 7. Loki-console responsiveness compared to SSH.": console,
         "Figure 8. VM size reduction for the top-40 Docker images (average reduction: 60%).": docker_hub,
         "usecase #1: : Serverless debug shell": usecase1,

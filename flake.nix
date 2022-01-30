@@ -64,6 +64,7 @@
             ps.pytest-xdist
             ps.pyelftools
             ps.intervaltree
+            ps.lxml
 
             # linting
             ps.black

@@ -312,7 +312,9 @@ def read_stats(path: Path) -> DefaultDict[str, List]:
     if not os.path.exists(path):
         return stats
     with open(path) as f:
-        return json.load(f)
+        p = json.load(f)
+        stats.update(p)
+        return stats
 
 
 def write_stats(path: Path, stats: Dict[str, List]) -> None:
