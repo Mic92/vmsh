@@ -43,6 +43,8 @@ def run(
     for k, v in extra_env.items():
         env_string.append(f"{k}={v}")
     info(f"$ {' '.join(env_string)} {' '.join(cmd)}")
+    if cwd != os.getcwd():
+        info(f"cd {cwd}")
     return subprocess.run(
         cmd, cwd=cwd, check=check, env=env, text=True, input=input, timeout=60 * 60
     )
@@ -88,9 +90,23 @@ def console(extra_env: Dict[str, str]) -> None:
     nix_develop(["python", "tests/measure_console.py"], extra_env=extra_env)
 
 
-# hässlich
 def docker_hub(extra_env: Dict[str, str]) -> None:
-    pass
+    # cannot be a git submodule
+    if not os.path.exists(ROOT.joinpath("tests/runq")):
+        run(
+            [
+                "git",
+                "clone",
+                "--recursive",
+                "https://github.com/Mic92/runq",
+                "tests/runq",
+            ]
+        )
+    run(
+        ["nix-shell", "--run", "python shrink_containers.py"],
+        extra_env=extra_env,
+        cwd=str(ROOT.joinpath("tests/runq")),
+    )
 
 
 # hässlich
