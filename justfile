@@ -250,7 +250,7 @@ cloud-hypervisor: build-linux nixos-image
       --memory size=500M,mergeable=on,shared=on \
       --cpus boot=1 --rng --watchdog --console tty \
       --kernel {{linux_dir}}/vmlinux \
-      --cmdline "console=hvc0 root=/dev/vda" \
+      --cmdline "console=hvc0" \
       --seccomp false \
       --disk path={{linux_dir}}/nixos.ext4 \
       --api-socket {{hypervisor_socket}}
@@ -283,13 +283,6 @@ crosvm: build-linux nixos-image
     -p "console=ttyS0 root=/dev/vda" \
     {{linux_dir}}/vmlinux
 
-# download alpine iso
-# this version is intentionally out-of-date so we can test our alpine-sec-scanner
-alpine-initrd:
-  mkdir -p {{linux_dir}}
-  [[ -f {{linux_dir}}/alpine-initramfs ]] || curl -o {{linux_dir}}/alpine-initramfs https://dl-cdn.alpinelinux.org/alpine/v3.10/releases/x86_64/netboot-3.10.0/initramfs-virt
-  [[ -f {{linux_dir}}/alpine.iso ]] || curl -o {{linux_dir}}/alpine.iso https://dl-cdn.alpinelinux.org/alpine/v3.10/releases/x86_64/alpine-virt-3.10.0-x86_64.iso
-
 alpine-sec-scanner-image:
   #!/usr/bin/env bash
   set -eux -o pipefail
@@ -300,18 +293,17 @@ alpine-sec-scanner-image:
   install -m755 -D {{nix_results}}/alpine-sec-scanner-image {{linux_dir}}/alpine-sec-scanner-image.ext4
 
 # run alpine linux in qemu
-qemu-alpine: alpine-initrd
+qemu-alpine:
+  nix build --out-link {{nix_results}}/alpine-image --builders '' .#alpine-image
   qemu-system-x86_64 \
     -enable-kvm \
     -name test-os \
     -m 512 \
     -kernel {{linux_dir}}/arch/x86/boot/bzImage \
-    -initrd {{linux_dir}}/alpine-initramfs \
-    -drive id=drive1,file={{linux_dir}}/alpine.iso,format=raw,if=none \
-    -device virtio-blk-pci,drive=drive1,bootindex=1 \
+    -initrd {{nix_results}}/alpine-image/initramfs.img.lz4 \
     -net nic,netdev=user.0,model=virtio \
     -netdev user,id=user.0 \
-    -append "console=hvc0 ip=dhcp" \
+    -append "console=hvc0" \
     -no-reboot \
     -nographic \
     -device virtio-rng-pci \
