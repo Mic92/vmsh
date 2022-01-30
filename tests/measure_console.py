@@ -4,13 +4,15 @@ import measure_helpers as util
 
 from typing import List, Any, Optional, Callable
 import time
-from pty import openpty
+import pty
 import os
+import sys
+import termios
+import signal
 
 
 # overwrite the number of samples to take to a minimum
-# TODO turn this to False for releases. Results look very different.
-QUICK = True
+QUICK = False
 
 
 SIZE = 32
@@ -49,13 +51,10 @@ def expect(fd: int, timeout: int, until: Optional[str] = None) -> bool:
     buf = ""
     ret = False
     (r, _, _) = select.select([fd], [], [], timeout)
-    # print("selected")
     if QUICK:
         print("[readall] ", end="")
     while fd in r:
-        # print("reading")
         out = os.read(fd, 1).decode()
-        # print("len", len(out))
         buf += out
         if until is not None and until in buf:
             ret = True
@@ -64,20 +63,13 @@ def expect(fd: int, timeout: int, until: Optional[str] = None) -> bool:
         if len(out) == 0:
             break
     if QUICK:
-        print(buf.replace("\n", "\n[readall] "), end="")
-        print("\x1b[0m")
-    # print(list(buf))
-    if QUICK and not buf.endswith("\n"):
-        print("")
-    # if until == "\hello world\n":
-    # print(list(buf))
+        if not ret:
+            print(f"'{buf}' != '{until}'")
     return ret
 
 
 def assertline(ptmfd: int, value: str) -> None:
-    assert expect(
-        ptmfd, 2, f"\n{value}\r"
-    )  # not sure why and when how many \r's occur.
+    assert expect(ptmfd, 2, f"{value}")  # not sure why and when how many \r's occur.
 
 
 def writeall(fd: int, content: str) -> None:
@@ -88,15 +80,13 @@ def writeall(fd: int, content: str) -> None:
         raise Exception("TODO implement writeall")
 
 
-def echo(ptmfd: int, prompt: str, cp1: str) -> float:
-    print("measuring echo")
+def echo(ptmfd: int, prompt: str) -> float:
+    if QUICK:
+        print("measuring echo")
     sw = time.monotonic()
     writeall(ptmfd, "echo hello world\n")
 
-    # assert expect(ptmfd, 2, cp1)
-    # sw = time.monotonic() - sw
     assertline(ptmfd, "hello world")
-    # assert ptm.readline().strip() == "hello world"
     sw = time.monotonic() - sw
 
     assert expect(ptmfd, 2, prompt)
@@ -110,7 +100,7 @@ def vmsh_console(helpers: confmeasure.Helpers, stats: Any) -> None:
         print(f"skip {name}")
         return
 
-    (ptmfd, ptsfd) = openpty()
+    (ptmfd, ptsfd) = pty.openpty()
     pts = os.readlink(f"/proc/self/fd/{ptsfd}")
     os.close(ptsfd)
     # pts = "/proc/self/fd/1"
@@ -119,7 +109,7 @@ def vmsh_console(helpers: confmeasure.Helpers, stats: Any) -> None:
     with util.testbench_console(helpers, pts, guest_cmd=cmd) as _:
         # breakpoint()
         assert expect(ptmfd, 2, "~ #")
-        samples = sample(lambda: echo(ptmfd, "~ #", "\necho hello world\r"))
+        samples = sample(lambda: echo(ptmfd, "~ #"))
         print("samples:", samples)
         # print(f"echo: {echo(ptmfd, ptm)}s")
 
@@ -129,21 +119,37 @@ def vmsh_console(helpers: confmeasure.Helpers, stats: Any) -> None:
     util.write_stats(STATS_PATH, stats)
 
 
+def set_console_raw() -> None:
+    fd = sys.stdin.fileno()
+    new = termios.tcgetattr(fd)
+    new[3] = new[3] & ~termios.ECHO
+    termios.tcsetattr(fd, termios.TCSADRAIN, new)
+
+
 def native(helpers: confmeasure.Helpers, stats: Any) -> None:
     name = "native"
     if name in stats.keys():
         print(f"skip {name}")
         return
-    (ptmfd, ptsfd) = openpty()
-    import subprocess
+    (pid, ptsfd) = pty.fork()
 
-    sh = subprocess.Popen(["/bin/sh"], stdin=ptsfd, stdout=ptsfd, stderr=ptsfd)
-    assert expect(ptmfd, 2, "sh-4.4$")
-    samples = sample(lambda: echo(ptmfd, "sh-4.4$", " echo hello world\r"))
+    if pid == 0:
+        # normalize prompt by removing bash version number
+        os.environ["PS1"] = "$ "
+        set_console_raw()
+        os.execlp("/bin/sh", "/bin/sh")
+
+    assert expect(ptsfd, 2, "$")
+    samples = sample(
+        lambda: echo(
+            ptsfd,
+            "$",
+        )
+    )
     print("samples:", samples)
-    sh.kill()
-    sh.wait()
-    os.close(ptmfd)
+    os.kill(pid, signal.SIGKILL)
+    os.waitpid(pid, 0)
+
     os.close(ptsfd)
 
     stats[name] = samples
@@ -155,15 +161,15 @@ def ssh(helpers: confmeasure.Helpers, stats: Any) -> None:
     if name in stats.keys():
         print(f"skip {name}")
         return
-    (ptmfd, ptsfd) = openpty()
-    (ptmfd_stub, ptsfd_stub) = openpty()
+    (ptmfd, ptsfd) = pty.openpty()
+    (ptmfd_stub, ptsfd_stub) = pty.openpty()
     pts_stub = os.readlink(f"/proc/self/fd/{ptsfd_stub}")
     os.close(ptsfd_stub)
     with util.testbench_console(helpers, pts_stub, guest_cmd=["/bin/ls"]) as vm:
         # breakpoint()
         sh = vm.ssh_Popen(stdin=ptsfd, stdout=ptsfd, stderr=ptsfd)
         assert expect(ptmfd, 2, "~]$")
-        samples = sample(lambda: echo(ptmfd, "~]$", "\necho hello world\r"))
+        samples = sample(lambda: echo(ptmfd, "~]$"))
         sh.kill()
         sh.wait()
         print("samples:", samples)
@@ -185,8 +191,11 @@ def main() -> None:
 
     stats = util.read_stats(STATS_PATH)
 
+    print("measure performance for native")
     native(helpers, stats)
+    print("measure performance for ssh")
     ssh(helpers, stats)
+    print("measure performance for vmsh console")
     vmsh_console(helpers, stats)
 
     util.export_fio("console", stats)  # TODO rename
