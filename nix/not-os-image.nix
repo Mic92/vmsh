@@ -1,4 +1,4 @@
-{ pkgs, not-os, notos-config }:
+{ pkgs, not-os, notos-config, linuxPackages }:
 let
   inherit (pkgs) stdenv lib;
   inherit (pkgs.pkgsMusl.hostPlatform) system parsed;
@@ -12,6 +12,8 @@ let
       imports = notos-config ++ [
         (not-os  + "/qemu.nix")
       ];
+
+      boot.kernelPackages = linuxPackages;
 
       nixpkgs.localSystem = lib.mkIf useMusl {
         inherit system parsed;
