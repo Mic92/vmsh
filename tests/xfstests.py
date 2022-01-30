@@ -7,8 +7,9 @@ from measure_helpers import (
     HOST_DIR,
     run,
 )
+from root import MEASURE_RESULTS
 
-from typing import Dict, List
+from typing import Dict, List, Any
 import os
 from pathlib import Path
 import time
@@ -26,6 +27,7 @@ HOST_SSDp2 = f"{HOST_SSD}p2"
 
 
 HOST_DIR_SCRATCHDEV = "/tmp/xfstests_scratchdev"
+STATS_PATH = MEASURE_RESULTS.joinpath("xfstests.json")
 
 
 def println(s: str) -> None:
@@ -97,7 +99,7 @@ def get_failures(fail: str) -> List[str]:
     return failures
 
 
-def native(stats: Dict[str, str]) -> None:
+def native(stats: Dict[str, List[Any]]) -> None:
     env = {"TEST_DIR": HOST_DIR, "TEST_DEV": HOST_SSDp1}
     env_scratch = {"SCRATCH_DEV": HOST_SSDp2, "SCRATCH_MNT": HOST_DIR_SCRATCHDEV}
     if WITH_SCRATCH:
@@ -121,7 +123,7 @@ def native(stats: Dict[str, str]) -> None:
 
     with open("results/check.log", "r") as f:
         lines = f.readlines()
-        stats["native"] = lines[-1].strip()
+        stats["native"].append(lines[-1].strip())
         fail = lines[-2].strip()
         failures = get_failures(fail)
 
@@ -142,10 +144,10 @@ def native(stats: Dict[str, str]) -> None:
 
     println(f"Failures detected: {failures}")
     println(f"Failure recoveries: {recoveries}")
-    stats["native_recoveries"] = f"{len(recoveries)}/{len(failures)}"
+    stats["native_recoveries"].append(f"{len(recoveries)}/{len(failures)}")
 
 
-def qemu_blk(helpers: confmeasure.Helpers, stats: Dict[str, str]) -> None:
+def qemu_blk(helpers: confmeasure.Helpers, stats: Dict[str, List[Any]]) -> None:
     with util.testbench(helpers, with_vmsh=False, ioregionfd=False, mounts=False) as vm:
         vm.ssh_cmd(["mkdir", "-p", "/mnt"], check=True)
         vm.ssh_cmd(["mkdir", "-p", "/scratchmnt"], check=True)
@@ -175,7 +177,7 @@ def qemu_blk(helpers: confmeasure.Helpers, stats: Dict[str, str]) -> None:
             )
 
         lines = vm.ssh_cmd(["tail", "results/check.log"]).stdout.split("\n")
-        stats["qemu-blk"] = lines[-2].strip()
+        stats["qemu-blk"].append(lines[-2].strip())
 
         fail = lines[-3].strip()
         failures = get_failures(fail)
@@ -198,10 +200,10 @@ def qemu_blk(helpers: confmeasure.Helpers, stats: Dict[str, str]) -> None:
 
         println(f"Failures detected: {failures}")
         println(f"Failure recoveries: {recoveries}")
-        stats["qemu-blk_recoveries"] = f"{len(recoveries)}/{len(failures)}"
+        stats["qemu-blk_recoveries"].append(f"{len(recoveries)}/{len(failures)}")
 
 
-def vmsh_blk(helpers: confmeasure.Helpers, stats: Dict[str, str]) -> None:
+def vmsh_blk(helpers: confmeasure.Helpers, stats: Dict[str, List[Any]]) -> None:
     with util.testbench(helpers, with_vmsh=True, ioregionfd=False, mounts=False) as vm:
         vm.ssh_cmd(["mkdir", "-p", "/mnt"], check=True)
         vm.ssh_cmd(["mkdir", "-p", "/scratchmnt"], check=True)
@@ -230,7 +232,7 @@ def vmsh_blk(helpers: confmeasure.Helpers, stats: Dict[str, str]) -> None:
                 check=False,
             )
         lines = vm.ssh_cmd(["tail", "results/check.log"]).stdout.split("\n")
-        stats["vmsh-blk"] = lines[-2].strip()
+        stats["vmsh-blk"].append(lines[-2].strip())
 
         fail = lines[-3].strip()
         failures = get_failures(fail)
@@ -253,31 +255,45 @@ def vmsh_blk(helpers: confmeasure.Helpers, stats: Dict[str, str]) -> None:
 
         println(f"Failures detected: {failures}")
         println(f"Failure recoveries: {recoveries}")
-        stats["vmsh-blk_recoveries"] = f"{len(recoveries)}/{len(failures)}"
+        stats["vmsh-blk_recoveries"].append(f"{len(recoveries)}/{len(failures)}")
 
 
 def main() -> None:
     util.check_ssd()
     helpers = confmeasure.Helpers()
-    stats: Dict[str, str] = {}
+    stats = util.read_stats(STATS_PATH)
 
     println("")
     println("================================ native test ========================")
     println("")
-    format_ssd()
-    native(stats)
+    if stats.get("native") is None:
+        format_ssd()
+        native(stats)
+        util.write_stats(STATS_PATH, stats)
+    else:
+        println("skip tests (already run)")
+
     println("")
     println("================================ qemu-blk test ========================")
     println("")
-    format_ssd()
-    qemu_blk(helpers, stats)
+    if stats.get("qemu-blk") is None:
+        format_ssd()
+        qemu_blk(helpers, stats)
+        util.write_stats(STATS_PATH, stats)
+    else:
+        println("skip tests (already run)")
+
     println("")
     println("================================ vmsh-blk test ========================")
     println("")
-    format_ssd()
-    vmsh_blk(helpers, stats)
+    if stats.get("vmsh-blk") is None:
+        format_ssd()
+        vmsh_blk(helpers, stats)
+        util.write_stats(STATS_PATH, stats)
+    else:
+        println("skip tests (already run)")
 
-    stats["excluded"] = str(len(excludes()))
+    stats["excluded"].append(str(len(excludes())))
     println(str(stats))
 
 
