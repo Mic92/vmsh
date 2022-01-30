@@ -295,10 +295,12 @@ fn resolve_symbol(
     }
 
     // usleep_range/_printk were introduced in linux 5.16
-    if name == "usleep_range" {
-        syms.get("usleep_range_state").copied()
-    } else if name == "printk" {
-        syms.get("_printk").copied()
+    if name == "usleep_range_state" {
+        // not 100% api compatible but usleep_range_state just takes an
+        // additional argument, that is ignored by usleep_range
+        syms.get("usleep_range").copied()
+    } else if name == "_printk" {
+        syms.get("printk").copied()
     } else {
         None
     }

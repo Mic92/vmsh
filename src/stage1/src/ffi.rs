@@ -7,6 +7,7 @@ pub const IORESOURCE_MEM: c_ulong = 0x00000200;
 pub const IORESOURCE_IRQ: c_ulong = 0x00000400;
 pub const MAX_ERRNO: c_ulong = 4095;
 pub const UMH_WAIT_EXEC: c_int = 1;
+pub const TASK_UNINTERRUPTIBLE: c_uint = 0x0002;
 
 // errno.h
 pub const EPERM: c_int = 1;
@@ -210,7 +211,7 @@ extern "C" {
         wait: c_int,
     ) -> c_int;
     pub fn queue_work_on(cpu: c_int, wq: *mut workqueue_struct, work: *mut work_struct) -> bool;
-    pub fn usleep_range(min: c_ulong, max: c_ulong);
+    pub fn usleep_range_state(min: c_ulong, max: c_ulong, state: c_uint);
 
     pub fn kthread_create_on_node(
         threadfn: unsafe extern "C" fn(data: *mut c_void) -> c_int,
