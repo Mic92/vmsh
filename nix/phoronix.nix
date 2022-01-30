@@ -22,8 +22,8 @@ let
     src = fetchFromGitHub {
       owner = "Mic92";
       repo = "phoronix-test-suite";
-      rev = "bbbd001d3e679673fe5f2b8d45858f988159fd07";
-      sha256 = "sha256-jcCV/0KyemIX+XUp89VYyRiLma2AulEt1iNnnir4uMo=";
+      rev = "e7e1edf3aa5723ed91f589ea45d30db9ab08aeac";
+      sha256 = "sha256-Ohd4gNrnb8H2SqYaV2LRUfWfY2A60/vuUNu9faTv5p8=";
     };
 
     buildInputs = [ php ];
@@ -45,8 +45,8 @@ let
   phoronix-cache = stdenv.mkDerivation {
     name = "phoronix-cache";
     src = fetchurl {
-      url = "https://github.com/Mic92/vmsh/releases/download/assets/phoronix-2021-08-25.tar.gz";
-      sha256 = "sha256-0WDEtCHvefGfuN3wFjKY6GOagMdmgo/7ds9Ty+4bIWc=";
+      url = "https://github.com/Mic92/vmsh/releases/download/assets/phoronix-cache-2022-01-30.tar.gz";
+      sha256 = "sha256-sh9ZGB1sTC1dpDG1uK6oygBTi4fRuOmJlOq25CJ1qbw=";
     };
     nativeBuildInputs = [ (fhs true) ];
     buildPhase = ''
@@ -55,7 +55,9 @@ let
       export PTS_USER_PATH_OVERRIDE=$(pwd)/
       export PTS_DOWNLOAD_CACHE=$(pwd)/download-cache/
       set +o pipefail
+
       yes | phoronix-test-suite install pts/disk
+
       set -o pipefail
       runHook postBuild
     '';
@@ -86,6 +88,7 @@ let
       which
       python2
       pciutils
+      zlib
     ] ++ lib.optionals (enableBuildDeps') [
       binutils
       automake
