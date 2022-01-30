@@ -1,7 +1,7 @@
 use chlorine::c_char;
 
 extern "C" {
-    pub fn printk(fmt: *const c_char, ...);
+    pub fn _printk(fmt: *const c_char, ...);
 }
 
 #[macro_export]
@@ -19,7 +19,7 @@ macro_rules! printk {
         let msg = concat!("\x016", c_str!($fmt));
         let ptr = msg.as_ptr() as *const ::chlorine::c_char;
         #[allow(unused_unsafe)]
-        unsafe { crate::printk::printk(ptr) };
+        unsafe { crate::printk::_printk(ptr) };
     });
 
     // Dynamic implementation that processes format arguments
@@ -28,7 +28,7 @@ macro_rules! printk {
         let msg = concat!("\x016", c_str!($fmt));
         let ptr = msg.as_ptr() as *const ::chlorine::c_char;
         #[allow(unused_unsafe)]
-        unsafe { crate::printk::printk(ptr, $($arg)*) };
+        unsafe { crate::printk::_printk(ptr, $($arg)*) };
     });
 }
 

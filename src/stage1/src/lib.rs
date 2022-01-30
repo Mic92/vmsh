@@ -384,6 +384,12 @@ unsafe fn get_kernel_version() -> Result<KernelVersion, ()> {
     Ok(v)
 }
 
+fn usleep_range(min: c_ulong, max: c_ulong) {
+    unsafe {
+        ffi::usleep_range_state(min, max, ffi::TASK_UNINTERRUPTIBLE);
+    }
+}
+
 // cannot put this onto the stack without stackoverflows?
 static mut DEVICES: [Option<PlatformDevice>; MAX_DEVICES] = [None, None, None];
 
@@ -499,7 +505,7 @@ unsafe fn run_stage2() -> Result<(), ()> {
             // Ideally we could use flush_delayed_fput to close the binary but not
             // all kernel versions support this.
             // Hence we just sleep until the file is closed.
-            ffi::usleep_range(10 * 1000, 100 * 1000);
+            usleep_range(10 * 1000, 100 * 1000);
             continue;
         }
         if res != 0 {
@@ -528,7 +534,7 @@ unsafe extern "C" fn spawn_stage2() {
             VMSH_STAGE1_ARGS.device_status,
             &VMSH_STAGE1_ARGS.device_status
         );
-        ffi::usleep_range(10 * 1000, 100 * 1000);
+        usleep_range(10 * 1000, 100 * 1000);
         retries += 1;
         if retries == 20 {
             printkln!("stage1: timeout waiting for device to be initialized");
@@ -556,7 +562,7 @@ unsafe extern "C" fn spawn_stage2() {
     };
 
     while VMSH_STAGE1_ARGS.device_status == DeviceState::Ready {
-        ffi::usleep_range(50 * 1000, 500 * 1000);
+        usleep_range(50 * 1000, 500 * 1000);
     }
 
     DEVICES.iter_mut().for_each(|d| {
