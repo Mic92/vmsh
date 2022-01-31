@@ -7,13 +7,16 @@
     not-os.url = "github:cleverca22/not-os";
     not-os.flake = false;
     flake-utils.url = "github:numtide/flake-utils";
+    microvm.url = "github:Mic92/microvm.nix";
+    microvm.inputs.nixpkgs.follows = "nixpkgs";
+    microvm.inputs.flake-utils.follows = "flake-utils";
     fenix = {
       url = "github:nix-community/fenix/b3e5ce9985c380c8fe1b9d14879a14b749d1af51";
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };
 
-  outputs = { self, nixpkgs, flake-utils, fenix, not-os }:
+  outputs = { self, nixpkgs, flake-utils, fenix, not-os, microvm }:
     (flake-utils.lib.eachSystem ["x86_64-linux"] (system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
@@ -132,6 +135,9 @@
           phoronix-image = pkgs.callPackage ./nix/phoronix-image.nix {};
           alpine-image = pkgs.callPackage ./nix/alpine-image.nix {};
 
+          inherit (microvm.packages.${pkgs.system})
+            firecracker-example crosvm-example kvmtool-example qemu-example;
+
           phoronix-test-suite = pkgs.callPackage ./nix/phoronix.nix {};
         };
         devShells  = rec {
@@ -169,10 +175,8 @@
             pkgs.crosvm
             pkgs.firectl
             kvmtool
-            (pkgs.writeShellScriptBin "firecracker" ''
-              exec ${pkgs.firecracker}/bin/firecracker --seccomp-level 0 "$@"
-            '')
-            
+            pkgs.firecracker
+
             # for xfstests:
             pkgs.parted
             pkgs.xfsprogs
