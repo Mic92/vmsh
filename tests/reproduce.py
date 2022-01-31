@@ -45,9 +45,7 @@ def run(
     info(f"$ {' '.join(env_string)} {' '.join(cmd)}")
     if cwd != os.getcwd():
         info(f"cd {cwd}")
-    return subprocess.run(
-        cmd, cwd=cwd, check=check, env=env, text=True, input=input, timeout=60 * 60
-    )
+    return subprocess.run(cmd, cwd=cwd, check=check, env=env, text=True, input=input)
 
 
 def nix_develop(command: List[str], extra_env: Dict[str, str]) -> None:
