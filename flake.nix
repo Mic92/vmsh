@@ -169,10 +169,8 @@
             pkgs.crosvm
             pkgs.firectl
             kvmtool
-            (pkgs.writeShellScriptBin "firecracker" ''
-              exec ${pkgs.firecracker}/bin/firecracker --seccomp-level 0 "$@"
-            '')
-            
+            pkgs.firecracker
+
             # for xfstests:
             pkgs.parted
             pkgs.xfsprogs
