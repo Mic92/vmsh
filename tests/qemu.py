@@ -261,7 +261,7 @@ def qemu_command(image: VmImage, qmp_socket: Path, ssh_port: int = 0) -> List:
         "-kernel",
         f"{image.kernel}/bzImage",
         "-initrd",
-        f"{image.initial_ramdisk}/initrd",
+        str(image.initial_ramdisk),
         "-nographic",
         "-serial",
         "null",

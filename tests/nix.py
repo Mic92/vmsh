@@ -29,15 +29,24 @@ def nix_build(what: str) -> Any:
     return json.loads(result.stdout)
 
 
-@contextmanager
-def busybox_image() -> Iterator[Path]:
-    image = nix_build(".#busybox-image")
+def writable_image(name: str) -> Iterator[Path]:
+    image = nix_build(name)
     out = image[0]["outputs"]["out"]
     with NamedTemporaryFile() as n:
         with open(out, "rb") as f:
             shutil.copyfileobj(f, n)
         n.flush()
         yield Path(n.name)
+
+
+@contextmanager
+def busybox_image() -> Iterator[Path]:
+    yield from writable_image(".#busybox-image")
+
+
+@contextmanager
+def passwd_image() -> Iterator[Path]:
+    yield from writable_image(".#passwd-image")
 
 
 NOTOS_IMAGE = ".#not-os-image"
@@ -51,7 +60,7 @@ def notos_image(nix: str = NOTOS_IMAGE) -> VmImage:
             kernel=Path(data["kernel"]),
             kerneldir=Path(data["kerneldir"]),
             squashfs=Path(data["squashfs"]),
-            initial_ramdisk=Path(data["initialRamdisk"]),
+            initial_ramdisk=Path(data["initialRamdisk"]).joinpath("initrd"),
             kernel_params=data["kernelParams"],
         )
 

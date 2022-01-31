@@ -4,8 +4,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 ASSET="$SCRIPT_DIR/../target/phoronix.tar.gz"
-printf -v date '%(%Y-%m-%d)T\n' -1
-UPLOAD_NAME="$SCRIPT_DIR/../target/phoronix-${date}.tar.gz"
+printf -v date '%(%Y-%m-%d)T' -1
+UPLOAD_NAME="$SCRIPT_DIR/../target/phoronix-cache-${date}.tar.gz"
 
 if [[ ! -f "$ASSET" ]]; then
     echo "$ASSET does not exists. Run build-phoronix-cache.sh first"

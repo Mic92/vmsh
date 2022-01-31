@@ -33,7 +33,6 @@ class Helpers:
 
     @staticmethod
     def busybox_image() -> "contextlib._GeneratorContextManager[Path]":
-        # return busybox_image(nix=".#measurement-image")
         return busybox_image()
 
     @staticmethod

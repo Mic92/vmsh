@@ -14,7 +14,7 @@ buildGoModule {
 
   meta = with lib; {
     description = "Checks installed packages on alpine linux against https://secdb.alpinelinux.org/";
-    homepage = "https://github.com/Mic92/alpine-sec-scanner0";
+    homepage = "https://github.com/Mic92/alpine-sec-scanner";
     platforms = platforms.unix;
   };
 }

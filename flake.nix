@@ -130,6 +130,7 @@
           alpine-sec-scanner = pkgs.callPackage ./nix/alpine-sec-scanner.nix {};
           alpine-sec-scanner-image = pkgs.callPackage ./nix/alpine-sec-scanner-image.nix {};
           phoronix-image = pkgs.callPackage ./nix/phoronix-image.nix {};
+          alpine-image = pkgs.callPackage ./nix/alpine-image.nix {};
 
           phoronix-test-suite = pkgs.callPackage ./nix/phoronix.nix {};
         };
