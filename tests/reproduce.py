@@ -66,14 +66,24 @@ def robustness(extra_env: Dict[str, str]) -> None:
     nix_develop(["python", "tests/xfstests.py"], extra_env=extra_env)
 
 
-# medium
 def generality_hypervisors(extra_env: Dict[str, str]) -> None:
-    pass
+    info("run unittest for all hypervisors")
+    result_file = ROOT.joinpath("tests", "measurements", "hypervisor_test.ok")
+    if result_file.exists():
+        print("skip hypervisor tests")
+    nix_develop(["pytest", "-s", "tests/test_hypervisor.py"], extra_env=extra_env)
+    with open(result_file, "w") as f:
+        f.write("YES")
 
 
 def generality_kernels(extra_env: Dict[str, str]) -> None:
     info("run unittest for all kernel versions")
-    nix_develop(["pytest", "-s", "tests/kernels.py"], extra_env=extra_env)
+    result_file = ROOT.joinpath("tests", "measurements", "kernel_test.ok")
+    if result_file.exists():
+        print("skip kernel tests")
+    nix_develop(["pytest", "-s", "tests/test_attach.py"], extra_env=extra_env)
+    with open(result_file, "w") as f:
+        f.write("YES")
 
 
 def phoronix(extra_env: Dict[str, str]) -> None:
