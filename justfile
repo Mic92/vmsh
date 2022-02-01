@@ -230,8 +230,8 @@ mkramdisk SRC="/dev/zero" NAME="ramdisk" SIZEG="2":
 qemu EXTRA_CMDLINE="nokalsr": build-linux nixos-image
   qemu-system-x86_64 \
     -kernel {{linux_dir}}/arch/x86/boot/bzImage \
-    -drive format=raw,file={{linux_dir}}/nixos.ext4 \
-    -append "root=/dev/sda console=hvc0 {{EXTRA_CMDLINE}}" \
+    -drive format=raw,file={{linux_dir}}/nixos.ext4,id=mydrive,if=virtio \
+    -append "root=/dev/vda console=hvc0 {{EXTRA_CMDLINE}}" \
     -net nic,netdev=user.0,model=virtio \
     -m 512M \
     -netdev user,id=user.0,hostfwd=tcp:127.0.0.1:{{qemu_ssh_port}}-:22 \
@@ -302,7 +302,7 @@ qemu-alpine:
     -kernel {{linux_dir}}/arch/x86/boot/bzImage \
     -initrd {{nix_results}}/alpine-image/initramfs.img.lz4 \
     -net nic,netdev=user.0,model=virtio \
-    -netdev user,id=user.0 \
+    -netdev user,id=user.0,hostfwd=tcp:127.0.0.1:{{qemu_ssh_port}}-:22 \
     -append "console=hvc0" \
     -no-reboot \
     -nographic \

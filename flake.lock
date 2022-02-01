@@ -37,6 +37,29 @@
         "type": "github"
       }
     },
+    "microvm": {
+      "inputs": {
+        "flake-utils": [
+          "flake-utils"
+        ],
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1643688782,
+        "narHash": "sha256-7VFuf0qWg8w3zOatvhavnFoO6qnOBV6SNj7oCxbkn2I=",
+        "owner": "Mic92",
+        "repo": "microvm.nix",
+        "rev": "375f443b6a389752906f0fa658a5f924f8673881",
+        "type": "github"
+      },
+      "original": {
+        "owner": "Mic92",
+        "repo": "microvm.nix",
+        "type": "github"
+      }
+    },
     "nixpkgs": {
       "locked": {
         "lastModified": 1643322911,
@@ -73,6 +96,7 @@
       "inputs": {
         "fenix": "fenix",
         "flake-utils": "flake-utils",
+        "microvm": "microvm",
         "nixpkgs": "nixpkgs",
         "not-os": "not-os"
       }
