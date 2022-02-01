@@ -45,6 +45,11 @@ def busybox_image() -> Iterator[Path]:
 
 
 @contextmanager
+def alpine_sec_scanner_image() -> Iterator[Path]:
+    yield from writable_image(".#alpine-sec-scanner-image")
+
+
+@contextmanager
 def passwd_image() -> Iterator[Path]:
     yield from writable_image(".#passwd-image")
 

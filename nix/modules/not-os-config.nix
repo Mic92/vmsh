@@ -7,6 +7,8 @@
     pkgs.devmem2
     # for debugging
     pkgs.strace
+
+    (pkgs.callPackage ../alpine-sec-scanner.nix {})
   ];
 
   environment.pathsToLink = [ "/lib/modules" ];
@@ -45,6 +47,9 @@
     mount -t 9p vmsh /vmsh -o trans=virtio,msize=104857600
     ln -s /proc/self/fd /dev/fd
     ln -s /proc/mounts /etc/mtab
+
+    # used in tests/test_alpine.py
+    cp -r ${pkgs.callPackage ../alpine-db.nix {}} /lib
   '';
 
   environment.etc = {
