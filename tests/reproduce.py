@@ -15,6 +15,10 @@ from pathlib import Path
 ROOT = Path(__file__).parent.parent.resolve()
 HAS_TTY = sys.stderr.isatty()
 
+sys.path.append(str(ROOT.joinpath("tests")))
+
+from measure_helpers import fresh_fs_ssd, HOST_DIR
+
 
 def color_text(code: int, file: IO[Any] = sys.stdout) -> Callable[[str], None]:
     def wrapper(text: str) -> None:
@@ -71,6 +75,7 @@ def generality_hypervisors(extra_env: Dict[str, str]) -> None:
     result_file = ROOT.joinpath("tests", "measurements", "hypervisor_test.ok")
     if result_file.exists():
         print("skip hypervisor tests")
+        return
     nix_develop(["pytest", "-s", "tests/test_hypervisor.py"], extra_env=extra_env)
     with open(result_file, "w") as f:
         f.write("YES")
@@ -81,6 +86,7 @@ def generality_kernels(extra_env: Dict[str, str]) -> None:
     result_file = ROOT.joinpath("tests", "measurements", "kernel_test.ok")
     if result_file.exists():
         print("skip kernel tests")
+        return
     nix_develop(["pytest", "-s", "tests/test_attach.py"], extra_env=extra_env)
     with open(result_file, "w") as f:
         f.write("YES")
@@ -91,7 +97,13 @@ def phoronix(extra_env: Dict[str, str]) -> None:
 
 
 def block(extra_env: Dict[str, str]) -> None:
+    result_file = ROOT.joinpath("tests", "measurements", "measure_block.ok")
+    if result_file.exists():
+        print("skip block device benchmark")
+        return
     nix_develop(["python", "tests/measure_block.py"], extra_env=extra_env)
+    with open(result_file, "w") as f:
+        f.write("YES")
 
 
 def console(extra_env: Dict[str, str]) -> None:
@@ -99,22 +111,29 @@ def console(extra_env: Dict[str, str]) -> None:
 
 
 def docker_hub(extra_env: Dict[str, str]) -> None:
-    # cannot be a git submodule
-    if not os.path.exists(ROOT.joinpath("tests/runq")):
+    result_file = ROOT.joinpath("tests", "measurements", "docker-hub.ok")
+    if result_file.exists():
+        print("skip docker-hub test")
+        return
+    with fresh_fs_ssd():
+        runq_path = Path(HOST_DIR).joinpath("runq")
         run(
             [
                 "git",
                 "clone",
                 "--recursive",
                 "https://github.com/Mic92/runq",
-                "tests/runq",
+                str(runq_path),
             ]
         )
-    run(
-        ["nix-shell", "--run", "python shrink_containers.py"],
-        extra_env=extra_env,
-        cwd=str(ROOT.joinpath("tests/runq")),
-    )
+        images = ROOT.joinpath("tests", "docker-images.json")
+        run(
+            ["nix-shell", "--run", f"python shrink_containers.py {images}"],
+            extra_env=extra_env,
+            cwd=str(runq_path),
+        )
+    with open(result_file, "w") as f:
+        f.write("YES")
 
 
 # hässlich
@@ -122,9 +141,23 @@ def usecase1(extra_env: Dict[str, str]) -> None:
     pass
 
 
-# easy
 def usecase2(extra_env: Dict[str, str]) -> None:
-    pass
+    result_file = ROOT.joinpath("tests", "measurements", "usecase2.ok")
+    if result_file.exists():
+        print("skip usecase2 test")
+        return
+    nix_develop(
+        [
+            "python",
+            "-s",
+            "tests/test_hypervisor.py",
+            "-k",
+            "test_qemu_and_change_password",
+        ],
+        extra_env=extra_env,
+    )
+    with open(result_file, "w") as f:
+        f.write("YES")
 
 
 # easy
@@ -142,7 +175,7 @@ def evaluation(extra_env: Dict[str, str]) -> None:
         "Figure 6. fio with different configurations featuring qemu-blk and vmsh-blk with direct IO, and file IO with qemu-9p.": block,
         "Figure 7. Loki-console responsiveness compared to SSH.": console,
         "Figure 8. VM size reduction for the top-40 Docker images (average reduction: 60%).": docker_hub,
-        "usecase #1: : Serverless debug shell": usecase1,
+        # "usecase #1: : Serverless debug shell": usecase1,
         "usecase #2: : VM rescue system": usecase2,
         "usecase #3: : Package security scanner": usecase3,
     }
