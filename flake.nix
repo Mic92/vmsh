@@ -52,7 +52,7 @@
           pkgs.numactl
           pkgs.fio
           (pkgs.python3.withPackages (ps: [
-            ps.matplotlib
+            ps.seaborn
             ps.pandas
             ps.psutil
           ]))
