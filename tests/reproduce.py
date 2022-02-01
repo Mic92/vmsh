@@ -148,7 +148,7 @@ def usecase2(extra_env: Dict[str, str]) -> None:
         return
     nix_develop(
         [
-            "python",
+            "pytest",
             "-s",
             "tests/test_hypervisor.py",
             "-k",
@@ -160,9 +160,21 @@ def usecase2(extra_env: Dict[str, str]) -> None:
         f.write("YES")
 
 
-# easy
 def usecase3(extra_env: Dict[str, str]) -> None:
-    pass
+    result_file = ROOT.joinpath("tests", "measurements", "usecase3.ok")
+    if result_file.exists():
+        print("skip usecase3 test")
+        return
+    nix_develop(
+        [
+            "pytest",
+            "-s",
+            "tests/test_alpine.py",
+        ],
+        extra_env=extra_env,
+    )
+    with open(result_file, "w") as f:
+        f.write("YES")
 
 
 def evaluation(extra_env: Dict[str, str]) -> None:
