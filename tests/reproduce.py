@@ -71,6 +71,7 @@ def generality_hypervisors(extra_env: Dict[str, str]) -> None:
     result_file = ROOT.joinpath("tests", "measurements", "hypervisor_test.ok")
     if result_file.exists():
         print("skip hypervisor tests")
+        return
     nix_develop(["pytest", "-s", "tests/test_hypervisor.py"], extra_env=extra_env)
     with open(result_file, "w") as f:
         f.write("YES")
@@ -81,6 +82,7 @@ def generality_kernels(extra_env: Dict[str, str]) -> None:
     result_file = ROOT.joinpath("tests", "measurements", "kernel_test.ok")
     if result_file.exists():
         print("skip kernel tests")
+        return
     nix_develop(["pytest", "-s", "tests/test_attach.py"], extra_env=extra_env)
     with open(result_file, "w") as f:
         f.write("YES")
@@ -91,7 +93,13 @@ def phoronix(extra_env: Dict[str, str]) -> None:
 
 
 def block(extra_env: Dict[str, str]) -> None:
+    result_file = ROOT.joinpath("tests", "measurements", "measure_block.ok")
+    if result_file.exists():
+        print("skip block device benchmark")
+        return
     nix_develop(["python", "tests/measure_block.py"], extra_env=extra_env)
+    with open(result_file, "w") as f:
+        f.write("YES")
 
 
 def console(extra_env: Dict[str, str]) -> None:
