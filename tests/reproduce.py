@@ -15,6 +15,10 @@ from pathlib import Path
 ROOT = Path(__file__).parent.parent.resolve()
 HAS_TTY = sys.stderr.isatty()
 
+sys.path.append(str(ROOT.joinpath("tests")))
+
+from measure_helpers import fresh_fs_ssd, HOST_DIR
+
 
 def color_text(code: int, file: IO[Any] = sys.stdout) -> Callable[[str], None]:
     def wrapper(text: str) -> None:
@@ -108,21 +112,23 @@ def console(extra_env: Dict[str, str]) -> None:
 
 def docker_hub(extra_env: Dict[str, str]) -> None:
     # cannot be a git submodule
-    if not os.path.exists(ROOT.joinpath("tests/runq")):
+    with fresh_fs_ssd():
+        runq_path = Path(HOST_DIR).joinpath("runq")
         run(
             [
                 "git",
                 "clone",
                 "--recursive",
                 "https://github.com/Mic92/runq",
-                "tests/runq",
+                str(runq_path),
             ]
         )
-    run(
-        ["nix-shell", "--run", "python shrink_containers.py"],
-        extra_env=extra_env,
-        cwd=str(ROOT.joinpath("tests/runq")),
-    )
+        images = ROOT.joinpath("tests", "docker-images.json")
+        run(
+            ["nix-shell", "--run", f"python shrink_containers.py {images}"],
+            extra_env=extra_env,
+            cwd=str(runq_path),
+        )
 
 
 # hässlich
