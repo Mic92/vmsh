@@ -46,12 +46,13 @@ steps:
   # this also compiles vmsh against notos,
   # disable faulthandler so we do not run into timeouts
   - nix develop ".#devShells.x86_64-linux.ci-shell" --command pytest -p no:faulthandler -s ./tests/test_help.py
+  - nix build .#firecracker-example .#crosvm-example .#qemu-example .#kvmtool-example
   - TEST_NO_REBUILD=1 nix develop ".#devShells.x86_64-linux.ci-shell" --command pytest -n $(nproc --ignore=2) -s ./tests
 trigger:
   event:
   - push
 ---
 kind: signature
-hmac: c85eb67b4b5b4f7d6e6fca8f9aa0cecfbff50d76a7d779ec4f2075d829b0db14
+hmac: 5259860d3b6f10a92178135ab13fb2bece0ef93dea432d1385af14855e3de264
 
 ...
