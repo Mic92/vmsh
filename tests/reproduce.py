@@ -175,7 +175,7 @@ def evaluation(extra_env: Dict[str, str]) -> None:
         "Figure 6. fio with different configurations featuring qemu-blk and vmsh-blk with direct IO, and file IO with qemu-9p.": block,
         "Figure 7. Loki-console responsiveness compared to SSH.": console,
         "Figure 8. VM size reduction for the top-40 Docker images (average reduction: 60%).": docker_hub,
-        "usecase #1: : Serverless debug shell": usecase1,
+        # "usecase #1: : Serverless debug shell": usecase1,
         "usecase #2: : VM rescue system": usecase2,
         "usecase #3: : Package security scanner": usecase3,
     }
