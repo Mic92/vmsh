@@ -111,7 +111,10 @@ def console(extra_env: Dict[str, str]) -> None:
 
 
 def docker_hub(extra_env: Dict[str, str]) -> None:
-    # cannot be a git submodule
+    result_file = ROOT.joinpath("tests", "measurements", "docker-hub.ok")
+    if result_file.exists():
+        print("skip docker-hub test")
+        return
     with fresh_fs_ssd():
         runq_path = Path(HOST_DIR).joinpath("runq")
         run(
@@ -129,6 +132,8 @@ def docker_hub(extra_env: Dict[str, str]) -> None:
             extra_env=extra_env,
             cwd=str(runq_path),
         )
+    with open(result_file, "w") as f:
+        f.write("YES")
 
 
 # hässlich
