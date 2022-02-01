@@ -130,9 +130,23 @@ def usecase1(extra_env: Dict[str, str]) -> None:
     pass
 
 
-# easy
 def usecase2(extra_env: Dict[str, str]) -> None:
-    pass
+    result_file = ROOT.joinpath("tests", "measurements", "usecase2.ok")
+    if result_file.exists():
+        print("skip usecase2 test")
+        return
+    nix_develop(
+        [
+            "python",
+            "-s",
+            "tests/test_hypervisor.py",
+            "-k",
+            "test_qemu_and_change_password",
+        ],
+        extra_env=extra_env,
+    )
+    with open(result_file, "w") as f:
+        f.write("YES")
 
 
 # easy

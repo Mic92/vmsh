@@ -6,7 +6,7 @@ from typing import Iterator, Tuple, Optional
 import os
 import time
 from contextlib import contextmanager
-from nix import nix_build
+from nix import nix_build, passwd_image
 
 
 def find_hypervisor_by_tty(tty: str, command: str) -> Optional[int]:
@@ -101,22 +101,26 @@ def run_hypervisor(flake_name: str, command: str) -> Iterator[Tuple[int, str]]:
 EOF = 1
 
 
+def wait_for_tmux_output(tmux_session: str, needle: str) -> None:
+    # this is super ugly, but could not find a better way :(
+    output = ""
+    for i in range(60):
+        output = tmux_logs(tmux_session)
+        if needle in output:
+            break
+        time.sleep(1)
+    else:
+        print(output)
+        assert False, "Machine takes too long to boot"
+
+
 def hypervisor_test(helpers: conftest.Helpers, flake_name: str, command: str) -> None:
     print(f"test {command}")
     with run_hypervisor(flake_name, command) as (
         pid,
         tmux_session,
     ), helpers.busybox_image() as img:
-        # this is super ugly, but could not find a better way :(
-        output = ""
-        for i in range(60):
-            output = tmux_logs(tmux_session)
-            if "Welcome to NixOS" in output:
-                break
-            time.sleep(1)
-        else:
-            print(output)
-            assert False, "Machine takes too long to boot"
+        wait_for_tmux_output(tmux_session, "Welcome to NixOS")
 
         vmsh = helpers.spawn_vmsh_command(
             [
@@ -150,10 +154,38 @@ def test_crosvm(helpers: conftest.Helpers) -> None:
     hypervisor_test(helpers, ".#crosvm-example", "crosvm")
 
 
-def test_qemu(helpers: conftest.Helpers) -> None:
-    # XXX not portable name
-    hypervisor_test(helpers, ".#qemu-example", "qemu-system-x86_64")
-
-
 def test_kvmtool(helpers: conftest.Helpers) -> None:
     hypervisor_test(helpers, ".#kvmtool-example", "lkvm")
+
+
+# also tests qemu
+def test_qemu_and_change_password(helpers: conftest.Helpers) -> None:
+    # XXX not portable name
+    with run_hypervisor(".#qemu-example", "qemu-system-x86_64") as (
+        pid,
+        tmux_session,
+    ), passwd_image() as img:
+        wait_for_tmux_output(tmux_session, "Welcome to NixOS")
+
+        vmsh = helpers.spawn_vmsh_command(
+            [
+                "attach",
+                "--backing-file",
+                str(img),
+                str(pid),
+                "--",
+                "/bin/sh",
+                "-c",
+                "echo 'root:foo' | /bin/chpasswd -R /var/lib/vmsh",
+            ]
+        )
+
+        with vmsh:
+            try:
+                vmsh.wait_until_line(
+                    "process finished with exit status: 0",
+                    lambda l: "process finished with exit status: 0" in l,
+                )
+            except Exception:
+                print(tmux_logs(tmux_session))
+                raise
