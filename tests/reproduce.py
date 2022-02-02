@@ -6,8 +6,10 @@ if sys.version_info < (3, 7, 0):
     print("This script assumes at least python3.7")
     sys.exit(1)
 
+from timeit import default_timer as timer
 import os
 import shutil
+import time
 from typing import IO, Any, Callable, List, Dict, Optional, Text
 import subprocess
 from pathlib import Path
@@ -40,6 +42,7 @@ def run(
     input: Optional[str] = None,
     check: bool = True,
     cwd: str = str(ROOT),
+    shell: bool = False,
 ) -> "subprocess.CompletedProcess[Text]":
     env = os.environ.copy()
     env.update(extra_env)
@@ -49,10 +52,14 @@ def run(
     info(f"$ {' '.join(env_string)} {' '.join(cmd)}")
     if cwd != os.getcwd():
         info(f"cd {cwd}")
-    return subprocess.run(cmd, cwd=cwd, check=check, env=env, text=True, input=input)
+    return subprocess.run(
+        cmd, cwd=cwd, check=check, env=env, text=True, input=input, shell=shell
+    )
 
 
-def nix_develop(command: List[str], extra_env: Dict[str, str]) -> None:
+def nix_develop(
+    command: List[str], extra_env: Dict[str, str], cwd: str = str(ROOT)
+) -> None:
     run(
         [
             "nix",
@@ -63,6 +70,7 @@ def nix_develop(command: List[str], extra_env: Dict[str, str]) -> None:
         ]
         + command,
         extra_env=extra_env,
+        cwd=cwd,
     )
 
 
@@ -132,6 +140,20 @@ def docker_hub(extra_env: Dict[str, str]) -> None:
             extra_env=extra_env,
             cwd=str(runq_path),
         )
+
+        run(
+            [
+                f"sudo lsof {HOST_DIR} | awk '{{print $2}}' | tail -n +2 | sudo xargs -r kill"
+            ],
+            shell=True,
+        )
+        time.sleep(3)
+        run(
+            [
+                f"sudo lsof {HOST_DIR} | awk '{{print $2}}' | tail -n +2 | sudo xargs -r kill -9"
+            ],
+            shell=True,
+        )
     with open(result_file, "w") as f:
         f.write("YES")
 
@@ -183,19 +205,22 @@ def evaluation(extra_env: Dict[str, str]) -> None:
         "6.1 Robustness (xfstests)": robustness,
         "6.2 Generality, hypervisors": generality_hypervisors,
         "6.2 Generality, kernels": generality_kernels,
-        "Figure 5 Relative performance of vmsh-blk for the Phoronix Test Suite compared to qemu-blk.": phoronix,
+        "Figure 5. Relative performance of vmsh-blk for the Phoronix Test Suite compared to qemu-blk.": phoronix,
         "Figure 6. fio with different configurations featuring qemu-blk and vmsh-blk with direct IO, and file IO with qemu-9p.": block,
         "Figure 7. Loki-console responsiveness compared to SSH.": console,
-        "Figure 8. VM size reduction for the top-40 Docker images (average reduction: 60%).": docker_hub,
         # "usecase #1: : Serverless debug shell": usecase1,
         "usecase #2: : VM rescue system": usecase2,
         "usecase #3: : Package security scanner": usecase3,
+        "Figure 8. VM size reduction for the top-40 Docker images (average reduction: 60%).": docker_hub,
     }
     for figure, function in experiments.items():
         info(figure)
         for i in range(3):
             try:
+                start = timer()
                 function(extra_env)
+                end = timer()
+                print(f"{figure} took {(end - start) / 60} minutes")
                 break
             except subprocess.TimeoutExpired:
                 warn(f"'{figure}' took too long to run: retry ({i + 1}/3)!")
@@ -208,26 +233,23 @@ def evaluation(extra_env: Dict[str, str]) -> None:
 
 
 def generate_graphs() -> None:
-    results = ROOT.joinpath("results")
+    results = ROOT.joinpath("tests", "graphs")
     if results.exists():
         shutil.rmtree(results)
     results.mkdir()
-    tsv_files = ["foo.tsv"]
+    tsv_files = ["console-latest.tsv", "fio-latest.tsv", "phoronix-stats.tsv"]
     for f in tsv_files:
-        result = ROOT.joinpath(f)
+        result = ROOT.joinpath("tests", "measurements", f)
         if not result.exists():
             warn(
                 f"tsv file {result} does not exists! It should have been created during evaluation"
             )
         shutil.copyfile(result, results.joinpath(f))
-    graphs = ROOT.joinpath("graphs.py")
+    graphs = ROOT.joinpath("tests", "graphs.py")
 
-    run(
-        [
-            "nix-shell",
-            "--run",
-            f"cd {results} && python {graphs} foo.tsv",
-        ]
+    nix_develop(
+        ["bash", "-c", f"cd {results} && python {str(graphs)} {' '.join(tsv_files)}"],
+        extra_env=dict(),
     )
     info(f"Result and graphs data have been written to {results}")
 

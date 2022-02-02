@@ -49,6 +49,9 @@
 
 
         measureDeps = [
+          # only used in tests/reproduce.py
+          pkgs.lsof
+
           pkgs.numactl
           pkgs.fio
           (pkgs.python3.withPackages (ps: [
