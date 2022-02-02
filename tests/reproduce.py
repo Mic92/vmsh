@@ -119,7 +119,7 @@ def console(extra_env: Dict[str, str]) -> None:
 
 
 def docker_hub(extra_env: Dict[str, str]) -> None:
-    result_file = ROOT.joinpath("tests", "measurements", "docker-hub.ok")
+    result_file = ROOT.joinpath("tests", "measurements", "docker-images.tsv")
     if result_file.exists():
         print("skip docker-hub test")
         return
@@ -142,6 +142,11 @@ def docker_hub(extra_env: Dict[str, str]) -> None:
             extra_env=extra_env,
             cwd=str(runq_path),
         )
+        run(
+            ["nix-shell", "--run", f"python export_tsv.py {images} {result_file}"],
+            extra_env=extra_env,
+            cwd=str(runq_path),
+        )
 
         run(
             [
@@ -156,8 +161,6 @@ def docker_hub(extra_env: Dict[str, str]) -> None:
             ],
             shell=True,
         )
-    with open(result_file, "w") as f:
-        f.write("YES")
 
 
 # hässlich
@@ -239,7 +242,12 @@ def generate_graphs() -> None:
     if results.exists():
         shutil.rmtree(results)
     results.mkdir()
-    tsv_files = ["console-latest.tsv", "fio-latest.tsv", "phoronix-stats.tsv"]
+    tsv_files = [
+        "console-latest.tsv",
+        "fio-latest.tsv",
+        "phoronix-stats.tsv",
+        "docker-images.tsv",
+    ]
     for f in tsv_files:
         result = ROOT.joinpath("tests", "measurements", f)
         if not result.exists():
@@ -249,10 +257,11 @@ def generate_graphs() -> None:
         shutil.copyfile(result, results.joinpath(f))
     graphs = ROOT.joinpath("tests", "graphs.py")
 
-    nix_develop(
-        ["bash", "-c", f"cd {results} && python {str(graphs)} {' '.join(tsv_files)}"],
-        extra_env=dict(),
-    )
+    for f in tsv_files:
+        nix_develop(
+            ["bash", "-c", f"cd {results} && python {str(graphs)} {f}"],
+            extra_env=dict(),
+        )
     info(f"Result and graphs data have been written to {results}")
 
 
