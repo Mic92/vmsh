@@ -134,7 +134,9 @@ def docker_hub(extra_env: Dict[str, str]) -> None:
                 str(runq_path),
             ]
         )
-        images = ROOT.joinpath("tests", "docker-images.json")
+        images = ROOT.joinpath("tests", "measurements", "docker-images.json")
+        if not images.exists():
+            shutil.copyfile(ROOT.joinpath("tests", "docker-images.json"), images)
         run(
             ["nix-shell", "--run", f"python shrink_containers.py {images}"],
             extra_env=extra_env,

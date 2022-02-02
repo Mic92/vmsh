@@ -300,7 +300,7 @@ def console(df: pd.DataFrame) -> Any:
     return g
 
 
-def compute_ratio(x: pd.Dataframe) -> pd.Series:
+def compute_ratio(x: pd.DataFrame) -> pd.Series:
     title = x.benchmark_title.iloc[0]
     scale = x.scale.iloc[0]
     native = x.value.iloc[0]
@@ -349,7 +349,7 @@ def unit_replacer(matchobj: re.Match) -> str:
     return f"{new_number} B"
 
 
-def sort_row(val: pd.Series) -> int:
+def sort_row(val: pd.Series) -> Any:
     return natsort_keygen()(val.apply(lambda v: UNIT_FINDER.sub(unit_replacer, v)))
 
 
@@ -425,12 +425,12 @@ def fio_overhead(df: pd.DataFrame, what: str, value_name: str) -> Any:
     dw = df[df.iotype == "direct"][df.direction == "write_mean"]
     warnings.simplefilter("default")
 
-    def foo(g: pd.Dataframe, system: str) -> pd.Dataframe:
+    def foo(g: pd.DataFrame, system: str) -> pd.DataFrame:
         df = pd.DataFrame()
         mean = float(g[g.system == system][value_name])
         stddev = float(g[g.system == system]["stddev"])
 
-        def f(row: pd.Dataframe) -> pd.Dataframe:
+        def f(row: pd.DataFrame) -> pd.DataFrame:
             # row["stddev"] /= row[value_name]
             # if str(row.system) != system:
             #    from math import sqrt

@@ -548,7 +548,6 @@
     "zookeeper": {
         "envs": [],
         "mounts": [],
-        "new_size": 158658560,
         "old_size": 271189504,
         "repo_digest": "zookeeper@sha256:d70d4bfa7e1ada5d4247ad9f482d2ed191eb01dddd8da3c14234a418a22498f8",
         "sidecars": {},
