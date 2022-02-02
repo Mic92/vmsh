@@ -58,6 +58,7 @@
             ps.seaborn
             ps.pandas
             ps.psutil
+            ps.natsort
           ]))
         ];
 
