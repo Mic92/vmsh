@@ -13,8 +13,7 @@
 
 # measurement results
 tests/measurements/
-# ignore runq fork
-tests/runq
+tests/graphs
 # xfstests results
 results/
 
