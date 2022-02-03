@@ -1,8 +1,8 @@
 # Run the evaluation
 
-Note if a Eurosys reviewer, we like to invite you to run the evaluation on our
+Note if you are a Eurosys reviewer, we like to invite you to run the evaluation on our
 machines. Please send your ssh key to the paper author email address to obtain
-ssh access.  f you run into problems you can write join the IRC channel #vmsh on
+ssh access. If you run into problems you can write join the IRC channel #vmsh on
 libera for a live chat (there is also a webchat version at
 https://web.libera.chat/) or write an email for further questions.
 
@@ -112,11 +112,11 @@ Info:      Processes: 326
 
 This script only depends on Python and Nix as referenced above. All other
 dependencies will be loaded through nix. If the script fails at any point it can
-be restarted and it will only not yet done builds or experiments. Each command
-it runs will be printed to during evaluation along with environment variable
-set. 
+be restarted and it will only re-run not-yet-completed builds and experiments.
+Each command which the script runs will be printed during evaluation along
+with environment variable set. 
 
-For disk benchmarks our scripts a assume a nvme block device that can be reformatted during
+For disk benchmarks our scripts a assume a nvme block device which can be reformatted during
 the benchmark. To configure the disk set the `HOST_SSD` environment variable:
 
 ```
