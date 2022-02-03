@@ -110,7 +110,7 @@ Info:      Processes: 326
            Init: systemd v: 249 target: multi-user.target Compilers: gcc: 10.3.0 Packages: 
            nix-sys: 470 Client: Sudo v: 1.9.7p2 inxi: 3.3.04 
 ```
-</summary>
+</details>
 
 
 This script only depends on Python and Nix as referenced above. All other
