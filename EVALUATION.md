@@ -1,22 +1,19 @@
 # Run the evaluation
 
-<!--
-Due its special hardware requirments we provide ssh access to our evaluation
-machines. Please contact the paper author email address to obtain ssh keys. The
-machines will have the correct hardware and also software installed to run the
-experiments. If you run into problems you can write join the IRC channel #rkt-io
-on freenode fro a live chat (there is also a webchat version at
-https://webchat.freenode.net/) or write an email for further questions.
--->
+Note if a Eurosys reviewer, we like to invite you to run the evaluation on our
+machines. Please contact the paper author email address to obtain ssh access.
+f you run into problems you can write join the IRC channel #vmsh on libera for a
+live chat (there is also a webchat version at https://web.libera.chat/) or write
+an email for further questions.
 
 
-The first step is to get the source code for rkt-io:
+The first step is to get the source code for vmsh:
 
 ```console
-$ git clone https://github.com/Mic92/rkt-io
+$ git clone https://github.com/Mic92/vmsh
 ```
 
-For convience we created an evaluation script (reproduce.py) that will first build rkt-io and than run all evaluation experiments from the paper. 
+For convience we created an evaluation script (tests/reproduce.py) run all evaluation experiments from the paper. 
 
 The machine we used for evaluation had the following hardware configuration:
 
@@ -129,31 +126,36 @@ export HOST_SSD=/dev/nvme0n1  # the block device set here will be ereased prior 
 To run the evaluation script use the following command:
 
 ```console
-$ cd rkt-io
-$ python reproduce.py 
+$ cd vmsh
+$ python tests/reproduce.py 
 ```
 
 After the build is finished, it will start evaluations and generate graphs for
-each afterwards. The graphs will be written to ./results.
+each afterwards. The graphs will be written to `./tests/graphs`.
 
 The following figures are reproduced:
 
-<!--
-    Figure 1. Micro-benchmarks to showcase the performance of syscalls, storage and network stacks across different systems
-        a) System call latency with sendto()
-        b) Storage stack performance with fio
-        c) Network stack performance with iPerf
-
-    Figure 5. Micro-benchmarks to showcase the effectiveness of various design choices in rkt-io Effectiveness of the SMP design w/ fio with increasing number of threads
-        a) Effectiveness of the SMP design w/ fio with increasing number of threads
-        b) iPerf throughput w/ different optimizations
-        c) Effectiveness of hardware-accelerated crypto routines
-
-    Figure 7. The above plots compare the performance of four real-world applications (SQlite, Ngnix, Redis, and MySQL) while running atop native linux
-        a) SQLite throughput w/ Speedtest (no security) and three secure systems: Scone, SGX-LKL and rkt-io
-        b) Nginx latency w/ wrk
-        c) Nginx throughput w/ wrk
-        d) Redis throughput w/ YCSB (A)
-        e) Redis latency w/ YCSB (A)
-        f) MySQL OLTP throughput w/ sys-bench
--->
+- 6.1 Robustness (xfstests)
+  - no graphs, just outputs how many tests passes
+- 6.2 Generality, hypervisors
+  - no graphs, just outputs how many tests passes
+- 6.2 Generality, kernels
+  - no graphs, just outputs how many tests passes
+- Figure 5. Relative performance of vmsh-blk for the Phoronix Test Suite compared to qemu-blk.
+  - see tests/graphs/phoronix.pdf
+- Figure 6. fio with different configurations featuring qemu-blk and vmsh-blk with direct IO, and file IO with qemu-9p.
+  - see `tests/graphs/fio-best-case-bw-seperate_overhead.pdf`
+  - see `tests/graphs/fio-best-case-bw-seperate.pdf`
+  - see `tests/graphs/fio-worst-case-iops-seperate_overhead.pdf`
+  - see `tests/graphs/fio-worst-case-iops-seperate.pdf`
+- Figure 7. Loki-console responsiveness compared to SSH
+  - see `console.pdf`
+- Figure 8. VM size reduction for the top-40 Docker images (average reduction: 60%).
+  - see `docker-images.pdf`
+- Usecase #2: : VM rescue system
+  - no graphs, just a successful unittest
+- Usecase #3: : Package security scanner
+  - no graphs, just a successful unittest
+  
+For `Usecase #1: : Serverless debug shell` see follow the instructions
+[here](https://github.com/pogobanane/lambda-pirate/) instead.
