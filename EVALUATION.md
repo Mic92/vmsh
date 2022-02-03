@@ -1,10 +1,10 @@
 # Run the evaluation
 
 Note if a Eurosys reviewer, we like to invite you to run the evaluation on our
-machines. Please contact the paper author email address to obtain ssh access.
-f you run into problems you can write join the IRC channel #vmsh on libera for a
-live chat (there is also a webchat version at https://web.libera.chat/) or write
-an email for further questions.
+machines. Please send your ssh key to the paper author email address to obtain
+ssh access.  f you run into problems you can write join the IRC channel #vmsh on
+libera for a live chat (there is also a webchat version at
+https://web.libera.chat/) or write an email for further questions.
 
 
 The first step is to get the source code for vmsh:
