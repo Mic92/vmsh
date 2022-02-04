@@ -90,6 +90,7 @@
         not-os-image_4_4 = (not-os-image'.override { linuxPackages = pkgs.linuxPackages_4_4; }).json;
         not-os-image_4_19 = (not-os-image'.override { linuxPackages = pkgs.linuxPackages_4_19; }).json;
         not-os-image_5_10 = (not-os-image'.override { linuxPackages = pkgs.linuxPackages_5_10; }).json;
+        not-os-image_5_12 = (not-os-image'.override { linuxPackages = pkgs.linuxPackages_5_12; }).json;
         not-os-image_5_15 = (not-os-image'.override { linuxPackages = pkgs.linuxPackages_5_15; }).json;
         not-os-image_5_16 = (not-os-image'.override { linuxPackages = pkgs.linuxPackages_5_16; }).json;
 
