@@ -22,7 +22,7 @@ buildLinux (args // rec {
       XFS_ONLINE_SCRUB y
     '';
   # 5.12 patch list has one fix we already have in our branch
-  }]; #++ linuxPackages_5_12.kernel.kernelPatches;
+  }] ++ linuxPackages_5_15.kernel.kernelPatches;
   extraMeta.branch = "5.12";
   ignoreConfigErrors = true;
 } // (args.argsOverride or { }))
