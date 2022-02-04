@@ -168,6 +168,7 @@ impl Thread {
                 self.ptthread.tid
             );
             if let WaitStatus::PtraceSyscall(pid)
+            | WaitStatus::PtraceEvent(pid, Signal::SIGTRAP, _)
             | WaitStatus::PtraceEvent(pid, Signal::SIGSTOP, _) = status
             {
                 if pid == self.ptthread.tid {

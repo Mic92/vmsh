@@ -48,7 +48,7 @@ from enum import Enum
 
 # overwrite the test duration and test file size to make the run shorter
 # TODO turn this to False for releases. Results look very different.
-QUICK = True
+QUICK = False
 
 
 def lsblk(vm: QemuVm) -> None:
