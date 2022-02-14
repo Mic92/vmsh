@@ -131,7 +131,7 @@ $ python tests/reproduce.py
 ```
 
 After the build is finished, it will start evaluations and generate graphs for
-each afterwards. The graphs will be written to `./tests/graphs`.
+each afterwards. The graph files will be written to `./tests/graphs`.
 
 The following figures are reproduced:
 
@@ -149,9 +149,9 @@ The following figures are reproduced:
   - see `tests/graphs/fio-worst-case-iops-seperate_overhead.pdf`
   - see `tests/graphs/fio-worst-case-iops-seperate.pdf`
 - Figure 7. Loki-console responsiveness compared to SSH
-  - see `console.pdf`
+  - see `tests/graphs/console.pdf`
 - Figure 8. VM size reduction for the top-40 Docker images (average reduction: 60%).
-  - see `docker-images.pdf`
+  - see `tests/graphs/docker-images.pdf`
 - Usecase #2: : VM rescue system
   - no graphs, just a successful unittest
 - Usecase #3: : Package security scanner
