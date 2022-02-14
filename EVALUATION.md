@@ -127,7 +127,7 @@ To run the evaluation script use the following command:
 
 ```console
 $ cd vmsh
-$ python tests/reproduce.py 
+$ HOST_SSD=/dev/nvme0n1 nix develop -c python tests/reproduce.py
 ```
 
 After the build is finished, it will start evaluations and generate graphs for
