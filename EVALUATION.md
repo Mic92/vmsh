@@ -113,8 +113,10 @@ Info:      Processes: 326
 This script only depends on Python and Nix as referenced above. All other
 dependencies will be loaded through nix. If the script fails at any point it can
 be restarted and it will only re-run not-yet-completed builds and experiments.
-Each command which the script runs will be printed during evaluation along
-with environment variable set. 
+Each command which the script runs will be printed during evaluation along with
+environment variable set. Experiments store checkpoint results in
+`tests/measurements`, when re-run experiments might be therefore skipped based
+on state stored in the same directory.
 
 For disk benchmarks our scripts a assume a nvme block device which can be reformatted during
 the benchmark. To configure the disk set the `HOST_SSD` environment variable:
