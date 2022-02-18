@@ -159,3 +159,13 @@ The following figures are reproduced:
   
 For `Usecase #1: : Serverless debug shell` see follow the instructions
 [here](https://github.com/pogobanane/lambda-pirate/) instead.
+
+
+## Troubleshooting
+
+### umount: /mnt/nvme: target is busy.
+
+If you encounter this issue, there might be still a process using your disk.
+Make sure `lsof /mnt/nvme` does not list any process and you do not have any
+shell open in this directory.  If the issue still persist after the output of
+`lsof` is empty, try to reboot the machine.
