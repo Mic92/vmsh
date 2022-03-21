@@ -86,9 +86,9 @@ dependencies = [
 
 [[package]]
 name = "elfloader"
-version = "0.14.0"
+version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a249d6a9d50f3bf5a3cb7bfd75e84989cad89c6c77b5996c8b084e844146ff04"
+checksum = "23e01bd5dc6be11bc08285398ec8161e4ed2154007e6ac552d112b28e4219c81"
 dependencies = [
  "bitflags",
  "log",
