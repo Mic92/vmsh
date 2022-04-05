@@ -33,3 +33,20 @@ evaluation of the paper, we provide [dedicated documentation](EVALUATION.md).
 # Related work
 
 Build small vm images with [microvm.nix](https://github.com/astro/microvm.nix)
+
+# Referencing our work
+
+```
+@inproceedings{DBLP:conf/eurosys/ThalheimOUGB22,
+  author    = {J{\"{o}}rg Thalheim and
+               Peter Okelmann and
+               Harshavardhan Unnibhavi and
+               Redha Gouicem and
+               Pramod Bhatotia},
+  title     = {{VMSH:} hypervisor-agnostic guest overlays for VMs},
+  booktitle = {EuroSys},
+  pages     = {678--696},
+  publisher = {{ACM}},
+  year      = {2022}
+}
+```
