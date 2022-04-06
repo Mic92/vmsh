@@ -9,24 +9,6 @@ let
           vim-sensible 
           nerdtree
         ];
-#          tpope/vim-sensible
-#          roryokane/detectindent
-#          ddollar/nerdcommenter
-#          dense-analysis/ale
-#          tomasr/molokai
-#          scrooloose/nerdtree
-#          junegunn/rainbow_parentheses.vim
-#          junegunn/fzf
-#          ctrlpvim/ctrlp.vim # vimscript only fuzzy search
-#          airblade/vim-gitgutter
-#          vim-airline/vim-airline
-#          vim-airline/vim-airline-themes
-#
-#          Yggdroot/indentLine # mark levels of line indentation |
-#          troydm/zoomwintab.vim
-#          christoomey/vim-tmux-navigator
-#          qpkorr/vim-bufkill # :BD is :bdelete without closing windows
-#        ];
       };
 in
 buildDiskImage {
