@@ -6,7 +6,6 @@ let
         name = "vim";
         vimrcConfig.customRC = builtins.readFile ./modules/vimrc;
         vimrcConfig.packages.nixbundle.start = with pkgs.vimPlugins; [ 
-          #my-vim-paste-easy
           vim-sensible 
           nerdtree
         ];
