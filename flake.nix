@@ -139,6 +139,7 @@
           alpine-sec-scanner-image = pkgs.callPackage ./nix/alpine-sec-scanner-image.nix {};
           phoronix-image = pkgs.callPackage ./nix/phoronix-image.nix {};
           alpine-image = pkgs.callPackage ./nix/alpine-image.nix {};
+          fat-image = pkgs.callPackage ./nix/fat-image.nix {};
 
           inherit (microvm.packages.${pkgs.system})
             firecracker-example crosvm-example kvmtool-example qemu-example;

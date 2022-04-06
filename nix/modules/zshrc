@@ -1,0 +1,137 @@
+###############################################################
+#                 user config                                 #
+###############################################################
+
+#[ -z "$SSH_CONNECTION" ] && ZSH_TMUX_AUTOSTART="true"
+# [ -z $TMUX ] && ZSH_TMUX_AUTOSTART="true"
+# vim starts terminals as xterm even if running in tmux
+[[ ! $TERM = *screen* ]] && [ ! $TERM = 'xterm' ] && tmux new -t default
+
+ssh_auth_sock_static=/tmp/ssh-static-ccnoiewa
+echo "ssh-auth-sock was $SSH_AUTH_SOCK"
+if [[ $TERM = *screen* ]]; then
+ # if in tmux, use static
+ export SSH_AUTH_SOCK=$ssh_auth_sock_static
+ echo "Using $ssh_auth_sock_static (tmux detected)"
+else
+ #export SSH_ASKPASS=/usr/bin/ksshaskpass
+ if [[ ${SSH_AUTH_SOCK} == "/tmp/"* ]];then
+  echo "forwared ssh-agent $SSH_AUTH_SOCK"
+ elif [[ -S "/run/user/${UID}/ssh-agent" || -S "/run/user/${UID}/keyring/ssh" ]]; then
+  export SSH_AUTH_SOCK="/run/user/${UID}/ssh-agent"
+ else
+  export SSH_AUTH_SOCK=$XDG_RUNTIME_DIR/ssh-agent.socket
+ fi
+ # offer the socket statically
+ ln -sf $SSH_AUTH_SOCK $ssh_auth_sock_static
+fi
+if [[ ! $(ssh-add -l) ]]; then 
+ echo "WARNING: ssh-agent not operational"
+fi
+
+path+=$HOME/bin
+typeset -U path
+
+
+export EDITOR=vim
+
+alias sve="sudo EDITOR=$EDITOR virsh edit"
+
+set ttymouse=xterm2
+set mouse=a
+
+#function subl () {
+#	/usr/bin/flatpak run --branch=stable --arch=x86_64 --command=sublime --file-forwarding com.sublimetext.three $@ &>/dev/null &
+#}
+
+if [ -n "${commands[direnv]}" ]; then
+  eval "$(direnv hook zsh)"
+fi
+
+###############################################################
+#                 antigen packages                            #
+###############################################################
+
+# requires the antigen-git package
+if [ -e /usr/share/zsh/share/antigen.zsh ]; then
+  echo "using global antigen"
+  source /usr/share/zsh/share/antigen.zsh
+elif [ -e ~/.nix-profile/share/antigen/antigen.zsh ]; then
+  echo "using nix-profile antigen"
+  source ~/.nix-profile/share/antigen/antigen.zsh
+else
+  echo "no antigen found"
+fi
+
+# Load the oh-my-zsh's library.
+# This is a minimalistic baseline configuration. 
+antigen use oh-my-zsh
+
+# Bundles from the default repo (robbyrussell's oh-my-zsh).
+antigen bundle git
+#antigen bundle heroku
+#antigen bundle pip
+#antigen bundle lein
+antigen bundle command-not-found
+antigen bundle colored-man-pages
+antigen bundle extract
+#antigen bundle tmux
+antigen bundle ansible
+antigen bundle systemd
+
+
+# Bundles from the zsh-users repo (fish like zsh stuff)
+
+antigen bundle zsh-users/zsh-syntax-highlighting
+antigen bundle zsh-users/zsh-completions
+
+ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE="fg=240"
+ZSH_AUTOSUGGEST_USE_ASYNC="true"
+antigen bundle zsh-users/zsh-autosuggestions
+
+# my stuff
+antigen bundle zpm-zsh/ssh
+antigen bundle HeroCC/LS_COLORS
+
+# Load the theme.
+#antigen theme fishy
+
+# Tell Antigen that you're done.
+antigen apply
+
+
+###############################################################
+#                 my promt theme                              #
+###############################################################
+
+# ZSH Theme emulating something similar to the Fish shell's default prompt.
+
+_fishy_collapsed_wd() {
+  echo $(pwd | perl -pe '
+   BEGIN {
+      binmode STDIN,  ":encoding(UTF-8)";
+      binmode STDOUT, ":encoding(UTF-8)";
+   }; s|^$ENV{HOME}|~|g; s|/([^/.]{'3'})[^/]*(?=/)|/$1|g; s|/\.([^/]{'3'})[^/]*(?=/)|/.$1|g
+')
+}
+
+user_color='green'; [ $UID -eq 0 ] && user_color='red'
+return_status="%{$fg_bold[red]%}%(?.. %?)%{$reset_color%}"
+PROMPT='%n@%m${return_status}%{$fg[$user_color]%}%(!.#.>)%{$reset_color%} '
+PROMPT2='%{$fg[red]%}\ %{$reset_color%}'
+
+date_time_string="+%a %T"
+RPROMPT="${RPROMPT}"'%{$FG[240]%}$(date $date_time_string)%{$reset_color%}$(git_prompt_info)$(git_prompt_status)%{$reset_color%} %{$fg[$user_color]%}$(_fishy_collapsed_wd)%{$reset_color%}'
+
+ZSH_THEME_GIT_PROMPT_PREFIX=" "
+ZSH_THEME_GIT_PROMPT_SUFFIX=""
+ZSH_THEME_GIT_PROMPT_DIRTY=""
+ZSH_THEME_GIT_PROMPT_CLEAN=""
+
+ZSH_THEME_GIT_PROMPT_ADDED="%{$fg_bold[green]%}+"
+ZSH_THEME_GIT_PROMPT_MODIFIED="%{$fg_bold[blue]%}!"
+ZSH_THEME_GIT_PROMPT_DELETED="%{$fg_bold[red]%}-"
+ZSH_THEME_GIT_PROMPT_RENAMED="%{$fg_bold[magenta]%}>"
+ZSH_THEME_GIT_PROMPT_UNMERGED="%{$fg_bold[yellow]%}#"
+ZSH_THEME_GIT_PROMPT_UNTRACKED="%{$fg_bold[cyan]%}?"
+

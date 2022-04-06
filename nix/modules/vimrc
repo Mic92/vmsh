@@ -1,0 +1,146 @@
+" 1. run this to install vim-plug
+" curl -fLo ~/.vim/autoload/plug.vim --create-dirs \
+"     https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim
+" or
+" curl -fLo ~/.local/share/nvim/site/autoload/plug.vim --create-dirs \
+"     https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim
+" 2. create basic vimrc
+" 3. install plugins by running :PlugInstall in vim
+
+let &t_SI = "\<Esc>[6 q"
+let &t_SR = "\<Esc>[3 q"
+let &t_EI = "\<Esc>[0 q"
+" preferrable for Konsole?
+" let &t_SI = "\<Esc>]50;CursorShape=1\x7"
+" let &t_SR = "\<Esc>]50;CursorShape=2\x7"
+" let &t_EI = "\<Esc>]50;CursorShape=0\x7"
+
+" spelling
+set spelllang=en_gb
+set spellfile=~/.config/spellfile.utf-8.add
+
+" sane tabs and indents
+set expandtab
+set tabstop=2
+set shiftwidth=2
+
+" leader key defined somewhere else
+let mapleader = "\<space>"
+map <leader>ot :term ++curwin<CR>
+nnoremap J <C-e>
+nnoremap K <C-y>
+noremap j gj
+noremap k gk
+
+" detectindent
+" augroup DetectIndent
+"    autocmd!
+"    autocmd BufReadPost *  DetectIndent
+" augroup END
+
+" ale
+" dependencies/prequesites
+" rustup component add rls
+" rustup component add rust-analysis
+" rustup component add rust-src
+let g:ale_linters = { 'rust': ['analyzer', 'rls'], 'go': ['golangserver'] }
+
+" ddollar/nerdcommentar
+map C <leader>ci
+
+" tomasr/molokai
+colorscheme molokai
+
+" airline-theme
+let g:airline_theme='molokai'
+let g:airline#extensions#tabline#enabled = 1
+let g:airline_powerline_fonts = 1
+
+" junegunn/rainbow_parentheses.vim
+" au BufEnter * :RainbowParentheses<CR>
+
+" junegunn/fzf
+map <leader>f :FZF<CR> 
+
+function! s:buflist()
+  redir => ls
+  silent ls
+  redir END
+  return split(ls, '\n')
+endfunction
+
+function! s:bufopen(e)
+  execute 'buffer' matchstr(a:e, '^[ 0-9]*')
+endfunction
+
+" tmux navigator fix for nixos
+" let g:tmux_navigator_no_mappings = 1
+map <leader>j :TmuxNavigateDown<cr>
+nnoremap <silent> <c-h> :NERDTree
+" nnoremap <silent> <c-h> :TmuxNavigateLeft<cr>
+" nnoremap <silent> <c-j> :TmuxNavigateDown<cr>
+" nnoremap <silent> <c-k> :TmuxNavigateUp<cr>
+" nnoremap <silent> <c-l> :TmuxNavigateRight<cr>
+" nnoremap <silent> {Previous-Mapping} :TmuxNavigatePrevious<cr>
+
+nnoremap <silent> <Leader><Enter> :call fzf#run({
+\   'source':  reverse(<sid>buflist()),
+\   'sink':    function('<sid>bufopen'),
+\   'options': '+m',
+\   'down':    len(<sid>buflist()) + 2
+\ })<CR>
+
+" other
+map <leader>W :w<CR>
+command Sudow :w !sudo tee % > /dev/null
+map <leader>n :NERDTree<CR>
+let g:NERDTreeWinSize=25
+let g:ackprg = 'rg --vimgrep'
+
+set number 
+
+" enable mouse for window resize
+set mouse=a
+
+" share clipboard with system
+" not working
+"set clipboard=unamedplus
+
+" :tabnew to open new tab
+map <C-p> :tabnext<CR>
+" map <C-u> :tabprevious<CR> no thats already scroll up
+" :e to open new buffer in current window
+" :bd to close current buffer
+" :ls to list all buffers
+map <C-i> :bp<CR>
+map <C-o> :bn<CR>
+
+" bindings knom  
+map <s-bs> <b>
+
+"Remember the positions in files with some git-specific exceptions"
+autocmd BufReadPost *
+  \ if line("'\"") > 0 && line("'\"") <= line("$")
+  \           && expand("%") !~ "COMMIT_EDITMSG"
+  \           && expand("%") !~ "ADD_EDIT.patch"
+  \           && expand("%") !~ "addp-hunk-edit.diff"
+  \           && expand("%") !~ "git-rebase-todo" |
+  \   exe "normal g`\"" |
+  \ endif
+
+" Changed default required by SuSE security team--be aware if enabling this
+" that it potentially can open for malicious users to do harmful things.
+set nomodeline
+
+" keybinds to remember
+" :source % to reload vimrc when opened
+" c-x c-f for filepath completion
+"
+" todo:
+" - list of recently edited files
+
+" vmap y :w !xclip -se c -i<CR><CR>
+" vmap p :r!xclip -se c -o<CR>
+vmap <C-c> y:Oscyank<cr>
+" override (themes?) bracket highlighting []
+autocmd ColorScheme * hi MatchParen term=reverse cterm=bold,underline ctermfg=208 ctermbg=233 gui=bold guifg=#FD971F guibg=#000000
