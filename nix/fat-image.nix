@@ -8,24 +8,7 @@ let
         vimrcConfig.packages.nixbundle.start = with pkgs.vimPlugins; [ 
           #my-vim-paste-easy
           vim-sensible 
-          # detenctindent
-          nerdcommenter
-          ale
-          molokai
           nerdtree
-          rainbow_parentheses-vim
-          fzf-vim
-          gitgutter
-          vim-airline
-          vim-airline-themes
-          indentLine
-          zoomwintab-vim
-          vim-tmux-navigator
-          vim-bufkill
-          ack-vim
-          vim-osc52
-          tabular
-          vim-LanguageTool
         ];
 #          tpope/vim-sensible
 #          roryokane/detectindent
