@@ -4,11 +4,12 @@ use kvm_bindings as kvmb;
 use libc::{c_void, off_t, timeval, PT_LOAD, PT_NOTE};
 use nix::sys::{
     mman::{mmap, MapFlags, ProtFlags},
-    uio::{process_vm_readv, IoVec, RemoteIoVec},
+    uio::{process_vm_readv, RemoteIoVec},
 };
 use nix::unistd::Pid;
 use simple_error::try_with;
 use std::fs::OpenOptions;
+use std::io::IoSliceMut;
 use std::path::PathBuf;
 use std::{fs::File, io::Write, ptr, slice::from_raw_parts_mut};
 use std::{mem::size_of, os::unix::prelude::AsRawFd};
@@ -79,7 +80,7 @@ fn dump_mappings(
     let raw_buf = try_with!(res, "cannot mmap core file");
     let buf = unsafe { from_raw_parts_mut(raw_buf as *mut u8, buf_size as usize) };
 
-    let dst_iovs = vec![IoVec::from_mut_slice(buf)];
+    let mut dst_iovs = vec![IoSliceMut::new(buf)];
     let src_iovs = maps
         .iter()
         .map(|m| RemoteIoVec {
@@ -89,7 +90,7 @@ fn dump_mappings(
         .collect::<Vec<_>>();
 
     try_with!(
-        process_vm_readv(pid, dst_iovs.as_slice(), src_iovs.as_slice()),
+        process_vm_readv(pid, &mut dst_iovs, src_iovs.as_slice()),
         "cannot read hypervisor memory"
     );
     Ok(())

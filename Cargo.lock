@@ -44,6 +44,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "14c189c53d098945499cdfa7ecc63567cf3886b3332b312a5b4585d8d3a6a610"
 
 [[package]]
+name = "cc"
+version = "1.0.73"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2fff2a6927b3bb87f9595d67196a70493f627687a71d87a0d692242c33f58c11"
+
+[[package]]
 name = "cfg-if"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -378,8 +384,8 @@ source = "git+https://github.com/rust-vmm/vm-device?rev=989c315712b80a538331fe05
 
 [[package]]
 name = "vm-memory"
-version = "0.5.0"
-source = "git+https://github.com/pogobanane/vm-memory.git?rev=3846add06a58f3df2bdd0b55b4ad064c20d21f53#3846add06a58f3df2bdd0b55b4ad064c20d21f53"
+version = "0.8.0"
+source = "git+https://github.com/Mic92/vm-memory.git?rev=c46d67d333a83d494162704b66bc17465ae7df92#c46d67d333a83d494162704b66bc17465ae7df92"
 dependencies = [
  "libc",
  "log",
@@ -404,6 +410,7 @@ dependencies = [
  "bcc",
  "bitflags",
  "build-utils",
+ "cc",
  "clap",
  "container-pid",
  "elfloader",

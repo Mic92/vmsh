@@ -2,6 +2,7 @@ use std::borrow::Borrow;
 use std::cell::RefCell;
 use std::cmp::max;
 use std::collections::HashMap;
+use std::io::IoSlice;
 use std::mem::{size_of, size_of_val};
 use std::ops::Range;
 use std::rc::Rc;
@@ -14,7 +15,7 @@ use crate::result::Result;
 use bitflags::bitflags;
 use log::{error, info};
 use nix::sys::mman::ProtFlags;
-use nix::sys::uio::{process_vm_writev, IoVec, RemoteIoVec};
+use nix::sys::uio::{process_vm_writev, RemoteIoVec};
 use simple_error::{bail, require_with, try_with};
 use vm_memory::remote_mem::any_as_bytes;
 
@@ -360,7 +361,7 @@ fn commit_page_tables(hv: &Hypervisor, tables: &[PageTable]) -> Result<()> {
     for t in tables {
         let t = t.borrow();
         let bytes = unsafe { any_as_bytes(&t.entries) };
-        local_iovec.push(IoVec::from_slice(bytes));
+        local_iovec.push(IoSlice::new(bytes));
         remote_iovec.push(RemoteIoVec {
             base: t.phys_addr.host_addr(),
             len: page_size(),

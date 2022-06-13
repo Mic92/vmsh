@@ -1,8 +1,8 @@
 use log::warn;
 use nix::errno::Errno;
 use nix::sys::socket::*;
-use nix::sys::uio::IoVec;
 use simple_error::{bail, try_with};
+use std::io::{IoSlice, IoSliceMut};
 use std::mem::{size_of, MaybeUninit};
 use std::os::unix::prelude::*;
 use std::sync::{Arc, RwLock};
@@ -43,9 +43,8 @@ impl Socket {
             UnixAddr::new_abstract(anon_name.as_bytes()),
             "cannot create abstract addr"
         );
-        let ulocal = SockAddr::Unix(local);
         try_with!(
-            bind(sock, &ulocal),
+            bind(sock, &local),
             "cannot bind to {:?}",
             local.as_abstract()
         );
@@ -58,17 +57,13 @@ impl Socket {
             UnixAddr::new_abstract(anon_name.as_bytes()),
             "cannot create abstract addr"
         );
-        let uremote = SockAddr::Unix(remote);
-        try_with!(
-            connect(self.fd, &uremote),
-            "cannot connect to client foobar"
-        );
+        try_with!(connect(self.fd, &remote), "cannot connect to client foobar");
 
         Ok(())
     }
 
     pub fn send(&self, messages: &[&[u8]], files: &[RawFd]) -> Result<()> {
-        let iov: Vec<IoVec<&[u8]>> = messages.iter().map(|m| IoVec::from_slice(m)).collect();
+        let iov: Vec<_> = messages.iter().map(|m| IoSlice::new(m)).collect();
         let fds: Vec<RawFd> = files.iter().map(|f| f.as_raw_fd()).collect();
         let cmsg = if files.is_empty() {
             vec![]
@@ -77,7 +72,7 @@ impl Socket {
         };
 
         try_with!(
-            sendmsg(self.fd, &iov, &cmsg, MsgFlags::empty(), None),
+            sendmsg::<UnixAddr>(self.fd, &iov, &cmsg, MsgFlags::empty(), None),
             "sendmsg failed"
         );
         Ok(())
@@ -92,9 +87,14 @@ impl Socket {
         let received;
         let mut files: Vec<RawFd> = Vec::with_capacity(1);
         {
-            let iov = [IoVec::from_mut_slice(&mut msg_buf)];
+            let mut iov = [IoSliceMut::new(&mut msg_buf)];
             loop {
-                match recvmsg(self.fd, &iov, Some(&mut *cmsgspace), MsgFlags::empty()) {
+                match recvmsg::<UnixAddr>(
+                    self.fd,
+                    &mut iov,
+                    Some(&mut *cmsgspace),
+                    MsgFlags::empty(),
+                ) {
                     Err(Errno::EAGAIN) | Err(Errno::EINTR) => continue,
                     Err(e) => return try_with!(Err(e), "recvmsg failed"),
                     Ok(msg) => {
