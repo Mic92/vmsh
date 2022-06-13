@@ -81,17 +81,6 @@ pub struct resource {
     pub child: *mut resource,
 }
 
-#[repr(C)]
-pub struct resource_4_4 {
-    pub start: resource_size_t,
-    pub end: resource_size_t,
-    pub name: *const c_char,
-    pub flags: c_ulong,
-    pub parent: *mut resource,
-    pub sibling: *mut resource,
-    pub child: *mut resource,
-}
-
 // from the linux kernel, see `struct platform_device_info`
 #[repr(C)]
 pub struct platform_device_info {
