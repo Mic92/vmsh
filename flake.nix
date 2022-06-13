@@ -91,7 +91,6 @@
         not-os-image_4_19 = (not-os-image'.override { linuxPackages = pkgs.linuxPackages_4_19; }).json;
         not-os-image_5_10 = (not-os-image'.override { linuxPackages = pkgs.linuxPackages_5_10; }).json;
         not-os-image_5_15 = (not-os-image'.override { linuxPackages = pkgs.linuxPackages_5_15; }).json;
-        not-os-image_5_16 = (not-os-image'.override { linuxPackages = pkgs.linuxPackages_5_16; }).json;
 
         measurement-image = (pkgs.callPackage ./nix/not-os-image.nix {
           inherit not-os;
@@ -125,8 +124,7 @@
           inherit
             not-os-image_4_19
             not-os-image_5_10
-            not-os-image_5_15
-            not-os-image_5_16;
+            not-os-image_5_15;
           inherit measurement-image;
 
           # see justfile/nixos-image
