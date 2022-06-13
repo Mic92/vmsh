@@ -6,4 +6,4 @@ edition = "2018"
 license = "MIT"
 
 [dependencies]
-chlorine = { version = "1.0.*", features = ["int_extras"] }
+chlorine = { version = "1.0.10", features = ["int_extras"] }
