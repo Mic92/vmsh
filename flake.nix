@@ -2,9 +2,12 @@
   description = "Spawn debug shells in virtual machines";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+    # TODO xfsdump is broken in master
+    nixpkgs.url = "github:NixOS/nixpkgs/152e9283c5b91174be7b33eef68a1496ccbc1507";
 
-    not-os.url = "github:cleverca22/not-os";
+    # https://github.com/cleverca22/not-os/pull/21
+    not-os.url = "github:Mic92/not-os/compat-fix";
+    #not-os.url = "github:cleverca22/not-os";
     not-os.flake = false;
     flake-utils.url = "github:numtide/flake-utils";
     microvm.url = "github:Mic92/microvm.nix";
@@ -87,11 +90,9 @@
             ./nix/modules/not-os-config.nix
           ];
         });
-        not-os-image_4_4 = (not-os-image'.override { linuxPackages = pkgs.linuxPackages_4_4; }).json;
         not-os-image_4_19 = (not-os-image'.override { linuxPackages = pkgs.linuxPackages_4_19; }).json;
         not-os-image_5_10 = (not-os-image'.override { linuxPackages = pkgs.linuxPackages_5_10; }).json;
         not-os-image_5_15 = (not-os-image'.override { linuxPackages = pkgs.linuxPackages_5_15; }).json;
-        not-os-image_5_16 = (not-os-image'.override { linuxPackages = pkgs.linuxPackages_5_16; }).json;
 
         measurement-image = (pkgs.callPackage ./nix/not-os-image.nix {
           inherit not-os;
@@ -123,11 +124,9 @@
           # see justfile/not-os
           not-os-image = not-os-image'.json;
           inherit
-            not-os-image_4_4
             not-os-image_4_19
             not-os-image_5_10
-            not-os-image_5_15
-            not-os-image_5_16;
+            not-os-image_5_15;
           inherit measurement-image;
 
           # see justfile/nixos-image

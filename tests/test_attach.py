@@ -67,10 +67,6 @@ def test_attach_multiple_cpus(helpers: conftest.Helpers) -> None:
     test_attach(helpers=helpers, vcpus=8)
 
 
-def test_attach_4_4(helpers: conftest.Helpers) -> None:
-    test_attach(helpers=helpers, image=".#not-os-image_4_4")
-
-
 def test_attach_4_19(helpers: conftest.Helpers) -> None:
     test_attach(helpers=helpers, image=".#not-os-image_4_19")
 
@@ -81,7 +77,3 @@ def test_attach_5_10(helpers: conftest.Helpers) -> None:
 
 def test_attach_5_15(helpers: conftest.Helpers) -> None:
     test_attach(helpers=helpers, image=".#not-os-image_5_15")
-
-
-def test_attach_5_16(helpers: conftest.Helpers) -> None:
-    test_attach(helpers=helpers, image=".#not-os-image_5_16")

@@ -3,12 +3,13 @@
 // SPDX-License-Identifier: Apache-2.0 OR BSD-3-Clause
 
 use std::fs::File;
+use std::io::{IoSlice, IoSliceMut};
 use std::{io, ptr, result, slice};
 
 use libc::c_void;
 use log::warn;
 use nix::sys::mman::{mmap, msync, munmap, MapFlags, MsFlags, ProtFlags};
-use nix::sys::uio::{process_vm_readv, process_vm_writev, IoVec, RemoteIoVec};
+use nix::sys::uio::{process_vm_readv, process_vm_writev, RemoteIoVec};
 use nix::unistd::Pid;
 use std::os::unix::io::AsRawFd;
 use virtio_blk::defs::{SECTOR_SHIFT, SECTOR_SIZE};
@@ -155,38 +156,37 @@ where
                     return Err(stdio_executor::Error::InvalidDataLength);
                 }
                 self.prepare_iovs(request)?;
-                let local_iovs = vec![IoVec::from_slice(unsafe {
+                let local_iovs = vec![IoSlice::new(unsafe {
                     slice::from_raw_parts(
                         self.mmap.ptr.add(offset as usize) as *mut u8,
                         request.total_data_len() as usize,
                     )
                 })];
 
-                bytes_to_mem =
-                    process_vm_writev(self.pid, local_iovs.as_slice(), self.remote_iovs.as_slice())
-                        .map_err(|e| {
-                            stdio_executor::Error::Read(
-                                GuestMemoryError::IOError(io::Error::from_raw_os_error(e as i32)),
-                                0,
-                            )
-                        })? as u32;
+                bytes_to_mem = process_vm_writev(self.pid, &local_iovs, self.remote_iovs.as_slice())
+                    .map_err(|e| {
+                        stdio_executor::Error::Read(
+                            GuestMemoryError::IOError(io::Error::from_raw_os_error(e as i32)),
+                            0,
+                        )
+                    })? as u32;
             }
             RequestType::Out => {
                 self.check_access(total_len / SECTOR_SIZE, request.sector())?;
                 self.prepare_iovs(request)?;
-                let local_iovs = vec![IoVec::from_mut_slice(unsafe {
+                let mut local_iovs = vec![IoSliceMut::new(unsafe {
                     slice::from_raw_parts_mut(
                         self.mmap.ptr.add(offset as usize) as *mut u8,
                         request.total_data_len() as usize,
                     )
                 })];
                 bytes_to_mem =
-                    process_vm_readv(self.pid, local_iovs.as_slice(), self.remote_iovs.as_slice())
+                    process_vm_readv(self.pid, &mut local_iovs, self.remote_iovs.as_slice())
                         .map_err(|e| {
-                        stdio_executor::Error::Write(GuestMemoryError::IOError(
-                            io::Error::from_raw_os_error(e as i32),
-                        ))
-                    })? as u32;
+                            stdio_executor::Error::Write(GuestMemoryError::IOError(
+                                io::Error::from_raw_os_error(e as i32),
+                            ))
+                        })? as u32;
             }
             RequestType::Flush => {
                 self.check_access(total_len / SECTOR_SIZE, request.sector())?;

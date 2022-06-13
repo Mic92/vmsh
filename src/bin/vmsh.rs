@@ -2,7 +2,7 @@ use log::*;
 use std::path::PathBuf;
 use std::sync::atomic::Ordering;
 
-use clap::{crate_authors, crate_version, App, AppSettings, Arg, ArgMatches};
+use clap::{crate_authors, crate_version, Arg, ArgMatches, Command};
 use nix::unistd::Pid;
 
 use vmsh::attach::{self, AttachOptions};
@@ -37,7 +37,7 @@ fn vmid_type_arg() -> Arg<'static> {
         .long("type")
         .takes_value(true)
         .forbid_empty_values(false)
-        .require_delimiter(true)
+        .require_value_delimiter(true)
         .value_delimiter(',')
         .value_name("TYPE")
         .help("VM id lookups to try (seperated by ','). [default: all]")
@@ -139,14 +139,14 @@ fn setup_logging(matches: &clap::ArgMatches) {
 }
 
 fn main() {
-    let inspect_command = App::new("inspect")
+    let inspect_command = Command::new("inspect")
         .about("Inspect a virtual machine.")
         .version(crate_version!())
         .author(crate_authors!("\n"))
         .arg(vmid_arg(1))
         .arg(vmid_type_arg());
 
-    let attach_command = App::new("attach")
+    let attach_command = Command::new("attach")
         .about("Attach (a block device) to a virtual machine.")
         .version(crate_version!())
         .author(crate_authors!("\n"))
@@ -183,7 +183,7 @@ fn main() {
                 .help("Pseudoterminal seat to use for the command run in the VM. Use this when interactivity is required. "),
         );
 
-    let coredump_command = App::new("coredump")
+    let coredump_command = Command::new("coredump")
         .about("Get a coredump of a virtual machine.")
         .version(crate_version!())
         .author(crate_authors!("\n"))
@@ -195,12 +195,11 @@ fn main() {
                 .index(2),
         );
 
-    let main_app = App::new("vmsh")
+    let main_app = Command::new("vmsh")
         .about("Enter and execute in a virtual machine.")
         .version(crate_version!())
         .author(crate_authors!("\n"))
-        .setting(AppSettings::SubcommandRequiredElseHelp)
-        .setting(AppSettings::SubcommandRequiredElseHelp)
+        .subcommand_required(true)
         .arg(Arg::new("verbose")
              .short('v')
              .conflicts_with("loglevel")

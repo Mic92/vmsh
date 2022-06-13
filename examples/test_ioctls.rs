@@ -1,4 +1,4 @@
-use clap::{App, Arg};
+use clap::{Arg, Command};
 use kvm_bindings as kvmb;
 use nix::unistd::Pid;
 use simple_error::{bail, require_with, try_with};
@@ -313,14 +313,14 @@ fn vcpu_maps(pid: Pid) -> Result<()> {
     Ok(())
 }
 
-fn subtest(name: &str) -> App {
-    App::new(name).arg(Arg::new("pid").required(true).index(1))
+fn subtest(name: &str) -> Command {
+    Command::new(name).arg(Arg::new("pid").required(true).index(1))
 }
 
 fn main() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
-    let app = App::new("test_ioctls")
+    let app = Command::new("test_ioctls")
         .about("Something between integration and unit test to be used by pytest.")
         .subcommand(subtest("alloc_mem"))
         .subcommand(subtest("inject"))

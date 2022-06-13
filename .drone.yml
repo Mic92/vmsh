@@ -28,7 +28,7 @@ type: ssh
 name: Test
 
 server:
-  host: martha.r
+  host: wilfred.r
   user: ci
   ssh_key:
     from_secret: SSH_KEY
@@ -53,6 +53,6 @@ trigger:
   - push
 ---
 kind: signature
-hmac: 5259860d3b6f10a92178135ab13fb2bece0ef93dea432d1385af14855e3de264
+hmac: 4e8f88db1e870b4ae220626d48dd15d3d4bed06bc4bb320d192e9a235efdd48f
 
 ...

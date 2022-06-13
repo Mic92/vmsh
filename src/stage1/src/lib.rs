@@ -9,7 +9,6 @@ use core::include_bytes;
 use core::panic::PanicInfo;
 use core::ptr;
 use core::str;
-use ffi::resource;
 use ffi::ssize_t;
 use stage1_interface::{DeviceState, Stage1Args, MAX_ARGV, MAX_DEVICES};
 
@@ -85,27 +84,6 @@ static mut RESOURCES: [ffi::resource; 2] = [
     },
 ];
 
-static mut RESOURCES_4_4: [ffi::resource_4_4; 2] = [
-    ffi::resource_4_4 {
-        start: 0,
-        end: 0,
-        name: ptr::null(),
-        flags: ffi::IORESOURCE_MEM,
-        parent: ptr::null_mut(),
-        sibling: ptr::null_mut(),
-        child: ptr::null_mut(),
-    },
-    ffi::resource_4_4 {
-        start: 0,
-        end: 0,
-        name: ptr::null(),
-        flags: ffi::IORESOURCE_IRQ,
-        parent: ptr::null_mut(),
-        sibling: ptr::null_mut(),
-        child: ptr::null_mut(),
-    },
-];
-
 static MMIO_DRIVER_NAME: &[u8; 12] = b"virtio-mmio\0";
 
 // we put this in stack to avoid stack overflows
@@ -155,13 +133,6 @@ unsafe fn register_virtio_mmio(
 
     let dev = if version.major < 5 || version.major == 5 && version.minor == 0 {
         INFO_5_0.id = id;
-        if version.major < 4 || version.major == 4 && version.minor < 5 {
-            RESOURCES_4_4[0].start = RESOURCES[0].start;
-            RESOURCES_4_4[0].end = RESOURCES[0].end;
-            RESOURCES_4_4[1].start = RESOURCES[1].start;
-            RESOURCES_4_4[1].end = RESOURCES[1].start;
-            INFO_5_0.res = RESOURCES_4_4.as_ptr() as *const resource;
-        }
         let info = &*core::mem::transmute::<_, *const ffi::platform_device_info>(&INFO_5_0);
         ffi::platform_device_register_full(info)
     } else {

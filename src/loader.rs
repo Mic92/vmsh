@@ -1,13 +1,16 @@
 use std::collections::HashMap;
+use std::io::IoSlice;
 use std::mem::{size_of, size_of_val};
 use std::ptr;
 
+use elfloader::arch::x86_64::RelocationTypes;
 use elfloader::{
-    ElfBinary, ElfLoader, ElfLoaderErr, Entry, Flags, LoadableHeaders, Rela, TypeRela64, VAddr, P64,
+    ElfBinary, ElfLoader, ElfLoaderErr, Entry, Flags, LoadableHeaders, RelocationEntry,
+    RelocationType, VAddr,
 };
 use log::{debug, error, warn};
 use nix::sys::mman::ProtFlags;
-use nix::sys::uio::{process_vm_writev, IoVec, RemoteIoVec};
+use nix::sys::uio::{process_vm_writev, RemoteIoVec};
 use simple_error::{bail, require_with, try_with};
 use stage1_interface::{DeviceState, Stage1Args};
 use xmas_elf::sections::{SectionData, SHN_UNDEF};
@@ -131,7 +134,7 @@ impl<'a> Loader<'a> {
         let mut remote_iovec = vec![];
         let mut len = 0;
         for l in self.loadables.iter() {
-            local_iovec.push(IoVec::from_slice(&l.content));
+            local_iovec.push(IoSlice::new(&l.content));
             len += l.content.len();
             remote_iovec.push(RemoteIoVec {
                 base: l.mapping.phys_start.host_addr() + l.virt_offset,
@@ -426,34 +429,32 @@ impl<'a> ElfLoader for Loader<'a> {
         Ok(())
     }
 
-    fn relocate(&mut self, entry: &Rela<P64>) -> ElfResult {
-        let typ = TypeRela64::from(entry.get_type());
-        let addr = self.vbase() + entry.get_offset() as usize;
+    fn relocate(&mut self, entry: RelocationEntry) -> ElfResult {
+        let addr = self.vbase() + entry.offset as usize;
         let syms = &self.kernel.symbols;
         let lib_syms = &self.lib_syms;
         let vbase = self.vbase();
         let loadable = require_elf!(find_loadable(&mut self.loadables, addr), {
             error!(
                 "no loadable found for relocation address: {:#x} ({:#x})",
-                addr,
-                entry.get_offset() as usize
+                addr, entry.offset as usize
             );
             "no loadable found for relocation address"
         });
         let start = addr - (loadable.mapping.virt_start + loadable.virt_offset);
 
-        match typ {
-            TypeRela64::R_RELATIVE => {
+        match entry.rtype {
+            RelocationType::x86_64(RelocationTypes::R_AMD64_RELATIVE) => {
                 // This is a relative relocation, add the offset (where we put our
                 // binary in the vspace) to the addend and we're done.
-                let dest_addr = vbase + entry.get_addend() as usize;
+                let dest_addr = vbase + entry.addend.unwrap_or(0) as usize;
                 debug!("R_RELATIVE *{:#x} = {:#x}", addr, dest_addr);
                 let range = start..(start + size_of_val(&dest_addr));
                 loadable.content[range].clone_from_slice(&dest_addr.to_ne_bytes());
                 Ok(())
             }
-            TypeRela64::R_GLOB_DAT => {
-                let sym = &self.dyn_syms[entry.get_symbol_table_index() as usize];
+            RelocationType::x86_64(RelocationTypes::R_AMD64_GLOB_DAT) => {
+                let sym = &self.dyn_syms[entry.index as usize];
                 if sym.get_binding()? == Binding::Weak {
                     // we have some weak symbols that are included by default
                     // but not used for anything in the kernel.
@@ -468,7 +469,7 @@ impl<'a> ElfLoader for Loader<'a> {
                     error!("binary requires unknown symbol: {}", sym_name);
                     "cannot find symbol"
                 });
-                let dest_addr = (symbol + entry.get_addend() as usize).to_ne_bytes();
+                let dest_addr = (symbol + entry.addend.unwrap_or(0) as usize).to_ne_bytes();
                 let range = start..(start + size_of_val(&symbol));
                 loadable.content[range].clone_from_slice(&dest_addr);
 
@@ -479,5 +480,23 @@ impl<'a> ElfLoader for Loader<'a> {
                 Err(ElfLoaderErr::UnsupportedRelocationEntry)
             }
         }
+    }
+
+    fn tls(
+        &mut self,
+        _tdata_start: VAddr,
+        _tdata_length: u64,
+        _total_size: u64,
+        _align: u64,
+    ) -> std::result::Result<(), ElfLoaderErr> {
+        Ok(())
+    }
+
+    fn make_readonly(
+        &mut self,
+        _base: VAddr,
+        _size: usize,
+    ) -> std::result::Result<(), ElfLoaderErr> {
+        Ok(())
     }
 }
