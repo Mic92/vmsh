@@ -24,11 +24,11 @@
     },
     "flake-utils": {
       "locked": {
-        "lastModified": 1642700792,
-        "narHash": "sha256-XqHrk7hFb+zBvRg6Ghl+AZDq03ov6OshJLiSWOoX5es=",
+        "lastModified": 1653893745,
+        "narHash": "sha256-0jntwV3Z8//YwuOjzhV2sgJJPt+HY6KhU7VZUL0fKZQ=",
         "owner": "numtide",
         "repo": "flake-utils",
-        "rev": "846b2ae0fc4cc943637d3d1def4454213e203cba",
+        "rev": "1ed9fb1935d260de5fe1c2f7ee0ebaae17ed2fa1",
         "type": "github"
       },
       "original": {
@@ -47,11 +47,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1643688782,
-        "narHash": "sha256-7VFuf0qWg8w3zOatvhavnFoO6qnOBV6SNj7oCxbkn2I=",
+        "lastModified": 1644355731,
+        "narHash": "sha256-3n7QstAqqk4WbsTX5e65wtm6R4r4X33Vz2Z2HI/ZNxs=",
         "owner": "Mic92",
         "repo": "microvm.nix",
-        "rev": "375f443b6a389752906f0fa658a5f924f8673881",
+        "rev": "11446852b6f84c6467984583540a9c6b0fddfa48",
         "type": "github"
       },
       "original": {
@@ -62,28 +62,28 @@
     },
     "nixpkgs": {
       "locked": {
-        "lastModified": 1643322911,
-        "narHash": "sha256-WLe4lXAYXH/v80iO02npX1wdXq4nIVEHJTONLXbQrL0=",
+        "lastModified": 1654170197,
+        "narHash": "sha256-YNPz3knWgK6gHMcqfRMGB1SCiwns2qgs3rLYRSW43t0=",
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "d9e21f284317f85b3476c0043f4efea87a226c3a",
+        "rev": "152e9283c5b91174be7b33eef68a1496ccbc1507",
         "type": "github"
       },
       "original": {
         "owner": "NixOS",
-        "ref": "nixpkgs-unstable",
         "repo": "nixpkgs",
+        "rev": "152e9283c5b91174be7b33eef68a1496ccbc1507",
         "type": "github"
       }
     },
     "not-os": {
       "flake": false,
       "locked": {
-        "lastModified": 1630679604,
-        "narHash": "sha256-LuBfCWZpHR4EI5cS9/xo9mRNl4RR4qPGTbTDeRjovTE=",
+        "lastModified": 1650096603,
+        "narHash": "sha256-t+qSYMmCkmecxUVHD4Sdqwe/4WU68W7UanhjWFGf8fA=",
         "owner": "cleverca22",
         "repo": "not-os",
-        "rev": "1b1feb12a44daf57885d3167acd647dea7a1b29f",
+        "rev": "44fc7de5f7f1f6e455b6c47fd845af922981bcf9",
         "type": "github"
       },
       "original": {

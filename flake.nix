@@ -2,7 +2,8 @@
   description = "Spawn debug shells in virtual machines";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+    # TODO xfsdump is broken in master
+    nixpkgs.url = "github:NixOS/nixpkgs/152e9283c5b91174be7b33eef68a1496ccbc1507";
 
     not-os.url = "github:cleverca22/not-os";
     not-os.flake = false;
