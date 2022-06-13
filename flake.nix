@@ -5,7 +5,9 @@
     # TODO xfsdump is broken in master
     nixpkgs.url = "github:NixOS/nixpkgs/152e9283c5b91174be7b33eef68a1496ccbc1507";
 
-    not-os.url = "github:cleverca22/not-os";
+    # https://github.com/cleverca22/not-os/pull/21
+    not-os.url = "github:Mic92/not-os/compat-fix";
+    #not-os.url = "github:cleverca22/not-os";
     not-os.flake = false;
     flake-utils.url = "github:numtide/flake-utils";
     microvm.url = "github:Mic92/microvm.nix";
