@@ -2,12 +2,9 @@
 { stdenv, acl, attr, autoconf, automake, bash, bc, coreutils, e2fsprogs
 , fetchgit, fio, gawk, keyutils, killall, lib, libaio, libcap, libtool
 , libuuid, libxfs, lvm2, openssl, perl, procps, quota
-, time, util-linux, which, writeScript, xfsprogs, runtimeShell, mktemp
+, time, util-linux, which, writeScript, xfsprogs, xfsdump, runtimeShell, mktemp
 , hostname, gnused, diffutils, findutils, glibc, callPackage, file }:
 
-let
-  xfsdump = callPackage ./xfsdump.nix { };
-in
 stdenv.mkDerivation {
   name = "xfstests-2021-08-22";
 
