@@ -19,11 +19,11 @@ in
 stdenv.mkDerivation rec {
   # based on https://github.com/archlinux/svntogit-community/blob/49b20d922a79113724e507c45fcb18fce80eaa2d/trunk/PKGBUILD#L15
   pname = "xfsdump";
-  version = "3.1.9";
+  version = "3.1.12";
   MAKE = "${gnumake}/bin/make";
   src = fetchurl {
     url = "https://kernel.org/pub/linux/utils/fs/xfs/xfsdump/xfsdump-${version}.tar.xz";
-    sha256 = "sha256-Va7t5iMt3ObJ554q+I1vgIU03xVS6yv69/uFuSrdbdE=";
+    sha256 = "sha256-85xMGzBrLdfsl5wOlNYP5pCD0uz5rwUcrF7zvtdyx0o=";
   };
   postPatch = ''
     patchShebangs ./
