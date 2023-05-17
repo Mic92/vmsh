@@ -170,7 +170,6 @@
             pkgs.cargo-watch
             pkgs.cargo-deny
             pkgs.pre-commit
-            pkgs.rls
             pkgs.git # needed for pre-commit install
             pkgs.rust-analyzer
             pkgs.gdb
