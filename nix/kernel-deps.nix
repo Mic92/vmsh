@@ -14,6 +14,7 @@
 , perl
 , hostname
 , cpio
+, pkg-config
 , runScript ? ''bash -c''
 }:
 buildFHSUserEnv {
@@ -29,6 +30,7 @@ buildFHSUserEnv {
     perl
     hostname
     cpio
+    pkg-config
   ] ++ map lib.getDev [
     elfutils
     ncurses
