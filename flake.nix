@@ -43,6 +43,7 @@
         };
 
         kernel-deps = pkgs.callPackage ./nix/kernel-deps.nix {};
+        kernel-deps-no-fhs = pkgs.callPackage ./nix/kernel-deps-no-fhs.nix {};
         kernel-deps-shell = (pkgs.callPackage ./nix/kernel-deps.nix {
           runScript = "bash";
         });
@@ -153,6 +154,7 @@
           };
           # see justfile/build-linux-shell
           inherit kernel-deps-shell;
+          inherit kernel-deps-no-fhs;
         };
         # not supported by nix flakes yet, but useful
         packageSets = rec {
