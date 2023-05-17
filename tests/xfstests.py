@@ -1,19 +1,12 @@
+import os
+import time
+from pathlib import Path
+from typing import Any, Dict, List
+
 import confmeasure
 import measure_helpers as util
-from measure_helpers import (
-    GUEST_JAVDEV,
-    GUEST_QEMUBLK,
-    HOST_SSD,
-    HOST_DIR,
-    run,
-)
+from measure_helpers import GUEST_JAVDEV, GUEST_QEMUBLK, HOST_DIR, HOST_SSD, run
 from root import MEASURE_RESULTS
-
-from typing import Dict, List, Any
-import os
-from pathlib import Path
-import time
-
 
 # when true only a single test is run instead of the full suite
 # (quick and with_scratch) takes ~2h
@@ -74,7 +67,6 @@ def unmount(dev: str) -> None:
 
 
 def format_ssd() -> None:
-
     unmount(HOST_SSD)
     unmount(HOST_SSDp1)
     unmount(HOST_SSDp2)

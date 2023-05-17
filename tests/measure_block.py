@@ -25,26 +25,25 @@ for each:
 - phoronix
 """
 
-from root import MEASURE_RESULTS
+import json
+import re
+from dataclasses import dataclass
+from enum import Enum
+from typing import Any, Callable, DefaultDict, List, Optional
+
 import confmeasure
 import measure_helpers as util
 from measure_helpers import (
     GUEST_JAVDEV,
-    GUEST_QEMUBLK,
-    GUEST_QEMU9P,
     GUEST_JAVDEV_MOUNT,
+    GUEST_QEMU9P,
+    GUEST_QEMUBLK,
     GUEST_QEMUBLK_MOUNT,
     HOST_SSD,
     run,
 )
 from qemu import QemuVm
-from dataclasses import dataclass
-
-from typing import List, Any, Optional, Callable, DefaultDict
-import re
-import json
-from enum import Enum
-
+from root import MEASURE_RESULTS
 
 # overwrite the test duration and test file size to make the run shorter
 # TODO turn this to False for releases. Results look very different.

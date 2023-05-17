@@ -7,10 +7,10 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "tests"))
 
 import ctypes as ct
 import sys
-from typing import IO, Tuple, Optional, Iterator, Dict
 from dataclasses import dataclass
+from typing import IO, Dict, Iterator, Optional, Tuple
 
-from coredump import ElfCore, Memory, MappedMemory, KVMSRegs
+from coredump import ElfCore, KVMSRegs, MappedMemory, Memory
 from cpu_flags import (
     _PAGE_ACCESSED,
     _PAGE_NX,
@@ -324,6 +324,7 @@ def find_linux_kernel_memory(
 #   const char *name;
 #   const char *namespace;
 # };
+
 
 # From include/linux/export.h
 class kernel_symbol(ct.Structure):

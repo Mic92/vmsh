@@ -1,11 +1,12 @@
 # workaround to select Agg as backend consistenly
+import os
+from typing import Any, Dict, List, Union
+
 import matplotlib as mpl  # type: ignore
 import matplotlib.pyplot as plt  # type: ignore
-import seaborn as sns  # type: ignore
-from typing import Any, Dict, List, Union
-import pandas as pd
-import os
 import numpy as np
+import pandas as pd
+import seaborn as sns  # type: ignore
 
 mpl.use("Agg")
 mpl.rcParams["text.latex.preamble"] = r"\usepackage{amsmath}"

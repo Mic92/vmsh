@@ -1,11 +1,11 @@
-import subprocess
-import conftest
-
-from typing import Iterator, Tuple, Optional
-
 import os
+import subprocess
 import time
 from contextlib import contextmanager
+from typing import Iterator, Optional, Tuple
+
+import conftest
+
 from nix import nix_build, passwd_image
 
 

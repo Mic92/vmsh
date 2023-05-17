@@ -1,8 +1,9 @@
-from lxml import etree
 from collections import defaultdict
-from typing import Union
 from pathlib import Path
+from typing import Union
+
 import pandas as pd
+from lxml import etree
 
 
 def parse_xml(path: Union[str, Path]) -> pd.DataFrame:

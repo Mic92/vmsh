@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 
-from typing import List, Dict, Optional, Text, IO, Union
-import subprocess
 import os
+import subprocess
+from typing import IO, Dict, List, Optional, Text, Union
 
 ChildFd = Union[None, int, IO]
 

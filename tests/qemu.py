@@ -14,8 +14,8 @@ from shlex import quote
 from tempfile import TemporaryDirectory
 from typing import Any, Dict, Iterator, List, Text
 
-from root import TEST_ROOT, PROJECT_ROOT
-from procs import run, pprint_cmd, ChildFd
+from procs import ChildFd, pprint_cmd, run
+from root import PROJECT_ROOT, TEST_ROOT
 
 
 @dataclass

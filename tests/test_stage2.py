@@ -1,9 +1,9 @@
-import subprocess
-import conftest
 import os
 import socket
+import subprocess
 from tempfile import TemporaryDirectory
 
+import conftest
 
 DEBUG_STAGE2 = os.getenv("TEST_DEBUG_STAGE2", False)
 
