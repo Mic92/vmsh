@@ -162,7 +162,7 @@
         };
         checks = self.packages.${system};
         # used by `nix develop`
-        devShell = pkgs.mkShell {
+        devShells.default = pkgs.mkShell {
           inherit (vmsh) buildInputs;
           RUST_SRC_PATH = "${rustToolchain}/lib/rustlib/src/rust/library";
           nativeBuildInputs = ciDeps ++ [
