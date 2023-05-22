@@ -183,7 +183,7 @@ fn main() {
             Arg::new("mmio")
                 .long("mmio")
                 .takes_value(true)
-                .possible_values(&["wrap_syscall", "ioregionfd"])
+                .possible_values(["wrap_syscall", "ioregionfd"])
                 .default_value("wrap_syscall")
                 .long_help("Backend used to serve Virtio MMIO memory of devices."),
         )

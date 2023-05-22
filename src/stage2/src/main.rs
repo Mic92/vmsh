@@ -264,7 +264,7 @@ fn main() {
     let opts = Options {
         command,
         target_pid: Pid::from_raw(1),
-        args: (&args[2..]).to_vec(),
+        args: args[2..].to_vec(),
         home: None,
     };
     if let Err(e) = run_stage2(&opts) {

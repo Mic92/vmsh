@@ -11,14 +11,9 @@ struct UIoEFd {
 
 /// For 32bit wide accesses on the queue notify register of virtio devices. Requires one UIoEventFd
 /// per device.
+#[derive(Default)]
 pub struct UserspaceIoEventFd {
     ioeventfds: Vec<UIoEFd>,
-}
-
-impl Default for UserspaceIoEventFd {
-    fn default() -> Self {
-        Self { ioeventfds: vec![] }
-    }
 }
 
 impl UserspaceIoEventFd {

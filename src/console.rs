@@ -31,6 +31,7 @@ pub fn shell_escape(s: Cow<str>) -> Cow<str> {
     es.into()
 }
 
+#[allow(clippy::print_stdout)]
 pub fn console(attach: &AttachOptions) -> Result<()> {
     // Does this need to be portable?
     let res = try_with!(
@@ -47,6 +48,7 @@ pub fn console(attach: &AttachOptions) -> Result<()> {
     for arg in &attach.command[1..] {
         attach_cmd.push(shell_escape(arg.into()).to_string())
     }
+
     println!("{}", attach_cmd.join(" "));
     unistd::pause();
     Ok(())

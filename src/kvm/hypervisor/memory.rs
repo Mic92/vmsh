@@ -43,6 +43,7 @@ pub struct HvMem<T: Copy> {
     pub ptr: libc::uintptr_t,
     pub(super) pid: Pid,
     pub(super) tracee: Arc<RwLock<Tracee>>,
+    #[allow(dead_code)]
     pub(super) phantom: SendPhantom<T>,
 }
 

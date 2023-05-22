@@ -357,7 +357,7 @@ impl Process {
         // traps after syscall
         try_with!(self.wait_for_syscall(), "failed to trap after syscall");
         let result_regs = try_with!(self.main_thread().getregs(), "cannot syscall results");
-        assert!(self.saved_regs.ip() == result_regs.ip() - cpu::SYSCALL_SIZE as u64);
+        assert!(self.saved_regs.ip() == result_regs.ip() - cpu::SYSCALL_SIZE);
         Ok(result_regs.syscall_ret() as isize)
     }
 

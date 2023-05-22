@@ -365,6 +365,7 @@ impl VcpuState {
     }
 }
 
+#[allow(clippy::print_stdout)]
 pub fn generate_coredump(opts: &CoredumpOptions) -> Result<()> {
     println!("Write {}", opts.path.display());
     let mut core_file = try_with!(
