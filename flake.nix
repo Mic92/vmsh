@@ -11,7 +11,7 @@
     microvm.inputs.nixpkgs.follows = "nixpkgs";
     microvm.inputs.flake-utils.follows = "flake-utils";
     fenix = {
-      url = "github:nix-community/fenix/b3e5ce9985c380c8fe1b9d14879a14b749d1af51";
+      url = "github:nix-community/fenix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };
