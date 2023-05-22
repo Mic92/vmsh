@@ -277,7 +277,7 @@ mod tests {
     #[test]
     fn test_container_pid_compat() {
         for t in VM_TYPES {
-            assert!(AVAILABLE_CONTAINER_TYPES.contains(&t));
+            assert!(AVAILABLE_CONTAINER_TYPES.contains(t));
         }
     }
 }
