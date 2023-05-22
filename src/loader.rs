@@ -2,8 +2,10 @@ use std::collections::HashMap;
 use std::mem::{size_of, size_of_val};
 use std::ptr;
 
+use elfloader::arch::x86_64::RelocationTypes;
 use elfloader::{
-    ElfBinary, ElfLoader, ElfLoaderErr, Entry, Flags, LoadableHeaders, Rela, TypeRela64, VAddr, P64,
+    ElfBinary, ElfLoader, ElfLoaderErr, Entry, Flags, LoadableHeaders, RelocationEntry,
+    RelocationType, VAddr,
 };
 use log::{debug, error, warn};
 use nix::sys::mman::ProtFlags;
@@ -426,56 +428,78 @@ impl<'a> ElfLoader for Loader<'a> {
         Ok(())
     }
 
-    fn relocate(&mut self, entry: &Rela<P64>) -> ElfResult {
-        let typ = TypeRela64::from(entry.get_type());
-        let addr = self.vbase() + entry.get_offset() as usize;
+    fn relocate(&mut self, entry: RelocationEntry) -> ElfResult {
+        let addr = self.vbase() + entry.offset as usize;
         let syms = &self.kernel.symbols;
         let lib_syms = &self.lib_syms;
         let vbase = self.vbase();
         let loadable = require_elf!(find_loadable(&mut self.loadables, addr), {
             error!(
                 "no loadable found for relocation address: {:#x} ({:#x})",
-                addr,
-                entry.get_offset() as usize
+                addr, entry.offset as usize
             );
             "no loadable found for relocation address"
         });
         let start = addr - (loadable.mapping.virt_start + loadable.virt_offset);
 
-        match typ {
-            TypeRela64::R_RELATIVE => {
-                // This is a relative relocation, add the offset (where we put our
-                // binary in the vspace) to the addend and we're done.
-                let dest_addr = vbase + entry.get_addend() as usize;
-                debug!("R_RELATIVE *{:#x} = {:#x}", addr, dest_addr);
-                let range = start..(start + size_of_val(&dest_addr));
-                loadable.content[range].clone_from_slice(&dest_addr.to_ne_bytes());
-                Ok(())
-            }
-            TypeRela64::R_GLOB_DAT => {
-                let sym = &self.dyn_syms[entry.get_symbol_table_index() as usize];
-                if sym.get_binding()? == Binding::Weak {
-                    // we have some weak symbols that are included by default
-                    // but not used for anything in the kernel.
-                    // Seem to be safe to ignore
-                    return Ok(());
+        match entry.rtype {
+            RelocationType::x86_64(typ) => match typ {
+                RelocationTypes::R_AMD64_RELATIVE => {
+                    let addend = match entry.addend {
+                        Some(v) => v,
+                        None => {
+                            warn!("R_AMD64_RELATIVE relocation has no addend");
+                            return Err(ElfLoaderErr::UnsupportedRelocationEntry);
+                        }
+                    };
+                    // This is a relative relocation, add the offset (where we put our
+                    // binary in the vspace) to the addend and we're done.
+                    let dest_addr = vbase + addend as usize;
+                    debug!("R_AMD64_RELATIVE *{:#x} = {:#x}", addr, dest_addr);
+                    let range = start..(start + size_of_val(&dest_addr));
+                    loadable.content[range].copy_from_slice(&dest_addr.to_ne_bytes());
+                    Ok(())
                 }
+                RelocationTypes::R_AMD64_GLOB_DAT => {
+                    let addend = match entry.addend {
+                        Some(v) => v,
+                        None => {
+                            warn!("R_AMD64_GLOB_DAT relocation has no addend");
+                            return Err(ElfLoaderErr::UnsupportedRelocationEntry);
+                        }
+                    };
+                    let sym = &self.dyn_syms[entry.index as usize];
+                    if sym.get_binding()? == Binding::Weak {
+                        // we have some weak symbols that are included by default
+                        // but not used for anything in the kernel.
+                        // Seem to be safe to ignore
+                        return Ok(());
+                    }
 
-                let sym_name = sym.get_name(&self.elf.file)?;
-                debug!("R_GLOB_DAT *{:#x} = @ {}", addr, sym_name);
-                let res = resolve_symbol(sym_name, syms, lib_syms);
-                let symbol = require_elf!(res, {
-                    error!("binary requires unknown symbol: {}", sym_name);
-                    "cannot find symbol"
-                });
-                let dest_addr = (symbol + entry.get_addend() as usize).to_ne_bytes();
-                let range = start..(start + size_of_val(&symbol));
-                loadable.content[range].clone_from_slice(&dest_addr);
+                    let sym_name = sym.get_name(&self.elf.file)?;
+                    debug!("R_GLOB_DAT *{:#x} = @ {}", addr, sym_name);
+                    let res = resolve_symbol(sym_name, syms, lib_syms);
+                    let symbol = require_elf!(res, {
+                        error!("binary requires unknown symbol: {}", sym_name);
+                        "cannot find symbol"
+                    });
+                    let dest_addr = (symbol + addend as usize).to_ne_bytes();
+                    let range = start..(start + size_of_val(&symbol));
+                    loadable.content[range].clone_from_slice(&dest_addr);
 
-                Ok(())
+                    Ok(())
+                }
+                other => {
+                    warn!("loader: unhandled relocation: {:?}", other);
+                    Err(ElfLoaderErr::UnsupportedRelocationEntry)
+                }
+            },
+            RelocationType::x86(typ) => {
+                warn!("Relocations are not supported for x86: {:?}", typ);
+                Err(ElfLoaderErr::UnsupportedRelocationEntry)
             }
-            other => {
-                warn!("loader: unhandled relocation: {:?}", other);
+            RelocationType::AArch64(typ) => {
+                warn!("Relocations are not supported for aarch64: {:?}", typ);
                 Err(ElfLoaderErr::UnsupportedRelocationEntry)
             }
         }
