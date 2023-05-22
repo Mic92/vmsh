@@ -4,13 +4,14 @@ import contextlib
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import List, Type, Optional
+from typing import List, Optional, Type
 
 import pytest
 from qemu import QemuVm, VmImage, spawn_qemu
-from nix import notos_image, busybox_image
 from root import TEST_ROOT
-from vmsh import spawn_vmsh_command, VmshPopen
+
+from nix import busybox_image, notos_image
+from vmsh import VmshPopen, spawn_vmsh_command
 
 sys.path.append(str(TEST_ROOT.parent))
 

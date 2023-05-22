@@ -9,7 +9,7 @@ use vmsh::attach::{self, AttachOptions};
 use vmsh::coredump::CoredumpOptions;
 use vmsh::devices::USE_IOREGIONFD;
 use vmsh::inspect::InspectOptions;
-use vmsh::{coredump, inspect};
+use vmsh::{console, coredump, inspect};
 
 const VM_TYPES: &[&str] = &["process_id", "kubernetes", "vhive", "vhive_fc_vmid"];
 
@@ -85,18 +85,21 @@ fn inspect(args: &ArgMatches) {
     };
 }
 
-fn attach(args: &ArgMatches) {
+fn attach_options(args: &ArgMatches) -> AttachOptions {
     let mut command = args.values_of_t("command").unwrap_or_else(|_| vec![]);
     let stage2_path = args.value_of_t_or_exit::<String>("stage2-path");
     command.insert(0, stage2_path);
 
-    let opts = AttachOptions {
+    AttachOptions {
         pid: parse_vmid_arg(args),
         command,
         backing: PathBuf::from(args.value_of_t_or_exit::<String>("backing-file")),
         pts: args.value_of_t::<String>("pts").ok().map(PathBuf::from),
-    };
+    }
+}
 
+fn attach(args: &ArgMatches) {
+    let opts = attach_options(args);
     USE_IOREGIONFD.store(
         args.value_of_t_or_exit::<String>("mmio") == "ioregionfd",
         Ordering::Release,
@@ -117,6 +120,14 @@ fn coredump(args: &ArgMatches) {
     let opts = CoredumpOptions { pid, path };
 
     if let Err(err) = coredump::generate_coredump(&opts) {
+        error!("{}", err);
+        std::process::exit(1);
+    };
+}
+
+fn console(args: &ArgMatches) {
+    let opts = attach_options(args);
+    if let Err(err) = console::console(&opts) {
         error!("{}", err);
         std::process::exit(1);
     };
@@ -172,7 +183,7 @@ fn main() {
             Arg::new("mmio")
                 .long("mmio")
                 .takes_value(true)
-                .possible_values(&["wrap_syscall", "ioregionfd"])
+                .possible_values(["wrap_syscall", "ioregionfd"])
                 .default_value("wrap_syscall")
                 .long_help("Backend used to serve Virtio MMIO memory of devices."),
         )
@@ -195,6 +206,35 @@ fn main() {
                 .index(2),
         );
 
+    let console_command = App::new("console")
+        .about("Uses the current console connected as potential target for vmsh")
+        .version(crate_version!())
+        .author(crate_authors!("\n"))
+        .arg(vmid_arg(1))
+        .arg(vmid_type_arg())
+        .arg(
+            Arg::new("stage2-path")
+                .long("stage2-path")
+                .takes_value(true)
+                .default_value("/dev/.vmsh")
+                .help("Path where Stage2 is written to in the VM"),
+        )
+        .arg(command_args(2))
+        .arg(
+            Arg::new("backing-file")
+                .short('f')
+                .long("backing-file")
+                .takes_value(true)
+                .default_value("/dev/null")
+                .help("File which shall be served as a block device."),
+        )
+        .arg(
+            Arg::new("pts")
+                .long("pts")
+                .takes_value(true)
+                .help("Pseudoterminal seat to use for the command run in the VM. Use this when interactivity is required. "),
+        );
+
     let main_app = App::new("vmsh")
         .about("Enter and execute in a virtual machine.")
         .version(crate_version!())
@@ -212,7 +252,8 @@ fn main() {
         .subcommands([
             inspect_command,
             attach_command,
-            coredump_command
+            coredump_command,
+            console_command
         ]);
 
     let matches = main_app.get_matches();
@@ -221,6 +262,7 @@ fn main() {
         Some(("inspect", sub_matches)) => inspect(sub_matches),
         Some(("attach", sub_matches)) => attach(sub_matches),
         Some(("coredump", sub_matches)) => coredump(sub_matches),
+        Some(("console", sub_matches)) => console(sub_matches),
         Some((_, _)) => unreachable!(),
         None => unreachable!(),
     }
@@ -235,7 +277,7 @@ mod tests {
     #[test]
     fn test_container_pid_compat() {
         for t in VM_TYPES {
-            assert!(AVAILABLE_CONTAINER_TYPES.contains(&t));
+            assert!(AVAILABLE_CONTAINER_TYPES.contains(t));
         }
     }
 }

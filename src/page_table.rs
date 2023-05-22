@@ -208,7 +208,7 @@ pub fn table_align(pages: usize) -> usize {
 
 /// Upper bound of page tables memory we need to map physical memory of given size
 pub fn estimate_page_table_size(size: usize) -> usize {
-    let pages = page_align(size as usize) / page_size();
+    let pages = page_align(size) / page_size();
     let mut tables = pages;
     let mut total_tables = 0;
     for _ in 0..LEVEL_COUNT {
@@ -485,8 +485,8 @@ pub fn map_memory(
     );
 
     for (i, m) in mappings.iter().enumerate() {
-        if !(is_page_aligned(m.len as usize)
-            && is_page_aligned(m.virt_start as usize)
+        if !(is_page_aligned(m.len)
+            && is_page_aligned(m.virt_start)
             && m.phys_start.is_page_aligned())
         {
             bail!("{:?} is not page aligned", m)

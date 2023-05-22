@@ -12,6 +12,7 @@
 //)]
 
 pub mod attach;
+pub mod console;
 pub mod coredump;
 pub mod cpu;
 pub mod debug;

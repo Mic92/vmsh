@@ -224,8 +224,7 @@ impl GuestMem {
             }
 
             let last = require_with!(sections.last_mut(), "no sections found");
-            if largest_gap.len() < entry.virt_addr as usize - (last.virt_start as usize + last.len)
-            {
+            if largest_gap.len() < entry.virt_addr as usize - (last.virt_start + last.len) {
                 largest_gap = range.start..(entry.virt_addr as usize);
             }
             if last.prot == prot_flags(entry.entry.flags()) {

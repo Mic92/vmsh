@@ -1,20 +1,19 @@
-import confmeasure
-from confmeasure import NOW
-from root import MEASURE_RESULTS
-from procs import run
-from qemu import QemuVm
-
-import os
 import json
-from typing import List, Any, Iterator, Dict, DefaultDict, Optional
+import os
+import subprocess
+import time
 from collections import defaultdict
 from contextlib import contextmanager
-import subprocess
-import pandas as pd
 from pathlib import Path
-import time
-import psutil
+from typing import Any, DefaultDict, Dict, Iterator, List, Optional
 
+import confmeasure
+import pandas as pd
+import psutil
+from confmeasure import NOW
+from procs import run
+from qemu import QemuVm
+from root import MEASURE_RESULTS
 
 HOST_SSD = os.environ.get("HOST_SSD", "/dev/nvme0n1")
 HOST_DIR = "/mnt/nvme"

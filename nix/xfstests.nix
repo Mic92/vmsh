@@ -1,6 +1,6 @@
 # taken and adapted from the nixpkgs repo
 { stdenv, acl, attr, autoconf, automake, bash, bc, coreutils, e2fsprogs
-, fetchgit, fio, gawk, keyutils, killall, lib, libaio, libcap, libtool
+, fetchFromGitHub, fio, gawk, keyutils, killall, lib, libaio, libcap, libtool
 , libuuid, libxfs, lvm2, openssl, perl, procps, quota
 , time, util-linux, which, writeScript, xfsprogs, runtimeShell, mktemp
 , hostname, gnused, diffutils, findutils, glibc, callPackage, file }:
@@ -8,13 +8,15 @@
 let
   xfsdump = callPackage ./xfsdump.nix { };
 in
-stdenv.mkDerivation {
-  name = "xfstests-2021-08-22";
+stdenv.mkDerivation rec {
+  pname = "xfstests";
+  version = "2023.05.14";
 
-  src = fetchgit {
-    url = "git://git.kernel.org/pub/scm/fs/xfs/xfstests-dev.git";
-    rev = "5f8179ce8b001327e0811744dbfdb90a8e934f9c";
-    sha256 = "sha256-VV1h3BXaTVeSHfsxGRYzUCo2RcRhOp12xK9od/zaFBo=";
+  src = fetchFromGitHub {
+    owner = "kdave";
+    repo = "xfstests";
+    rev = "v${version}";
+    sha256 = "sha256-yyjY9Q3eUH+q+o15zFUjOcNz1HpXPCwdcxWXoycOx98=";
   };
 
   nativeBuildInputs = [

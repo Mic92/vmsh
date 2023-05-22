@@ -396,7 +396,7 @@ impl<'a> ElfLoader for Loader<'a> {
 
     fn load(&mut self, flags: Flags, base: VAddr, region: &[u8]) -> ElfResult {
         let start = self.vbase() + base as usize;
-        let end = self.vbase() + base as usize + region.len() as usize;
+        let end = self.vbase() + base as usize + region.len();
         debug!(
             "load region into = {:#x} -- {:#x} ({:?})",
             start, end, flags

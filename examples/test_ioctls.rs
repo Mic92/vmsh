@@ -134,7 +134,7 @@ fn fd_transfer(pid: Pid) -> Result<()> {
     for fd in remote_fds {
         let pathname = format!("/proc/{}/fd/{}", pid, fd);
         let path = Path::new(&pathname);
-        assert_eq!(path.exists(), true);
+        assert!(path.exists());
     }
     dbg!(fds);
     vm.close_transfer_sockets()?;

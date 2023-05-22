@@ -11,7 +11,7 @@
     microvm.inputs.nixpkgs.follows = "nixpkgs";
     microvm.inputs.flake-utils.follows = "flake-utils";
     fenix = {
-      url = "github:nix-community/fenix/b3e5ce9985c380c8fe1b9d14879a14b749d1af51";
+      url = "github:nix-community/fenix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };
@@ -43,6 +43,7 @@
         };
 
         kernel-deps = pkgs.callPackage ./nix/kernel-deps.nix {};
+        kernel-deps-no-fhs = pkgs.callPackage ./nix/kernel-deps-no-fhs.nix {};
         kernel-deps-shell = (pkgs.callPackage ./nix/kernel-deps.nix {
           runScript = "bash";
         });
@@ -87,11 +88,10 @@
             ./nix/modules/not-os-config.nix
           ];
         });
-        not-os-image_4_4 = (not-os-image'.override { linuxPackages = pkgs.linuxPackages_4_4; }).json;
         not-os-image_4_19 = (not-os-image'.override { linuxPackages = pkgs.linuxPackages_4_19; }).json;
         not-os-image_5_10 = (not-os-image'.override { linuxPackages = pkgs.linuxPackages_5_10; }).json;
         not-os-image_5_15 = (not-os-image'.override { linuxPackages = pkgs.linuxPackages_5_15; }).json;
-        not-os-image_5_16 = (not-os-image'.override { linuxPackages = pkgs.linuxPackages_5_16; }).json;
+        not-os-image_6_1 = (not-os-image'.override { linuxPackages = pkgs.linuxPackages_6_1; }).json;
 
         measurement-image = (pkgs.callPackage ./nix/not-os-image.nix {
           inherit not-os;
@@ -123,11 +123,10 @@
           # see justfile/not-os
           not-os-image = not-os-image'.json;
           inherit
-            not-os-image_4_4
             not-os-image_4_19
             not-os-image_5_10
             not-os-image_5_15
-            not-os-image_5_16;
+            not-os-image_6_1;
           inherit measurement-image;
 
           # see justfile/nixos-image
@@ -154,6 +153,7 @@
           };
           # see justfile/build-linux-shell
           inherit kernel-deps-shell;
+          inherit kernel-deps-no-fhs;
         };
         # not supported by nix flakes yet, but useful
         packageSets = rec {
@@ -161,7 +161,7 @@
         };
         checks = self.packages.${system};
         # used by `nix develop`
-        devShell = pkgs.mkShell {
+        devShells.default = pkgs.mkShell {
           inherit (vmsh) buildInputs;
           RUST_SRC_PATH = "${rustToolchain}/lib/rustlib/src/rust/library";
           nativeBuildInputs = ciDeps ++ [
@@ -171,7 +171,6 @@
             pkgs.cargo-watch
             pkgs.cargo-deny
             pkgs.pre-commit
-            pkgs.rls
             pkgs.git # needed for pre-commit install
             pkgs.rust-analyzer
             pkgs.gdb

@@ -45,7 +45,7 @@ fn convert(pid: pid_t, mappings: &[Mapping]) -> Result<GuestMemoryMmap> {
             unsafe {
                 MmapRegion::build_raw(
                     mapping.start as *mut u8,
-                    (mapping.end - mapping.start) as usize,
+                    mapping.end - mapping.start,
                     mapping.prot_flags.bits(),
                     mapping.map_flags.bits(),
                 )

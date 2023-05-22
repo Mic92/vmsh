@@ -1,25 +1,27 @@
 #!/usr/bin/env python3
 
-import pandas as pd
 import re
 import sys
+import warnings
 from pathlib import Path
 from typing import Any
-from natsort import natsort_keygen
-import warnings
 
+import pandas as pd
+from natsort import natsort_keygen
 from plot import (
+    COLUMN_ALIASES,
+    FORMATTER,
+    PAPER_MODE,
+    ROW_ALIASES,
     apply_aliases,
     catplot,
     column_alias,
     explode,
-    sns,
-    PAPER_MODE,
-    plt,
     format,
     magnitude_formatter,
+    plt,
+    sns,
 )
-from plot import ROW_ALIASES, COLUMN_ALIASES, FORMATTER
 
 if PAPER_MODE:
     out_format = ".pdf"

@@ -88,7 +88,7 @@ impl Socket {
         message_length: usize,
         cmsgspace: &mut Vec<u8>,
     ) -> Result<(Vec<u8>, Vec<RawFd>)> {
-        let mut msg_buf = vec![0; (message_length) as usize];
+        let mut msg_buf = vec![0; message_length];
         let received;
         let mut files: Vec<RawFd> = Vec::with_capacity(1);
         {
@@ -195,7 +195,7 @@ impl HvSocket {
             )?
         };
         if ret != 0 {
-            let err = -ret as i32;
+            let err = -ret;
             bail!("cannot bind: {} (#{})", nix::errno::from_i32(err), ret);
         }
 
@@ -220,7 +220,7 @@ impl HvSocket {
             addr_len as u32,
         )?;
         if ret < 0 {
-            let err = -ret as i32;
+            let err = -ret;
             bail!(
                 "new_client_remote connect failed: {} (#{})",
                 nix::errno::from_i32(err),
@@ -297,8 +297,7 @@ impl HvSocket {
             }
             // iterate over SCM_RIGHTS message data
             let cmsg_data: *mut RawFd = Tracee::CMSG_DATA(cmsghdr_ptr) as *mut RawFd;
-            let cmsg_data_len =
-                cmsghdr.cmsg_len as usize - (cmsg_data as usize - cmsghdr_ptr as usize); // cmsg_size - cmsg_hdr_size
+            let cmsg_data_len = cmsghdr.cmsg_len - (cmsg_data as usize - cmsghdr_ptr as usize); // cmsg_size - cmsg_hdr_size
             for offset in 0..(cmsg_data_len / size_of::<RawFd>()) {
                 result.push(*(cmsg_data.add(offset)));
             }

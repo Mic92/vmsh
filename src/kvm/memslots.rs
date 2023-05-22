@@ -3,9 +3,11 @@ use bcc::{BPFBuilder, Kprobe, BPF};
 use core::slice::from_raw_parts as make_slice;
 use libc::{c_ulong, size_t};
 use log::warn;
+use nix::sys::utsname::uname;
 use nix::unistd::Pid;
 use simple_error::bail;
 use simple_error::require_with;
+use simple_error::simple_error;
 use simple_error::try_with;
 use std::sync::mpsc::channel;
 use std::time::Duration;
@@ -75,6 +77,7 @@ typedef struct {
 } out_t;
 
 BPF_PERCPU_ARRAY(slots, out_t, 1);
+BPF_TABLE("array", int, struct rb_node*, queue, 128);
 
 BPF_PERF_OUTPUT(memslots);
 
@@ -92,23 +95,85 @@ void kvm_vm_ioctl(struct pt_regs *ctx, struct file *filp) {
       return;
     }
 
+ #if KERNEL_MAJOR == 5 && KERNEL_MINOR >= 16 || KERNEL_MAJOR > 5
     // On x86 there is also a second address space for system management mode in memslots[1]
     // however we dont care about about this one
+    struct rb_node *root = kvm->memslots[0]->gfn_tree.rb_node;
+  	int node_idx = kvm->memslots[0]->node_idx;
+    u32 head = 0, head_copy = 0, tail = 1;
+    queue.update(&head, &root);
+
+    for (uint32_t head = 0; head < MAX_SLOTS && head < tail; head++) {
+        // create a copy so that the verifier can see that it is not modified
+        head_copy = head;
+        struct rb_node **node_ptr = queue.lookup(&head_copy);
+        if (node_ptr == NULL) {
+            break;
+        }
+        struct rb_node *node = *node_ptr;
+        struct kvm_memory_slot *slot = 
+          (struct kvm_memory_slot *)((void*)node - offsetof(struct kvm_memory_slot, gfn_node[node_idx]));
+        if (out->used_slots >= MAX_SLOTS) {
+          break;
+        }
+        struct memslot *out_slot = &out->memslots[out->used_slots];
+        out_slot->base_gfn = slot->base_gfn;
+        out_slot->npages = slot->npages;
+        out_slot->userspace_addr = slot->userspace_addr;
+        out->used_slots++;
+
+        struct rb_node* left_child = node->rb_left;
+        if (node->rb_left) {
+          queue.update(&tail, &left_child);
+          tail++;
+        }
+
+        struct rb_node* right_child = node->rb_right;
+        if (node->rb_right) {
+          queue.update(&tail, &right_child);
+          tail++;
+        }
+    }
+#else
     out->used_slots = kvm->memslots[0]->used_slots;
     for (size_t i = 0; i < MAX_SLOTS && i < out->used_slots; i++) {
       struct kvm_memory_slot *in_slot = &kvm->memslots[0]->memslots[i];
       struct memslot *out_slot = &out->memslots[i];
-
+      
       out_slot->base_gfn = in_slot->base_gfn;
       out_slot->npages = in_slot->npages;
       out_slot->userspace_addr = in_slot->userspace_addr;
     }
+#endif
+
     memslots.perf_submit(ctx, out, sizeof(*out));
 }"#;
 
 fn bpf_prog(pid: Pid) -> Result<BPF> {
+    let uts_name = uname();
+    let raw_kernel_release = uts_name.release().split('.');
+    let kernel_release = try_with!(
+        uts_name
+            .release()
+            .split('.')
+            .map(|s| s.parse::<u32>())
+            .collect::<std::result::Result<Vec<u32>, _>>(),
+        "could not parse kernel release: {:?}",
+        raw_kernel_release
+    );
+    if kernel_release.len() < 2 {
+        return Err(simple_error!(
+            "kernel release has not enough numbers: {:?}",
+            raw_kernel_release
+        ));
+    }
+
     let builder = try_with!(BPFBuilder::new(BPF_TEXT), "cannot compile bpf program");
-    let cflags = &[format!("-DTARGET_PID={}", pid)];
+    let cflags = &[
+        format!("-DTARGET_PID={}", pid),
+        format!("-DKERNEL_MAJOR={}", kernel_release[0]),
+        format!("-DKERNEL_MINOR={}", kernel_release[1]),
+    ];
     let builder_with_cflags = try_with!(builder.cflags(cflags), "could not pass cflags");
     Ok(try_with!(
         builder_with_cflags.build(),

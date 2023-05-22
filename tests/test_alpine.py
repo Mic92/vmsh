@@ -1,6 +1,6 @@
 import conftest
 
-from nix import notos_image, alpine_sec_scanner_image
+from nix import alpine_sec_scanner_image, notos_image
 
 
 def test_attach(

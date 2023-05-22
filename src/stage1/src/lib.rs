@@ -162,7 +162,8 @@ unsafe fn register_virtio_mmio(
             RESOURCES_4_4[1].end = RESOURCES[1].start;
             INFO_5_0.res = RESOURCES_4_4.as_ptr() as *const resource;
         }
-        let info = &*core::mem::transmute::<_, *const ffi::platform_device_info>(&INFO_5_0);
+        let info =
+            &INFO_5_0 as *const ffi::platform_device_info_5_0 as *const ffi::platform_device_info;
         ffi::platform_device_register_full(info)
     } else {
         INFO.id = id;
@@ -570,8 +571,9 @@ unsafe extern "C" fn spawn_stage2() {
     });
     VMSH_STAGE1_ARGS.driver_status = DeviceState::Terminating;
 }
+
+#[link(name = "trampoline", kind = "static")]
 extern "C" {
-    #[link(name = "trampoline", kind = "static")]
     pub fn _init_vmsh();
 }
 

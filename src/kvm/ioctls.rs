@@ -5,7 +5,9 @@ use kvm_bindings as kvmb;
 
 /// Expression that calculates an ioctl number.
 ///
-/// ```
+/// ```ignore
+/// use std::os::raw::c_uint;
+///
 /// const KVMIO: c_uint = 0xAE;
 /// ioctl_expr!(_IOC_NONE, KVMIO, 0x01, 0);
 /// ```
@@ -20,8 +22,8 @@ macro_rules! ioctl_expr {
 
 /// Declare a function that returns an ioctl number.
 ///
-/// ```
-/// # use std::os::raw::c_uint;
+/// ```ignore
+/// use std::os::raw::c_uint;
 ///
 /// const KVMIO: c_uint = 0xAE;
 /// ioctl_ioc_nr!(KVM_CREATE_VM, _IOC_NONE, KVMIO, 0x01, 0);
@@ -45,8 +47,10 @@ macro_rules! ioctl_ioc_nr {
 
 /// Declare an ioctl that transfers no data.
 ///
-/// ```
-/// const KVMIO: c_uint = 0xAE;
+/// ```ignore
+/// use std::os::raw::c_uint;
+///
+/// const KVMIO: libc::c_uint = 0xAE;
 /// ioctl_io_nr!(KVM_CREATE_VM, KVMIO, 0x01);
 /// ```
 macro_rules! ioctl_io_nr {

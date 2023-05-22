@@ -2,7 +2,7 @@ use std::process::Command;
 
 use libc::gettid;
 
-#[allow(dead_code)]
+#[allow(dead_code, clippy::print_stdout)]
 pub fn gdb_break() {
     let tid = unsafe { gettid() }.to_string();
 

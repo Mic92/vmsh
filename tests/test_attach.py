@@ -1,6 +1,6 @@
-import conftest
-
 import os
+
+import conftest
 
 from nix import notos_image
 

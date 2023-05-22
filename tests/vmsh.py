@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 
+import os
 import subprocess
 import threading
-import os
-from queue import Queue
 from pathlib import Path
-from nix import notos_image
-from typing import Union, Any, Callable, List, Optional, Dict
-from root import PROJECT_ROOT
+from queue import Queue
 from shlex import quote
+from typing import Any, Callable, Dict, List, Optional, Union
+
+from root import PROJECT_ROOT
+
+from nix import notos_image
 
 EOF = 1
 

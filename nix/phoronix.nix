@@ -7,14 +7,12 @@
 , which
 , gnused
 , makeWrapper
-, gnumake
 , gcc
-, callPackage
 , util-linux
 , enableBuildDeps ? false
 }:
 let
-  pkg = stdenv.mkDerivation rec {
+  pkg = stdenv.mkDerivation {
     pname = "phoronix-test-suite";
     version = "unstable-2021-08-25";
 
@@ -86,7 +84,7 @@ let
       # for systemd-detect-virt
       systemd
       which
-      python2
+      python3
       pciutils
       zlib
     ] ++ lib.optionals (enableBuildDeps') [

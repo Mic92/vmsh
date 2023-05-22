@@ -6,20 +6,20 @@ if sys.version_info < (3, 7, 0):
     print("This script assumes at least python3.7")
     sys.exit(1)
 
-from timeit import default_timer as timer
 import os
 import shutil
-import time
-from typing import IO, Any, Callable, List, Dict, Optional, Text
 import subprocess
+import time
 from pathlib import Path
+from timeit import default_timer as timer
+from typing import IO, Any, Callable, Dict, List, Optional, Text
 
 ROOT = Path(__file__).parent.parent.resolve()
 HAS_TTY = sys.stderr.isatty()
 
 sys.path.append(str(ROOT.joinpath("tests")))
 
-from measure_helpers import fresh_fs_ssd, HOST_DIR
+from measure_helpers import HOST_DIR, fresh_fs_ssd
 
 
 def color_text(code: int, file: IO[Any] = sys.stdout) -> Callable[[str], None]:

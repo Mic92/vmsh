@@ -1,15 +1,14 @@
-from root import MEASURE_RESULTS
-import confmeasure
-import measure_helpers as util
-
-from typing import List, Any, Optional, Callable
-import time
-import pty
 import os
+import pty
+import signal
 import sys
 import termios
-import signal
+import time
+from typing import Any, Callable, List, Optional
 
+import confmeasure
+import measure_helpers as util
+from root import MEASURE_RESULTS
 
 # overwrite the number of samples to take to a minimum
 QUICK = False

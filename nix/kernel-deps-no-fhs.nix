@@ -1,6 +1,4 @@
-{ buildFHSUserEnv
-, lib
-, getopt
+{ getopt
 , elfutils
 , ncurses
 , openssl
@@ -15,11 +13,11 @@
 , hostname
 , cpio
 , pkg-config
-, runScript ? ''bash -c''
+, stdenv
 }:
-buildFHSUserEnv {
-  name = "linux-kernel-build";
-  targetPkgs = pkgs: ([
+stdenv.mkDerivation {
+  name = "env";
+  nativeBuildInputs = [ 
     getopt
     flex
     bison
@@ -31,15 +29,11 @@ buildFHSUserEnv {
     hostname
     cpio
     pkg-config
-  ] ++ map lib.getDev [
+  ];
+  buildInputs = [
     elfutils
     ncurses
     openssl
     zlib
-  ]);
-  profile = ''
-    export hardeningDisable=all
-  '';
-
-  inherit runScript;
+  ];
 }
