@@ -3,13 +3,16 @@
 // SPDX-License-Identifier: Apache-2.0 OR BSD-3-Clause
 
 use std::fs::File;
-use std::{io, ptr, result, slice};
+use std::io::{IoSlice, IoSliceMut};
+use std::num::NonZeroUsize;
+use std::{io, result, slice};
 
 use libc::c_void;
 use log::warn;
 use nix::sys::mman::{mmap, msync, munmap, MapFlags, MsFlags, ProtFlags};
-use nix::sys::uio::{process_vm_readv, process_vm_writev, IoVec, RemoteIoVec};
+use nix::sys::uio::{process_vm_readv, process_vm_writev, RemoteIoVec};
 use nix::unistd::Pid;
+use simple_error::{require_with, try_with};
 use std::os::unix::io::AsRawFd;
 use virtio_blk::defs::{SECTOR_SHIFT, SECTOR_SIZE};
 use virtio_blk::request::{Request, RequestType};

@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::io::IoSlice;
 use std::mem::{size_of, size_of_val};
 use std::ptr;
 
@@ -9,7 +10,7 @@ use elfloader::{
 };
 use log::{debug, error, warn};
 use nix::sys::mman::ProtFlags;
-use nix::sys::uio::{process_vm_writev, IoVec, RemoteIoVec};
+use nix::sys::uio::{process_vm_writev, RemoteIoVec};
 use simple_error::{bail, require_with, try_with};
 use stage1_interface::{DeviceState, Stage1Args};
 use xmas_elf::sections::{SectionData, SHN_UNDEF};
@@ -133,7 +134,7 @@ impl<'a> Loader<'a> {
         let mut remote_iovec = vec![];
         let mut len = 0;
         for l in self.loadables.iter() {
-            local_iovec.push(IoVec::from_slice(&l.content));
+            local_iovec.push(IoSlice::new(&l.content));
             len += l.content.len();
             remote_iovec.push(RemoteIoVec {
                 base: l.mapping.phys_start.host_addr() + l.virt_offset,

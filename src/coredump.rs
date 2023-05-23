@@ -1,14 +1,16 @@
 use crate::cpu::{FpuRegs, Regs};
 use crate::kvm::hypervisor::VCPU;
 use kvm_bindings as kvmb;
-use libc::{c_void, off_t, timeval, PT_LOAD, PT_NOTE};
+use libc::{off_t, timeval, PT_LOAD, PT_NOTE};
 use nix::sys::{
     mman::{mmap, MapFlags, ProtFlags},
-    uio::{process_vm_readv, IoVec, RemoteIoVec},
+    uio::{process_vm_readv, RemoteIoVec},
 };
 use nix::unistd::Pid;
-use simple_error::try_with;
+use simple_error::{require_with, try_with};
 use std::fs::OpenOptions;
+use std::io::IoSliceMut;
+use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::{fs::File, io::Write, ptr, slice::from_raw_parts_mut};
 use std::{mem::size_of, os::unix::prelude::AsRawFd};
@@ -66,10 +68,15 @@ fn dump_mappings(
     maps: &[Mapping],
 ) -> Result<()> {
     let buf_size = core_size - file_offset;
+    let buf_size = require_with!(
+        NonZeroUsize::new(buf_size as usize),
+        "buf_size is smaller than zero"
+    );
+
     let res = unsafe {
         mmap(
-            ptr::null_mut::<c_void>(),
-            buf_size as usize,
+            None,
+            buf_size,
             ProtFlags::PROT_WRITE,
             MapFlags::MAP_SHARED,
             core_file.as_raw_fd(),
@@ -77,9 +84,9 @@ fn dump_mappings(
         )
     };
     let raw_buf = try_with!(res, "cannot mmap core file");
-    let buf = unsafe { from_raw_parts_mut(raw_buf as *mut u8, buf_size as usize) };
+    let buf = unsafe { from_raw_parts_mut(raw_buf as *mut u8, buf_size.get()) };
 
-    let dst_iovs = vec![IoVec::from_mut_slice(buf)];
+    let mut dst_iovs = vec![IoSliceMut::new(buf)];
     let src_iovs = maps
         .iter()
         .map(|m| RemoteIoVec {
@@ -89,7 +96,7 @@ fn dump_mappings(
         .collect::<Vec<_>>();
 
     try_with!(
-        process_vm_readv(pid, dst_iovs.as_slice(), src_iovs.as_slice()),
+        process_vm_readv(pid, dst_iovs.as_mut_slice(), src_iovs.as_slice()),
         "cannot read hypervisor memory"
     );
     Ok(())

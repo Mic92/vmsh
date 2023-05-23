@@ -1,6 +1,5 @@
 use log::*;
 use nix::poll::{ppoll, PollFd, PollFlags};
-use nix::sys::signal::SigSet;
 use nix::sys::socket::{socketpair, AddressFamily, SockFlag, SockType};
 use nix::sys::time::TimeSpec;
 use nix::unistd::{close, read, write};
@@ -202,7 +201,7 @@ impl RawIoRegionFd {
         // read
         let timeout = TimeSpec::from(Duration::from_millis(300));
         let nr_events = try_with!(
-            ppoll(&mut self.pollfds, Some(timeout), SigSet::empty()),
+            ppoll(&mut self.pollfds, Some(timeout), None),
             "read/ppoll failed"
         );
         if nr_events == 0 || self.pollfds[0].revents().is_none() {
