@@ -5,6 +5,7 @@
 use std::fs::File;
 use std::io::{IoSlice, IoSliceMut};
 use std::num::NonZeroUsize;
+use std::sync::Arc;
 use std::{io, result, slice};
 
 use libc::c_void;
@@ -18,6 +19,7 @@ use virtio_blk::defs::{SECTOR_SHIFT, SECTOR_SIZE};
 use virtio_blk::request::{Request, RequestType};
 use virtio_blk::stdio_executor::{self, StdIoBackend};
 use virtio_queue::{DescriptorChain, Queue, QueueOwnedT, QueueT};
+use vm_memory::GuestMemoryMmap;
 use vm_memory::{self, Bytes, GuestAddressSpace, GuestMemory, GuestMemoryError};
 
 use crate::devices::virtio::SignalUsedQueue;
@@ -84,27 +86,23 @@ impl Drop for Mmap {
 // object), but the aim is to have a way of working with generic backends and turn this into
 // a more flexible building block. The name comes from processing and returning descriptor
 // chains back to the device in the same order they are received.
-pub struct InOrderQueueHandler<M: GuestAddressSpace, S: SignalUsedQueue> {
+pub struct InOrderQueueHandler<S: SignalUsedQueue> {
     pub driver_notify: S,
     pub queue: Queue,
     pub disk: StdIoBackend<File>,
     pub sectors: u64,
     pub mmap: Mmap,
     //pub guest_memory: Arc<Mutex<Option<M>>>,
-    pub guest_addresspace: M::T,
     pub pid: Pid,
 
     // we have those here to safe reallocations across requests
     pub remote_iovs: Vec<RemoteIoVec>,
+    pub mem: Arc<GuestMemoryMmap>,
 }
 
-unsafe impl<M: GuestAddressSpace, S: SignalUsedQueue> Send for InOrderQueueHandler<M, S> {}
+unsafe impl<S: SignalUsedQueue> Send for InOrderQueueHandler<S> {}
 
-impl<M, S> InOrderQueueHandler<M, S>
-where
-    M: GuestAddressSpace,
-    S: SignalUsedQueue,
-{
+impl<S: SignalUsedQueue> InOrderQueueHandler<S> {
     fn check_access(&self, mut sectors_count: u64, sector: u64) -> stdio_executor::Result<()> {
         sectors_count = sectors_count
             .checked_add(sector)
@@ -119,7 +117,7 @@ where
         self.remote_iovs.clear();
         self.remote_iovs.reserve(request.data().len());
         for (data_addr, data_len) in request.data() {
-            let hv_addr = match self.guest_addresspace.get_host_address(*data_addr) {
+            let hv_addr = match self.mem.memory().get_host_address(*data_addr) {
                 // TODO length check
                 Ok(hv_addr) => hv_addr,
                 Err(e) => {
@@ -136,11 +134,7 @@ where
         Ok(())
     }
 
-    fn execute<GM: GuestMemory>(
-        &mut self,
-        mem: &GM,
-        request: &Request,
-    ) -> stdio_executor::Result<u32> {
+    fn execute(&mut self, mem: &GuestMemoryMmap, request: &Request) -> stdio_executor::Result<u32> {
         let offset = request
             .sector()
             .checked_shl(u32::from(SECTOR_SHIFT))
@@ -219,7 +213,10 @@ where
         }
         Ok(bytes_to_mem)
     }
-    fn process_chain(&mut self, mut chain: DescriptorChain<M>) -> result::Result<(), Error> {
+    fn process_chain(
+        &mut self,
+        mut chain: DescriptorChain<&GuestMemoryMmap>,
+    ) -> result::Result<(), Error> {
         let len;
 
         log::trace!("process_chain");
@@ -258,9 +255,10 @@ where
             }
         }
 
-        self.queue.add_used(chain.head_index(), len)?;
+        self.queue
+            .add_used(self.mem.as_ref(), chain.head_index(), len)?;
 
-        if self.queue.needs_notification()? {
+        if self.queue.needs_notification(self.mem.as_ref())? {
             log::trace!("notification needed: yes");
             self.driver_notify.signal_used_queue(0);
         } else {
@@ -272,16 +270,18 @@ where
     }
 
     pub fn process_queue(&mut self) -> result::Result<(), Error> {
+        // manybe expensive?
+        let mem = Arc::clone(&self.mem);
         // To see why this is done in a loop, please look at the `Queue::enable_notification`
         // comments in `vm_virtio`.
         loop {
-            self.queue.disable_notification()?;
+            self.queue.disable_notification(mem.as_ref())?;
 
-            while let Some(chain) = self.queue.iter()?.next() {
+            while let Some(chain) = self.queue.iter(mem.as_ref())?.next() {
                 self.process_chain(chain)?;
             }
 
-            if !self.queue.enable_notification()? {
+            if !self.queue.enable_notification(mem.as_ref())? {
                 break;
             }
         }

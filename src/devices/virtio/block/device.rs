@@ -20,7 +20,7 @@ use virtio_queue::QueueT;
 use vm_device::bus::MmioAddress;
 use vm_device::device_manager::MmioManager;
 use vm_device::{DeviceMmio, MutDeviceMmio};
-use vm_memory::GuestAddressSpace;
+use vm_memory::GuestMemoryMmap;
 use vmm_sys_util::eventfd::EventFd;
 
 use crate::devices::use_ioregionfd;
@@ -44,7 +44,7 @@ use super::{build_config_space, BlockArgs, Error, Result};
 // This Block device can only use the MMIO transport for now, but we plan to reuse large parts of
 // the functionality when we implement virtio PCI as well, for example by having a base generic
 // type, and then separate concrete instantiations for `MmioConfig` and `PciConfig`.
-pub struct Block<M: GuestAddressSpace> {
+pub struct Block {
     virtio_cfg: VirtioConfig<Queue>,
     pub mmio_cfg: MmioConfig,
     endpoint: RemoteEndpoint<Arc<Mutex<dyn MutEventSubscriber + Send>>>,
@@ -57,7 +57,7 @@ pub struct Block<M: GuestAddressSpace> {
     file_path: PathBuf,
     read_only: bool,
     sub_id: Option<SubscriberId>,
-    guest_memory: Arc<Mutex<Option<M>>>,
+    guest_memory: Arc<GuestMemoryMmap>,
     pid: Pid,
 
     // Before resetting we return the handler to the mmio thread for cleanup
@@ -68,11 +68,8 @@ pub struct Block<M: GuestAddressSpace> {
     _root_device: bool,
 }
 
-impl<M> Block<M>
-where
-    M: GuestAddressSpace + Clone + Send + 'static,
-{
-    pub fn new<B>(mut args: BlockArgs<M, B>) -> Result<Arc<Mutex<Self>>>
+impl Block {
+    pub fn new<B>(mut args: BlockArgs<B>) -> Result<Arc<Mutex<Self>>>
     where
         // We're using this (more convoluted) bound so we can pass both references and smart
         // pointers such as mutex guards here.
@@ -143,7 +140,7 @@ where
             sub_id: None,
             handler: None,
             _root_device: args.root_device,
-            guest_memory: Arc::new(Mutex::new(Some(mem))),
+            guest_memory: mem,
         }));
 
         // Register the device on the MMIO bus.
@@ -164,19 +161,6 @@ where
         if self.virtio_cfg.driver_features & (1 << VIRTIO_F_VERSION_1) == 0 {
             return Err(Error::BadFeatures(self.virtio_cfg.driver_features));
         }
-
-        let guest_mem = match self.guest_memory.lock() {
-            Ok(mut m) => match m.take() {
-                Some(m) => m,
-                None => return Err(Error::Simple(SimpleError::new("guest_mem is not set"))),
-            },
-            Err(e) => {
-                return Err(Error::Simple(SimpleError::new(format!(
-                    "cannot lock guest memory: {}",
-                    e
-                ))))
-            }
-        };
 
         let mut file = OpenOptions::new()
             .read(true)
@@ -214,14 +198,15 @@ where
             ack_handler: self.irq_ack_handler.clone(),
         };
 
+        let queue = self.virtio_cfg.queues.remove(0);
         let inner = InOrderQueueHandler {
             pid: self.pid,
             driver_notify,
-            queue: self.virtio_cfg.queues[0].clone(),
+            queue,
             disk,
             sectors: disk_size >> SECTOR_SHIFT,
             mmap,
-            guest_addresspace: guest_mem.memory(),
+            mem: Arc::clone(&self.guest_memory),
             remote_iovs: vec![],
         };
         let handler = Arc::new(Mutex::new(QueueHandler {
@@ -267,7 +252,7 @@ where
     }
 }
 
-impl<M: GuestAddressSpace + Clone + Send + 'static> MaybeIoRegionFd for Block<M> {
+impl MaybeIoRegionFd for Block {
     fn get_ioregionfd(&mut self) -> &mut Option<IoRegionFd> {
         &mut self.ioregionfd
     }
@@ -275,25 +260,25 @@ impl<M: GuestAddressSpace + Clone + Send + 'static> MaybeIoRegionFd for Block<M>
 
 // We now implement `WithVirtioConfig` and `WithDeviceOps` to get the automatic implementation
 // for `VirtioDevice`.
-impl<M: GuestAddressSpace + Clone + Send + 'static> VirtioDeviceType for Block<M> {
+impl VirtioDeviceType for Block {
     fn device_type(&self) -> u32 {
         BLOCK_DEVICE_ID
     }
 }
 
-impl<M: GuestAddressSpace + Clone + Send + 'static> Borrow<VirtioConfig<Queue>> for Block<M> {
+impl Borrow<VirtioConfig<Queue>> for Block {
     fn borrow(&self) -> &VirtioConfig<Queue> {
         &self.virtio_cfg
     }
 }
 
-impl<M: GuestAddressSpace + Clone + Send + 'static> BorrowMut<VirtioConfig<Queue>> for Block<M> {
+impl BorrowMut<VirtioConfig<Queue>> for Block {
     fn borrow_mut(&mut self) -> &mut VirtioConfig<Queue> {
         &mut self.virtio_cfg
     }
 }
 
-impl<M: GuestAddressSpace + Clone + Send + 'static> VirtioDeviceActions for Block<M> {
+impl VirtioDeviceActions for Block {
     type E = Error;
 
     /// make sure to set self.vmm.wrapper to Some() before activating. Typically this is done by
@@ -313,7 +298,7 @@ impl<M: GuestAddressSpace + Clone + Send + 'static> VirtioDeviceActions for Bloc
     }
 }
 
-impl<M: GuestAddressSpace + Clone + Send + 'static> VirtioQueueNotifiable for Block<M> {
+impl VirtioQueueNotifiable for Block {
     fn queue_notify(&mut self, val: u32) {
         if use_ioregionfd() {
             self.uioefd.queue_notify(val);
@@ -322,9 +307,9 @@ impl<M: GuestAddressSpace + Clone + Send + 'static> VirtioQueueNotifiable for Bl
     }
 }
 
-impl<M: GuestAddressSpace + Clone + Send + 'static> VirtioMmioDevice for Block<M> {}
+impl VirtioMmioDevice for Block {}
 
-impl<M: GuestAddressSpace + Clone + Send + 'static> MutDeviceMmio for Block<M> {
+impl MutDeviceMmio for Block {
     fn mmio_read(&mut self, _base: MmioAddress, offset: u64, data: &mut [u8]) {
         self.read(offset, data);
     }

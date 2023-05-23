@@ -73,8 +73,8 @@ fn build_config_space<P: AsRef<Path>>(path: P) -> Result<Vec<u8>> {
 }
 
 // Arguments required when building a block device.
-pub struct BlockArgs<'a, M, B> {
-    pub common: CommonArgs<'a, M, B>,
+pub struct BlockArgs<'a, B> {
+    pub common: CommonArgs<'a, B>,
     pub file_path: PathBuf,
     pub read_only: bool,
     pub root_device: bool,

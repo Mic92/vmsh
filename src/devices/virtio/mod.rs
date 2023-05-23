@@ -17,6 +17,7 @@ use event_manager::{EventManager, MutEventSubscriber};
 use log::error;
 
 use vm_device::bus::MmioRange;
+use vm_memory::GuestMemoryMmap;
 use vmm_sys_util::eventfd::EventFd;
 
 // TODO: Move virtio-related defines from the local modules to the `vm-virtio` crate upstream.
@@ -52,9 +53,9 @@ pub struct MmioConfig {
 
 // These arguments are common for all virtio devices. We're always passing a mmio_cfg object
 // for now, and we'll re-evaluate the layout of this struct when adding more transport options.
-pub struct CommonArgs<'a, M, B> {
+pub struct CommonArgs<'a, B> {
     // The objects used for guest memory accesses and other operations.
-    pub mem: M,
+    pub mem: Arc<GuestMemoryMmap>,
     // Used by the devices to register ioevents and irqfds.
     pub vmm: Arc<Hypervisor>,
     // Mutable handle to the event manager the device is supposed to register with. There could be
