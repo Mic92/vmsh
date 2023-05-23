@@ -16,6 +16,7 @@ use event_manager::{MutEventSubscriber, RemoteEndpoint, Result as EvmgrResult, S
 use virtio_blk::stdio_executor::StdIoBackend;
 use virtio_device::{VirtioConfig, VirtioDeviceActions, VirtioMmioDevice, VirtioQueueNotifiable};
 use virtio_queue::Queue;
+use virtio_queue::QueueT;
 use vm_device::bus::MmioAddress;
 use vm_device::device_manager::MmioManager;
 use vm_device::{DeviceMmio, MutDeviceMmio};
@@ -44,7 +45,7 @@ use super::{build_config_space, BlockArgs, Error, Result};
 // the functionality when we implement virtio PCI as well, for example by having a base generic
 // type, and then separate concrete instantiations for `MmioConfig` and `PciConfig`.
 pub struct Block<M: GuestAddressSpace> {
-    virtio_cfg: VirtioConfig<M>,
+    virtio_cfg: VirtioConfig<Queue>,
     pub mmio_cfg: MmioConfig,
     endpoint: RemoteEndpoint<Arc<Mutex<dyn MutEventSubscriber + Send>>>,
     pub irq_ack_handler: Arc<Mutex<IrqAckHandler>>,
@@ -93,7 +94,7 @@ where
 
         // A block device has a single queue.
         let mem = args.common.mem.clone();
-        let queues = vec![Queue::new(args.common.mem, QUEUE_MAX_SIZE)];
+        let queues = vec![Queue::new(QUEUE_MAX_SIZE).map_err(Error::QueueCreation)?];
         let config_space = build_config_space(&args.file_path)?;
         let virtio_cfg = VirtioConfig::new(device_features, queues, config_space);
 
@@ -189,7 +190,7 @@ where
             Ok(m) => m,
             Err(e) => {
                 return Err(Error::Simple(SimpleError::new(format!(
-                    "cannot mmap disk: {}",
+                    "cannot mmap disk: {:?}",
                     e
                 ))))
             }
@@ -280,14 +281,14 @@ impl<M: GuestAddressSpace + Clone + Send + 'static> VirtioDeviceType for Block<M
     }
 }
 
-impl<M: GuestAddressSpace + Clone + Send + 'static> Borrow<VirtioConfig<M>> for Block<M> {
-    fn borrow(&self) -> &VirtioConfig<M> {
+impl<M: GuestAddressSpace + Clone + Send + 'static> Borrow<VirtioConfig<Queue>> for Block<M> {
+    fn borrow(&self) -> &VirtioConfig<Queue> {
         &self.virtio_cfg
     }
 }
 
-impl<M: GuestAddressSpace + Clone + Send + 'static> BorrowMut<VirtioConfig<M>> for Block<M> {
-    fn borrow_mut(&mut self) -> &mut VirtioConfig<M> {
+impl<M: GuestAddressSpace + Clone + Send + 'static> BorrowMut<VirtioConfig<Queue>> for Block<M> {
+    fn borrow_mut(&mut self) -> &mut VirtioConfig<Queue> {
         &mut self.virtio_cfg
     }
 }
@@ -321,7 +322,7 @@ impl<M: GuestAddressSpace + Clone + Send + 'static> VirtioQueueNotifiable for Bl
     }
 }
 
-impl<M: GuestAddressSpace + Clone + Send + 'static> VirtioMmioDevice<M> for Block<M> {}
+impl<M: GuestAddressSpace + Clone + Send + 'static> VirtioMmioDevice for Block<M> {}
 
 impl<M: GuestAddressSpace + Clone + Send + 'static> MutDeviceMmio for Block<M> {
     fn mmio_read(&mut self, _base: MmioAddress, offset: u64, data: &mut [u8]) {

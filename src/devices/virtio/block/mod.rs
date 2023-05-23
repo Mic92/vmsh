@@ -42,6 +42,7 @@ pub enum Error {
     Endpoint(EvmgrError),
     EventFd(io::Error),
     OpenFile(io::Error),
+    QueueCreation(virtio_queue::Error),
     #[allow(dead_code)] // FIXME
     QueuesNotValid,
     #[allow(dead_code)] // FIXME

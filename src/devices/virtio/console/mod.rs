@@ -32,6 +32,7 @@ pub enum Error {
     Bus(bus::Error),
     Endpoint(EvmgrError),
     EventFd(io::Error),
+    QueueCreation(virtio_queue::Error),
     #[allow(dead_code)] // FIXME
     QueuesNotValid,
     #[allow(dead_code)] // FIXME

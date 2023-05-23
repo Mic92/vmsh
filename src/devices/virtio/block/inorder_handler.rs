@@ -17,10 +17,11 @@ use std::os::unix::io::AsRawFd;
 use virtio_blk::defs::{SECTOR_SHIFT, SECTOR_SIZE};
 use virtio_blk::request::{Request, RequestType};
 use virtio_blk::stdio_executor::{self, StdIoBackend};
-use virtio_queue::{DescriptorChain, Queue};
+use virtio_queue::{DescriptorChain, Queue, QueueOwnedT, QueueT};
 use vm_memory::{self, Bytes, GuestAddressSpace, GuestMemory, GuestMemoryError};
 
 use crate::devices::virtio::SignalUsedQueue;
+use crate::result::Result;
 
 #[derive(Debug)]
 pub enum Error {
@@ -48,18 +49,25 @@ pub struct Mmap {
 unsafe impl Send for Mmap {}
 
 impl Mmap {
-    pub fn new(file: &File, len: usize) -> nix::Result<Mmap> {
+    pub fn new(file: &File, len: usize) -> Result<Mmap> {
+        let len = require_with!(NonZeroUsize::new(len), "lenght is zero");
         let ptr = unsafe {
-            mmap(
-                ptr::null_mut(),
-                len,
-                ProtFlags::PROT_READ | ProtFlags::PROT_WRITE,
-                MapFlags::MAP_SHARED,
-                file.as_raw_fd(),
-                0,
-            )?
+            try_with!(
+                mmap(
+                    None,
+                    len,
+                    ProtFlags::PROT_READ | ProtFlags::PROT_WRITE,
+                    MapFlags::MAP_SHARED,
+                    file.as_raw_fd(),
+                    0,
+                ),
+                "mmap failed"
+            )
         };
-        Ok(Mmap { ptr, len })
+        Ok(Mmap {
+            ptr,
+            len: len.get(),
+        })
     }
 }
 
@@ -78,7 +86,7 @@ impl Drop for Mmap {
 // chains back to the device in the same order they are received.
 pub struct InOrderQueueHandler<M: GuestAddressSpace, S: SignalUsedQueue> {
     pub driver_notify: S,
-    pub queue: Queue<M>,
+    pub queue: Queue,
     pub disk: StdIoBackend<File>,
     pub sectors: u64,
     pub mmap: Mmap,
@@ -158,7 +166,7 @@ where
                     return Err(stdio_executor::Error::InvalidDataLength);
                 }
                 self.prepare_iovs(request)?;
-                let local_iovs = vec![IoVec::from_slice(unsafe {
+                let local_iovs = vec![IoSlice::new(unsafe {
                     slice::from_raw_parts(
                         self.mmap.ptr.add(offset as usize) as *mut u8,
                         request.total_data_len() as usize,
@@ -177,19 +185,22 @@ where
             RequestType::Out => {
                 self.check_access(total_len / SECTOR_SIZE, request.sector())?;
                 self.prepare_iovs(request)?;
-                let local_iovs = vec![IoVec::from_mut_slice(unsafe {
+                let mut local_iovs = vec![IoSliceMut::new(unsafe {
                     slice::from_raw_parts_mut(
                         self.mmap.ptr.add(offset as usize) as *mut u8,
                         request.total_data_len() as usize,
                     )
                 })];
-                bytes_to_mem =
-                    process_vm_readv(self.pid, local_iovs.as_slice(), self.remote_iovs.as_slice())
-                        .map_err(|e| {
-                        stdio_executor::Error::Write(GuestMemoryError::IOError(
-                            io::Error::from_raw_os_error(e as i32),
-                        ))
-                    })? as u32;
+                bytes_to_mem = process_vm_readv(
+                    self.pid,
+                    local_iovs.as_mut_slice(),
+                    self.remote_iovs.as_slice(),
+                )
+                .map_err(|e| {
+                    stdio_executor::Error::Write(GuestMemoryError::IOError(
+                        io::Error::from_raw_os_error(e as i32),
+                    ))
+                })? as u32;
             }
             RequestType::Flush => {
                 self.check_access(total_len / SECTOR_SIZE, request.sector())?;

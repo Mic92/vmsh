@@ -11,7 +11,8 @@ use event_manager::EventSet;
 use event_manager::Events;
 use event_manager::MutEventSubscriber;
 use log::error;
-use virtio_queue::{DescriptorChain, Queue};
+use virtio_queue::Queue;
+use virtio_queue::{QueueOwnedT, QueueT};
 use vm_memory::Bytes;
 use vm_memory::{self, GuestAddressSpace};
 
@@ -41,8 +42,8 @@ pub(crate) struct LogQueueHandler<M: GuestAddressSpace, S: SignalUsedQueue> {
     pub tx_fd: IoEvent,
     pub driver_notify: S,
     #[allow(unused)]
-    pub rxq: Queue<M>,
-    pub txq: Queue<M>,
+    pub rxq: Queue,
+    pub txq: Queue,
     pub console_out: Box<dyn Write + Send>,
     pub console_in: Option<File>,
 }

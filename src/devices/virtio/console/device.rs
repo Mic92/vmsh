@@ -9,11 +9,12 @@ use std::io::Write;
 use std::ops::DerefMut;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use virtio_device::{VirtioDevice, VirtioDeviceType};
 
 use event_manager::{MutEventSubscriber, RemoteEndpoint, Result as EvmgrResult, SubscriberId};
 use virtio_device::{VirtioConfig, VirtioDeviceActions, VirtioMmioDevice, VirtioQueueNotifiable};
+use virtio_device::{VirtioDevice, VirtioDeviceType};
 use virtio_queue::Queue;
+use virtio_queue::QueueT;
 use vm_device::bus::MmioAddress;
 use vm_device::device_manager::MmioManager;
 use vm_device::{DeviceMmio, MutDeviceMmio};
@@ -40,7 +41,7 @@ pub(super) const RX_QUEUE_IDX: u16 = 0;
 pub(super) const TX_QUEUE_IDX: u16 = 1;
 
 pub struct Console<M: GuestAddressSpace> {
-    virtio_cfg: VirtioConfig<M>,
+    virtio_cfg: VirtioConfig<Queue>,
     pub mmio_cfg: MmioConfig,
     endpoint: RemoteEndpoint<Arc<Mutex<dyn MutEventSubscriber + Send>>>,
     pub irq_ack_handler: Arc<Mutex<IrqAckHandler>>,
@@ -76,7 +77,10 @@ where
             | 1 << VIRTIO_CONSOLE_F_SIZE;
 
         // A console device has two queue.
-        let queues = vec![Queue::new(args.common.mem.clone(), QUEUE_MAX_SIZE); 2];
+        let queues = vec![
+            Queue::new(QUEUE_MAX_SIZE).map_err(Error::QueueCreation)?,
+            Queue::new(QUEUE_MAX_SIZE).map_err(Error::QueueCreation)?,
+        ];
 
         let config_space = build_config_space();
         let virtio_cfg = VirtioConfig::new(device_features, queues, config_space);
@@ -246,14 +250,14 @@ impl<M: GuestAddressSpace + Clone + Send + 'static> VirtioDeviceType for Console
     }
 }
 
-impl<M: GuestAddressSpace + Clone + Send + 'static> Borrow<VirtioConfig<M>> for Console<M> {
-    fn borrow(&self) -> &VirtioConfig<M> {
+impl<M: GuestAddressSpace + Clone + Send + 'static> Borrow<VirtioConfig<Queue>> for Console<M> {
+    fn borrow(&self) -> &VirtioConfig<Queue> {
         &self.virtio_cfg
     }
 }
 
-impl<M: GuestAddressSpace + Clone + Send + 'static> BorrowMut<VirtioConfig<M>> for Console<M> {
-    fn borrow_mut(&mut self) -> &mut VirtioConfig<M> {
+impl<M: GuestAddressSpace + Clone + Send + 'static> BorrowMut<VirtioConfig<Queue>> for Console<M> {
+    fn borrow_mut(&mut self) -> &mut VirtioConfig<Queue> {
         &mut self.virtio_cfg
     }
 }
@@ -287,7 +291,7 @@ impl<M: GuestAddressSpace + Clone + Send + 'static> VirtioQueueNotifiable for Co
     }
 }
 
-impl<M: GuestAddressSpace + Clone + Send + 'static> VirtioMmioDevice<M> for Console<M> {}
+impl<M: GuestAddressSpace + Clone + Send + 'static> VirtioMmioDevice for Console<M> {}
 
 impl<M: GuestAddressSpace + Clone + Send + 'static> MutDeviceMmio for Console<M> {
     fn mmio_read(&mut self, _base: MmioAddress, offset: u64, data: &mut [u8]) {
