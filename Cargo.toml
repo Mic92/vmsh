@@ -45,27 +45,31 @@ container-pid = ">=0.2"
 num-traits = "0.2"
 num-derive = "0.3"
 
+
+
+
 # src/device/ deps:
 # Switch back to upstream, once https://github.com/rust-vmm/vm-virtio/pull/TODO is merged
-virtio-blk = { git = "https://github.com/Mic92/vm-virtio.git", features = ["backend-stdio"], rev = "d90ac73e369824ddc577f47c59e9303b1c7c8e7d"} # does no kvm operations
-virtio-device = { git = "https://github.com/Mic92/vm-virtio.git", rev = "d90ac73e369824ddc577f47c59e9303b1c7c8e7d"}
-virtio-queue = { git = "https://github.com/Mic92/vm-virtio.git", rev = "d90ac73e369824ddc577f47c59e9303b1c7c8e7d"}
+virtio-blk = { git = "https://github.com/Mic92/vm-virtio.git", features = ["backend-stdio"], rev = "82a8e84203b00d6bab0774cc686d0f2a0998bb92"} # does no kvm operations
+virtio-device = { git = "https://github.com/Mic92/vm-virtio.git", rev = "82a8e84203b00d6bab0774cc686d0f2a0998bb92"}
+virtio-queue = { git = "https://github.com/Mic92/vm-virtio.git", rev = "82a8e84203b00d6bab0774cc686d0f2a0998bb92"}
 #virtio-blk = { path = "../rust-vmm/vm-virtio/crates/devices/virtio-blk", features = ["backend-stdio"]} # does no kvm operations
 #virtio-device = { path = "../rust-vmm/vm-virtio/crates/virtio-device" }
 #virtio-queue = { path = "../rust-vmm/vm-virtio/crates/virtio-queue" }
 
 #vm-virtio = { path = "src/vm-virtio", features = ["backend-stdio"] }
-vm-device = { git = "https://github.com/rust-vmm/vm-device", rev = "989c315712b80a538331fe05716323f2f64abf2e" } # does no kvm operations
+vm-device = { git = "https://github.com/rust-vmm/vm-device", rev = "d5937f60b0c5e3b0cb6cfbb3294ccd3f4dc1aa15" } # does no kvm operations
 
 # src/device/virtio/ deps:
-event-manager = { version = "0.2.1", features = ["remote_endpoint"] }
-vmm-sys-util = "0.9.0" # only for its ::eventfd::EventFd
-vm-memory = { version = "0.5.0", features = ["backend-mmap"] }
+event-manager = { version = "0.3.0", features = ["remote_endpoint"] }
+vmm-sys-util = "0.11.1" # only for its ::eventfd::EventFd
+vm-memory = { version = "0.11.0", features = ["backend-mmap"] }
 log = "0.4.16"
 
 [patch.crates-io]
 # no atomicity support
 # vm-memory = { git = "https://github.com/pogobanane/vm-memory.git", rev = "ecf1d8e0fd765759559c586d83760dfaf9812a8c", features = ["backend-mmap"] }
 # atomicity support
-vm-memory = { git = "https://github.com/pogobanane/vm-memory.git", rev = "3846add06a58f3df2bdd0b55b4ad064c20d21f53", features = ["backend-mmap"] }
+vm-memory = { git = "https://github.com/Mic92/vm-memory.git", rev = "f78874548cf8fe460a54b4c5c60cdae257a1d617", features = ["backend-mmap"] }
+
 #vm-memory = { path = "../rust-vmm/vm-memory", features = ["backend-mmap"] }
