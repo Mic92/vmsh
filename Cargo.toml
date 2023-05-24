@@ -27,20 +27,22 @@ exclude = [
 
 [dependencies]
 #elfloader = { path = "src/rust-elfloader" }
-elfloader = "*"
-xmas-elf = "*"
+elfloader = "0.16.0"
+xmas-elf = "0.8.0"
 clap = { version = "4", default-features = false, features = ["std", "cargo"] }
 ioutils = { path = "src/ioutils" }
-nix = "0.26.*"
-libc = "0.2.*"
-bitflags = "1.2.1"
+nix = "0.26.2"
+libc = "0.2.144"
+bitflags = "2.3.1"
 stage1-interface = { path = "src/stage1-interface" }
+# required by stage1/Cargo.toml
+cc = "1.0.79"
 
-bcc = "0.0.*"
-simple-error = "0.2.*"
-kvm-bindings = "0.5.*"
-env_logger = { version = "0.9.*", default-features = false }
-lazy_static = "*"
+bcc = "0.0.33"
+simple-error = "0.3.0"
+kvm-bindings = "0.6.0"
+env_logger = { version = "0.9.3", default-features = false }
+lazy_static = "1.4.0"
 container-pid = ">=0.2"
 num-traits = "0.2"
 num-derive = "0.3"
@@ -64,12 +66,12 @@ vm-device = { git = "https://github.com/rust-vmm/vm-device", rev = "d5937f60b0c5
 event-manager = { version = "0.3.0", features = ["remote_endpoint"] }
 vmm-sys-util = "0.11.1" # only for its ::eventfd::EventFd
 vm-memory = { version = "0.11.0", features = ["backend-mmap"] }
-log = "0.4.16"
+log = "0.4.17"
 
 [patch.crates-io]
 # no atomicity support
 # vm-memory = { git = "https://github.com/pogobanane/vm-memory.git", rev = "ecf1d8e0fd765759559c586d83760dfaf9812a8c", features = ["backend-mmap"] }
 # atomicity support
-vm-memory = { git = "https://github.com/Mic92/vm-memory.git", rev = "f78874548cf8fe460a54b4c5c60cdae257a1d617", features = ["backend-mmap"] }
+vm-memory = { git = "https://github.com/Mic92/vm-memory.git", rev = "2cf066e0cad4c11ee6effe03a1b12bcc346ac5b7", features = ["backend-mmap"] }
 
 #vm-memory = { path = "../rust-vmm/vm-memory", features = ["backend-mmap"] }
