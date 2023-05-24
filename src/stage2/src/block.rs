@@ -197,7 +197,7 @@ pub fn find_vmsh_blockdev() -> Result<BlockDevice> {
             "could not parse minor number: {}",
             splits[1]
         );
-        let dev_type = unsafe { libc::makedev(major, minor) };
+        let dev_type = libc::makedev(major, minor);
         return Ok(BlockDevice { dev_type });
     }
 
