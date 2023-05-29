@@ -37,7 +37,7 @@ bitflags = "1.2.1"
 stage1-interface = { path = "src/stage1-interface" }
 
 bcc = "0.0.*"
-simple-error = "0.2.*"
+simple-error = "0.3.*"
 kvm-bindings = "0.5.*"
 env_logger = { version = "0.9.*", default-features = false }
 lazy_static = "*"
