@@ -29,7 +29,7 @@ exclude = [
 #elfloader = { path = "src/rust-elfloader" }
 elfloader = "0.16.0"
 xmas-elf = "0.8.0"
-clap = { version = "4", default-features = false, features = ["std", "cargo"] }
+clap = { version = "4", default-features = false, features = ["std", "cargo", "help", "usage", "suggestions"] }
 ioutils = { path = "src/ioutils" }
 nix = "0.26.2"
 libc = "0.2.144"
