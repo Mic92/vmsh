@@ -11,9 +11,9 @@ rustPlatform.buildRustPackage {
   cargoLock = {
     lockFile = ../Cargo.lock;
     outputHashes = {
-      "virtio-blk-0.1.0" = "sha256-3eXSPy3+5uI0FBpSVwRKWJmWxgrpwfl4rYpPLn0bf/4=";
-      "vm-device-0.1.0" = "sha256-kHiEfk3/+ped39Dm4Lzo62E7IWiVDd+PnSsPr1YDj94=";
-      "vm-memory-0.5.0" = "sha256-7Ii+GP3vWhTT6dJLCLw7F3hjuvd8F/jNxEDDTMzLXIM=";
+      "virtio-blk-0.1.0" = "sha256-93QvL6gqflf/bKtWRXfiO+fgHejGkwqvRgQfXhe/T4I=";
+      "vm-device-0.1.0" = "sha256-Zh7gFIbIIE+GYEqXvag3ej9ywRBp1UlWFa0K+Ows8ak=";
+      "vm-memory-0.11.0" = "sha256-TvsHvooWndcdkNiN9+ibNzv9DCYC4ZTloOfK08EBvm0=";
     };
   };
 }
