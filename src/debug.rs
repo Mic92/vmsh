@@ -1,6 +1,6 @@
-use std::process::Command;
-
-use libc::gettid;
+extern "C" {
+    fn gettid() -> i32;
+}
 
 #[allow(dead_code, clippy::print_stdout)]
 pub fn gdb_break() {
@@ -12,9 +12,11 @@ pub fn gdb_break() {
     // 3. finish: gdb::break
     // 4. finish: caller
     let args = vec![
-        "-c", "tmux new-window sudo -E gdb --pid \"$0\" -ex \"shell kill -9 $$\" -ex finish -ex finish -ex finish -ex finish; kill -STOP $$", &tid
+        "-c", "tmux new-window sudo -E rust-gdb --pid \"$0\" -ex \"shell kill -9 $$\" -ex finish -ex finish -ex finish -ex finish; kill -STOP $$", &tid
     ];
-    let _ = Command::new("sh").args(args.as_slice()).status();
+    let _ = std::process::Command::new("sh")
+        .args(args.as_slice())
+        .status();
 }
 
 #[macro_export]

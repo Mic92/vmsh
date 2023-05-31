@@ -151,100 +151,14 @@ fn setup_logging(matches: &clap::ArgMatches) {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 }
 
-fn main() {
-    let inspect_command = Command::new("inspect")
-        .about("Inspect a virtual machine.")
-        .version(crate_version!())
-        .author(crate_authors!("\n"))
-        .arg(vmid_arg(1))
-        .arg(vmid_type_arg());
-
-    let attach_command = Command::new("attach")
-        .about("Attach (a block device) to a virtual machine.")
-        .version(crate_version!())
-        .author(crate_authors!("\n"))
-        .arg(vmid_arg(1))
-        .arg(vmid_type_arg())
-        .arg(
-            Arg::new("stage2-path")
-                .long("stage2-path")
-                .num_args(1)
-                .default_value("/dev/.vmsh")
-                .help("Path where Stage2 is written to in the VM"),
-        )
-        .arg(command_args(2))
-        .arg(
-            Arg::new("backing-file")
-                .short('f')
-                .long("backing-file")
-                .num_args(1)
-                .default_value("/dev/null")
-                .value_parser(clap::value_parser!(PathBuf))
-                .help("File which shall be served as a block device."),
-        )
-        .arg(
-            Arg::new("mmio")
-                .long("mmio")
-                .num_args(1)
-                .value_parser(clap::builder::PossibleValuesParser::new(["wrap_syscall", "ioregionfd"]))
-                .default_value("wrap_syscall")
-                .long_help("Backend used to serve Virtio MMIO memory of devices."),
-        )
-        .arg(
-            Arg::new("pts")
-                .long("pts")
-                .num_args(1)
-                .value_parser(clap::value_parser!(PathBuf))
-                .help("Pseudoterminal seat to use for the command run in the VM. Use this when interactivity is required. "),
-        );
-
-    let coredump_command = Command::new("coredump")
-        .about("Get a coredump of a virtual machine.")
-        .version(crate_version!())
-        .author(crate_authors!("\n"))
-        .arg(vmid_arg(1))
-        .arg(vmid_type_arg())
-        .arg(
-            Arg::new("PATH")
-                .help("path to coredump. Defaults to core.${pid}")
-                .value_parser(clap::value_parser!(PathBuf))
-                .index(2),
-        );
-
-    let console_command = Command::new("console")
-        .about("Uses the current console connected as potential target for vmsh")
-        .version(crate_version!())
-        .author(crate_authors!("\n"))
-        .arg(vmid_arg(1))
-        .arg(vmid_type_arg())
-        .arg(
-            Arg::new("stage2-path")
-                .long("stage2-path")
-                .num_args(1)
-                .default_value("/dev/.vmsh")
-                .help("Path where Stage2 is written to in the VM"),
-        )
-        .arg(command_args(2))
-        .arg(
-            Arg::new("backing-file")
-                .short('f')
-                .long("backing-file")
-                .num_args(1)
-                .default_value("/dev/null")
-                .help("File which shall be served as a block device."),
-        )
-        .arg(
-            Arg::new("pts")
-                .long("pts")
-                .num_args(1)
-                .help("Pseudoterminal seat to use for the command run in the VM. Use this when interactivity is required. "),
-        );
-
-    let main_app = Command::new("vmsh")
+fn cli() -> Command {
+    Command::new("vmsh")
         .about("Enter and execute in a virtual machine.")
         .version(crate_version!())
         .author(crate_authors!("\n"))
-        .subcommand_required(true)
+        .subcommand_required(false)
+        .arg_required_else_help(true)
+        .allow_external_subcommands(false)
         .arg(Arg::new("verbose")
              .short('v')
              .conflicts_with("loglevel")
@@ -254,14 +168,100 @@ fn main() {
              .short('l')
              .num_args(1)
              .help("Finegrained verbosity control. See docs.rs/env_logger. Examples: [error, warn, info, debug, trace]"))
-        .subcommands([
-            inspect_command,
-            attach_command,
-            coredump_command,
-            console_command
-        ]);
+        .subcommand(
+            Command::new("inspect")
+            .about("Inspect a virtual machine.")
+            .version(crate_version!())
+            .author(crate_authors!("\n"))
+            .arg(vmid_arg(1))
+            .arg(vmid_type_arg()))
+        .subcommand(Command::new("attach")
+                    .about("Attach (a block device) to a virtual machine.")
+                    .version(crate_version!())
+                    .author(crate_authors!("\n"))
+                    .arg(vmid_arg(1))
+                    .arg(vmid_type_arg())
+                    .arg(
+                        Arg::new("stage2-path")
+                        .long("stage2-path")
+                        .num_args(1)
+                        .default_value("/dev/.vmsh")
+                        .help("Path where Stage2 is written to in the VM"),
+                        )
+                    .arg(command_args(2))
+                    .arg(
+                        Arg::new("backing-file")
+                        .short('f')
+                        .long("backing-file")
+                        .num_args(1)
+                        .default_value("/dev/null")
+                        .value_parser(clap::value_parser!(PathBuf))
+                        .help("File which shall be served as a block device."),
+                        )
+                    .arg(
+                        Arg::new("mmio")
+                        .long("mmio")
+                        .num_args(1)
+                        .value_parser(clap::builder::PossibleValuesParser::new(["wrap_syscall", "ioregionfd"]))
+                        .default_value("wrap_syscall")
+                        .long_help("Backend used to serve Virtio MMIO memory of devices."),
+                        )
+                    .arg(
+                        Arg::new("pts")
+                        .long("pts")
+                        .num_args(1)
+                        .value_parser(clap::value_parser!(PathBuf))
+                        .help("Pseudoterminal seat to use for the command run in the VM. Use this when interactivity is required. ")
+                        )
+       )
+        .subcommand(
+            Command::new("coredump")
+                    .about("Get a coredump of a virtual machine.")
+                    .version(crate_version!())
+                    .author(crate_authors!("\n"))
+                    .arg(vmid_arg(1))
+                    .arg(vmid_type_arg())
+                    .arg(
+                        Arg::new("PATH")
+                        .help("path to coredump. Defaults to core.${pid}")
+                        .value_parser(clap::value_parser!(PathBuf))
+                        .index(2)
+                    )
+        )
+        .subcommand(
+            Command::new("console")
+                    .about("Uses the current console connected as potential target for vmsh")
+                    .version(crate_version!())
+                    .author(crate_authors!("\n"))
+                    .arg(vmid_arg(1))
+                    .arg(vmid_type_arg())
+                    .arg(
+                        Arg::new("stage2-path")
+                        .long("stage2-path")
+                        .num_args(1)
+                        .default_value("/dev/.vmsh")
+                        .help("Path where Stage2 is written to in the VM"),
+                        )
+                    .arg(command_args(2))
+                    .arg(
+                        Arg::new("backing-file")
+                        .short('f')
+                        .long("backing-file")
+                        .num_args(1)
+                        .default_value("/dev/null")
+                        .help("File which shall be served as a block device."),
+                        )
+                    .arg(
+                        Arg::new("pts")
+                        .long("pts")
+                        .num_args(1)
+                        .help("Pseudoterminal seat to use for the command run in the VM. Use this when interactivity is required. ")
+                    )
+        )
+}
 
-    let matches = main_app.get_matches();
+fn main() {
+    let matches = cli().get_matches();
     setup_logging(&matches);
     match matches.subcommand() {
         Some(("inspect", sub_matches)) => inspect(sub_matches),

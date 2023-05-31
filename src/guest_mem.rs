@@ -204,7 +204,8 @@ impl GuestMem {
                 let addr = entry.entry.addr();
                 let host_offset = require_with!(
                     self.maps.get(addr as usize),
-                    "no memslot of physical address {} of page table"
+                    "no memslot of physical address {} of page table",
+                    addr
                 );
                 sections.push(mapped_memory(&entry, host_offset));
                 largest_gap = range.start..(entry.virt_addr as usize);
@@ -233,7 +234,8 @@ impl GuestMem {
                 let addr = entry.entry.addr();
                 let host_offset = require_with!(
                     self.maps.get(addr as usize),
-                    "no memslot of physical address {} of page table"
+                    "no memslot of physical address {} of page table",
+                    addr
                 );
                 sections.push(mapped_memory(&entry, host_offset));
             }

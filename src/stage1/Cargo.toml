@@ -11,7 +11,7 @@ crate_type = ["cdylib", "staticlib"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [build-dependencies]
 build-utils = { path = "../build-utils" }
-cc = "1.0.69"
+cc = "1.0.79"
 
 [dependencies]
 chlorine = { version = "1.0.*", features = ["int_extras"] }

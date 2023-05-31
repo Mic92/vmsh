@@ -32,6 +32,7 @@ pub enum Error {
     Bus(bus::Error),
     Endpoint(EvmgrError),
     EventFd(io::Error),
+    QueueCreation(virtio_queue::Error),
     #[allow(dead_code)] // FIXME
     QueuesNotValid,
     #[allow(dead_code)] // FIXME
@@ -97,8 +98,8 @@ fn build_config_space() -> Vec<u8> {
 }
 
 // Arguments required when building a console device.
-pub struct ConsoleArgs<'a, M, B> {
-    pub common: CommonArgs<'a, M, B>,
+pub struct ConsoleArgs<'a, B> {
+    pub common: CommonArgs<'a, B>,
     /// None shall be interpreted as "sane default".
     pub pts: Option<PathBuf>,
 }

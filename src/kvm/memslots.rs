@@ -150,11 +150,10 @@ void kvm_vm_ioctl(struct pt_regs *ctx, struct file *filp) {
 }"#;
 
 fn bpf_prog(pid: Pid) -> Result<BPF> {
-    let uts_name = uname();
-    let raw_kernel_release = uts_name.release().split('.');
+    let uts_name = try_with!(uname(), "could not get uts name");
+    let raw_kernel_release = uts_name.release().to_string_lossy();
     let kernel_release = try_with!(
-        uts_name
-            .release()
+        raw_kernel_release
             .split('.')
             .map(|s| s.parse::<u32>())
             .collect::<std::result::Result<Vec<u32>, _>>(),

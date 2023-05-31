@@ -33,8 +33,8 @@ pub fn use_ioregionfd() -> bool {
     USE_IOREGIONFD.load(Ordering::Relaxed)
 }
 
-pub type Block = block::Block<Arc<GuestMemoryMmap>>;
-pub type Console = console::Console<Arc<GuestMemoryMmap>>;
+pub type Block = block::Block;
+pub type Console = console::Console;
 
 fn convert(pid: pid_t, mappings: &[Mapping]) -> Result<GuestMemoryMmap> {
     let mut regions: Vec<Arc<GuestRegionMmap>> = vec![];
@@ -64,7 +64,7 @@ fn convert(pid: pid_t, mappings: &[Mapping]) -> Result<GuestMemoryMmap> {
     // sort after guest address
     regions.sort_unstable_by_key(|r| r.start_addr());
 
-    // trows regions overlap error because start_addr (guest) is 0 for all regions.
+    // throws regions overlap error because start_addr (guest) is 0 for all regions.
     Ok(try_with!(
         GuestMemoryMmap::from_arc_regions(pid, regions),
         "GuestMemoryMmap error"

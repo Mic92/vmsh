@@ -9,15 +9,16 @@ use std::io::Write;
 use std::ops::DerefMut;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use virtio_device::{VirtioDevice, VirtioDeviceType};
 
 use event_manager::{MutEventSubscriber, RemoteEndpoint, Result as EvmgrResult, SubscriberId};
 use virtio_device::{VirtioConfig, VirtioDeviceActions, VirtioMmioDevice, VirtioQueueNotifiable};
+use virtio_device::{VirtioDevice, VirtioDeviceType};
 use virtio_queue::Queue;
+use virtio_queue::QueueT;
 use vm_device::bus::MmioAddress;
 use vm_device::device_manager::MmioManager;
 use vm_device::{DeviceMmio, MutDeviceMmio};
-use vm_memory::GuestAddressSpace;
+use vm_memory::GuestMemoryMmap;
 use vmm_sys_util::eventfd::EventFd;
 
 use crate::devices::use_ioregionfd;
@@ -39,14 +40,15 @@ use simple_error::{map_err_with, SimpleError};
 pub(super) const RX_QUEUE_IDX: u16 = 0;
 pub(super) const TX_QUEUE_IDX: u16 = 1;
 
-pub struct Console<M: GuestAddressSpace> {
-    virtio_cfg: VirtioConfig<M>,
+pub struct Console {
+    virtio_cfg: VirtioConfig<Queue>,
     pub mmio_cfg: MmioConfig,
     endpoint: RemoteEndpoint<Arc<Mutex<dyn MutEventSubscriber + Send>>>,
     pub irq_ack_handler: Arc<Mutex<IrqAckHandler>>,
     irqfd: Arc<EventFd>,
     pub ioregionfd: Option<IoRegionFd>,
     pub uioefd: UserspaceIoEventFd,
+    mem: Arc<GuestMemoryMmap>,
     tx_fd: Option<IoEvent>,
     /// only used when ioregionfd != None
     sub_id: Option<SubscriberId>,
@@ -57,11 +59,8 @@ pub struct Console<M: GuestAddressSpace> {
     handler: Option<Arc<Mutex<dyn MutEventSubscriber + Send>>>,
 }
 
-impl<M> Console<M>
-where
-    M: GuestAddressSpace + Clone + Send + 'static,
-{
-    pub fn new<B>(mut args: ConsoleArgs<M, B>) -> Result<Arc<Mutex<Self>>>
+impl Console {
+    pub fn new<B>(mut args: ConsoleArgs<B>) -> Result<Arc<Mutex<Self>>>
     where
         // We're using this (more convoluted) bound so we can pass both references and smart
         // pointers such as mutex guards here.
@@ -76,7 +75,10 @@ where
             | 1 << VIRTIO_CONSOLE_F_SIZE;
 
         // A console device has two queue.
-        let queues = vec![Queue::new(args.common.mem.clone(), QUEUE_MAX_SIZE); 2];
+        let queues = vec![
+            Queue::new(QUEUE_MAX_SIZE).map_err(Error::QueueCreation)?,
+            Queue::new(QUEUE_MAX_SIZE).map_err(Error::QueueCreation)?,
+        ];
 
         let config_space = build_config_space();
         let virtio_cfg = VirtioConfig::new(device_features, queues, config_space);
@@ -128,6 +130,7 @@ where
             irq_ack_handler,
             irqfd,
             ioregionfd,
+            mem: Arc::clone(&args.common.mem),
             tx_fd: Some(tx_fd),
             uioefd,
             sub_id: None,
@@ -185,14 +188,18 @@ where
             }
         };
 
+        let rxq = self.virtio_cfg.queues.remove(RX_QUEUE_IDX.into());
+        let txq = self.virtio_cfg.queues.remove(RX_QUEUE_IDX.into());
+
         let handler = Arc::new(Mutex::new(LogQueueHandler {
             driver_notify,
             tx_fd: match self.tx_fd.take() {
                 Some(tx_fd) => tx_fd,
                 None => return Err(Error::Simple(SimpleError::new("no tx_fd set"))),
             },
-            rxq: self.virtio_cfg.queues[RX_QUEUE_IDX as usize].clone(),
-            txq: self.virtio_cfg.queues[TX_QUEUE_IDX as usize].clone(),
+            mem: Arc::clone(&self.mem),
+            rxq,
+            txq,
             console_out,
             console_in,
         }));
@@ -232,7 +239,7 @@ where
     }
 }
 
-impl<M: GuestAddressSpace + Clone + Send + 'static> MaybeIoRegionFd for Console<M> {
+impl MaybeIoRegionFd for Console {
     fn get_ioregionfd(&mut self) -> &mut Option<IoRegionFd> {
         &mut self.ioregionfd
     }
@@ -240,25 +247,25 @@ impl<M: GuestAddressSpace + Clone + Send + 'static> MaybeIoRegionFd for Console<
 
 // We now implement `WithVirtioConfig` and `WithDeviceOps` to get the automatic implementation
 // for `VirtioDevice`.
-impl<M: GuestAddressSpace + Clone + Send + 'static> VirtioDeviceType for Console<M> {
+impl VirtioDeviceType for Console {
     fn device_type(&self) -> u32 {
         CONSOLE_DEVICE_ID
     }
 }
 
-impl<M: GuestAddressSpace + Clone + Send + 'static> Borrow<VirtioConfig<M>> for Console<M> {
-    fn borrow(&self) -> &VirtioConfig<M> {
+impl Borrow<VirtioConfig<Queue>> for Console {
+    fn borrow(&self) -> &VirtioConfig<Queue> {
         &self.virtio_cfg
     }
 }
 
-impl<M: GuestAddressSpace + Clone + Send + 'static> BorrowMut<VirtioConfig<M>> for Console<M> {
-    fn borrow_mut(&mut self) -> &mut VirtioConfig<M> {
+impl BorrowMut<VirtioConfig<Queue>> for Console {
+    fn borrow_mut(&mut self) -> &mut VirtioConfig<Queue> {
         &mut self.virtio_cfg
     }
 }
 
-impl<M: GuestAddressSpace + Clone + Send + 'static> VirtioDeviceActions for Console<M> {
+impl VirtioDeviceActions for Console {
     type E = Error;
 
     /// make sure to set self.vmm.wrapper to Some() before activating. Typically this is done by
@@ -278,7 +285,7 @@ impl<M: GuestAddressSpace + Clone + Send + 'static> VirtioDeviceActions for Cons
     }
 }
 
-impl<M: GuestAddressSpace + Clone + Send + 'static> VirtioQueueNotifiable for Console<M> {
+impl VirtioQueueNotifiable for Console {
     fn queue_notify(&mut self, val: u32) {
         if use_ioregionfd() {
             self.uioefd.queue_notify(val);
@@ -287,9 +294,9 @@ impl<M: GuestAddressSpace + Clone + Send + 'static> VirtioQueueNotifiable for Co
     }
 }
 
-impl<M: GuestAddressSpace + Clone + Send + 'static> VirtioMmioDevice<M> for Console<M> {}
+impl VirtioMmioDevice for Console {}
 
-impl<M: GuestAddressSpace + Clone + Send + 'static> MutDeviceMmio for Console<M> {
+impl MutDeviceMmio for Console {
     fn mmio_read(&mut self, _base: MmioAddress, offset: u64, data: &mut [u8]) {
         self.read(offset, data);
     }

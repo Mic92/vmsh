@@ -1,4 +1,4 @@
-use clap::{App, Arg};
+use clap::{Arg, Command};
 use kvm_bindings as kvmb;
 use nix::unistd::Pid;
 use simple_error::{bail, require_with, try_with};
@@ -313,14 +313,19 @@ fn vcpu_maps(pid: Pid) -> Result<()> {
     Ok(())
 }
 
-fn subtest(name: &str) -> App {
-    App::new(name).arg(Arg::new("pid").required(true).index(1))
+fn subtest(name: &'static str) -> Command {
+    Command::new(name).arg(
+        Arg::new("pid")
+            .required(true)
+            .value_parser(clap::value_parser!(u32))
+            .index(1),
+    )
 }
 
 fn main() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
-    let app = App::new("test_ioctls")
+    let app = Command::new("test_ioctls")
         .about("Something between integration and unit test to be used by pytest.")
         .subcommand(subtest("alloc_mem"))
         .subcommand(subtest("inject"))
@@ -337,8 +342,10 @@ fn main() {
     let matches = app.get_matches();
     let subcommand_name = matches.subcommand_name().expect("subcommad required");
     let subcommand_matches = matches.subcommand_matches(subcommand_name).expect("foo");
-    let pid = subcommand_matches.value_of_t_or_exit("pid");
-    let pid = Pid::from_raw(pid);
+    let pid = subcommand_matches
+        .get_one::<Pid>("pid")
+        .expect("`pid` is required")
+        .clone();
 
     let result = match subcommand_name {
         "alloc_mem" => alloc_mem(pid),

@@ -16,14 +16,15 @@ checksum = "cdb031dd78e28731d87d56cc8ffef4a8f36ca26c38fe2de700543e627f8a464a"
 
 [[package]]
 name = "bcc"
-version = "0.0.32"
+version = "0.0.33"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ba2c196094bae3582a200edcb36436cc2a6bc766c29b25496ff5618a8ebd2283"
+checksum = "ce860f38082f1544a557dfa447838143e1b0bfa061c0369e407ebadf640001d1"
 dependencies = [
  "bcc-sys",
- "bitflags",
+ "bitflags 1.3.2",
  "byteorder",
  "libc",
+ "socket2",
  "thiserror",
 ]
 
@@ -40,6 +41,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
 
 [[package]]
+name = "bitflags"
+version = "2.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6776fc96284a0bb647b615056fc496d1fe1644a7ab01829818a6d91cae888b84"
+
+[[package]]
 name = "build-utils"
 version = "0.0.1"
 
@@ -51,9 +58,9 @@ checksum = "14c189c53d098945499cdfa7ecc63567cf3886b3332b312a5b4585d8d3a6a610"
 
 [[package]]
 name = "cc"
-version = "1.0.71"
+version = "1.0.79"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "79c2681d6594606957bbb8631c4b90a7fcaaa72cdb714743a437b156d6a7eedd"
+checksum = "50d30906286121d95be3d479533b458f87493b30a4b5f79a607db8f5d11aa91f"
 
 [[package]]
 name = "cfg-if"
@@ -83,9 +90,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4f423e341edefb78c9caba2d9c7f7687d0e72e89df3ce3394554754393ac3990"
 dependencies = [
  "anstyle",
- "bitflags",
+ "bitflags 1.3.2",
  "clap_lex",
  "once_cell",
+ "strsim",
 ]
 
 [[package]]
@@ -110,25 +118,25 @@ version = "0.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6a7b18d35bf8ec3bac59c3ec29cf1f1b46e764e00b42a9c0c754d06e38e78f3b"
 dependencies = [
- "bitflags",
+ "bitflags 1.3.2",
  "log",
  "xmas-elf",
 ]
 
 [[package]]
 name = "env_logger"
-version = "0.9.0"
+version = "0.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0b2cf0344971ee6c64c31be0d530793fba457d322dfec2810c453d0ef228f9c3"
+checksum = "a12e6657c4c97ebab115a42dcee77225f7f482cdd841cf7088c657a42e9e00e7"
 dependencies = [
  "log",
 ]
 
 [[package]]
 name = "event-manager"
-version = "0.2.1"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "377fa591135fbe23396a18e2655a6d5481bf7c5823cdfa3cc81b01a229cbe640"
+checksum = "2bbb5f730c95a458654dee0afb13f1ebb4fc3d7b772789d5f30713ec68fed75d"
 dependencies = [
  "libc",
  "vmm-sys-util",
@@ -162,9 +170,9 @@ dependencies = [
 
 [[package]]
 name = "kvm-bindings"
-version = "0.5.0"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a78c049190826fff959994b7c1d8a2930d0a348f1b8f3aa4f9bb34cd5d7f2952"
+checksum = "efe70e65a5b092161d17f5005b66e5eefe7a94a70c332e755036fc4af78c4e79"
 
 [[package]]
 name = "lazy_static"
@@ -180,33 +188,34 @@ checksum = "2b00cc1c228a6782d0f076e7b232802e0c5689d41bb5df366f2a6b6621cfdfe1"
 
 [[package]]
 name = "log"
-version = "0.4.16"
+version = "0.4.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6389c490849ff5bc16be905ae24bc913a9c8892e19b2341dbc175e14c341c2b8"
+checksum = "abb12e687cfb44aa40f41fc3978ef76448f9b6038cad6aef4259d3c095a2382e"
 dependencies = [
  "cfg-if",
 ]
 
 [[package]]
 name = "memoffset"
-version = "0.6.4"
+version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "59accc507f1338036a0477ef61afdae33cde60840f4dfe481319ce3ad116ddf9"
+checksum = "5de893c32cde5f383baa4c04c5d6dbdd735cfd4a794b0debdb2bb1b421da5ff4"
 dependencies = [
  "autocfg",
 ]
 
 [[package]]
 name = "nix"
-version = "0.23.1"
+version = "0.26.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9f866317acbd3a240710c63f065ffb1e4fd466259045ccb504130b7f668f35c6"
+checksum = "bfdda3d196821d6af13126e40375cdf7da646a96114af134d5f417a9a1dc8e1a"
 dependencies = [
- "bitflags",
- "cc",
+ "bitflags 1.3.2",
  "cfg-if",
  "libc",
  "memoffset",
+ "pin-utils",
+ "static_assertions",
 ]
 
 [[package]]
@@ -236,6 +245,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b7e5500299e16ebb147ae15a00a942af264cf3688f47923b8fc2cd5858f23ad3"
 
 [[package]]
+name = "pin-utils"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8b870d8c151b6f2fb93e84a13146138f05d02ed11c7e7c54f8826aaaf7c9f184"
+
+[[package]]
 name = "proc-macro2"
 version = "1.0.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -259,7 +274,7 @@ version = "0.2.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8383f39639269cde97d255a32bdb68c047337295414940c68bdd30c2e13203ff"
 dependencies = [
- "bitflags",
+ "bitflags 1.3.2",
 ]
 
 [[package]]
@@ -273,9 +288,19 @@ dependencies = [
 
 [[package]]
 name = "simple-error"
-version = "0.2.3"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cc47a29ce97772ca5c927f75bac34866b16d64e07f330c3248e2d7226623901b"
+checksum = "8542b68b8800c3cda649d2c72d688b6907b30f1580043135d61669d4aad1c175"
+
+[[package]]
+name = "socket2"
+version = "0.4.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "64a4a911eed85daf18834cfaa86a79b7d266ff93ff5ba14005426219480ed662"
+dependencies = [
+ "libc",
+ "winapi",
+]
 
 [[package]]
 name = "stage1-interface"
@@ -283,6 +308,18 @@ version = "0.1.0"
 dependencies = [
  "chlorine",
 ]
+
+[[package]]
+name = "static_assertions"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
+
+[[package]]
+name = "strsim"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "73473c0e59e6d5812c5dfe2a064a6444949f089e20eec9a2e5506596494e4623"
 
 [[package]]
 name = "syn"
@@ -336,11 +373,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8ccb82d61f80a663efe1f787a51b16b5a51e3314d6ac365b08639f52387b33f3"
 
 [[package]]
+name = "virtio-bindings"
+version = "0.2.0"
+source = "git+https://github.com/Mic92/vm-virtio.git?rev=82a8e84203b00d6bab0774cc686d0f2a0998bb92#82a8e84203b00d6bab0774cc686d0f2a0998bb92"
+
+[[package]]
 name = "virtio-blk"
 version = "0.1.0"
-source = "git+https://github.com/Mic92/vm-virtio.git?rev=d90ac73e369824ddc577f47c59e9303b1c7c8e7d#d90ac73e369824ddc577f47c59e9303b1c7c8e7d"
+source = "git+https://github.com/Mic92/vm-virtio.git?rev=82a8e84203b00d6bab0774cc686d0f2a0998bb92#82a8e84203b00d6bab0774cc686d0f2a0998bb92"
 dependencies = [
  "log",
+ "virtio-bindings",
  "virtio-device",
  "virtio-queue",
  "vm-memory",
@@ -350,19 +393,21 @@ dependencies = [
 [[package]]
 name = "virtio-device"
 version = "0.1.0"
-source = "git+https://github.com/Mic92/vm-virtio.git?rev=d90ac73e369824ddc577f47c59e9303b1c7c8e7d#d90ac73e369824ddc577f47c59e9303b1c7c8e7d"
+source = "git+https://github.com/Mic92/vm-virtio.git?rev=82a8e84203b00d6bab0774cc686d0f2a0998bb92#82a8e84203b00d6bab0774cc686d0f2a0998bb92"
 dependencies = [
  "log",
+ "virtio-bindings",
  "virtio-queue",
  "vm-memory",
 ]
 
 [[package]]
 name = "virtio-queue"
-version = "0.1.0"
-source = "git+https://github.com/Mic92/vm-virtio.git?rev=d90ac73e369824ddc577f47c59e9303b1c7c8e7d#d90ac73e369824ddc577f47c59e9303b1c7c8e7d"
+version = "0.8.0"
+source = "git+https://github.com/Mic92/vm-virtio.git?rev=82a8e84203b00d6bab0774cc686d0f2a0998bb92#82a8e84203b00d6bab0774cc686d0f2a0998bb92"
 dependencies = [
  "log",
+ "virtio-bindings",
  "vm-memory",
  "vmm-sys-util",
 ]
@@ -370,12 +415,12 @@ dependencies = [
 [[package]]
 name = "vm-device"
 version = "0.1.0"
-source = "git+https://github.com/rust-vmm/vm-device?rev=989c315712b80a538331fe05716323f2f64abf2e#989c315712b80a538331fe05716323f2f64abf2e"
+source = "git+https://github.com/rust-vmm/vm-device?rev=d5937f60b0c5e3b0cb6cfbb3294ccd3f4dc1aa15#d5937f60b0c5e3b0cb6cfbb3294ccd3f4dc1aa15"
 
 [[package]]
 name = "vm-memory"
-version = "0.5.0"
-source = "git+https://github.com/pogobanane/vm-memory.git?rev=3846add06a58f3df2bdd0b55b4ad064c20d21f53#3846add06a58f3df2bdd0b55b4ad064c20d21f53"
+version = "0.11.0"
+source = "git+https://github.com/Mic92/vm-memory.git?rev=2cf066e0cad4c11ee6effe03a1b12bcc346ac5b7#2cf066e0cad4c11ee6effe03a1b12bcc346ac5b7"
 dependencies = [
  "libc",
  "log",
@@ -385,11 +430,11 @@ dependencies = [
 
 [[package]]
 name = "vmm-sys-util"
-version = "0.9.0"
+version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "733537bded03aaa93543f785ae997727b30d1d9f4a03b7861d23290474242e11"
+checksum = "dd64fe09d8e880e600c324e7d664760a17f56e9672b7495a86381b49e4f72f46"
 dependencies = [
- "bitflags",
+ "bitflags 1.3.2",
  "libc",
 ]
 
@@ -398,8 +443,9 @@ name = "vmsh"
 version = "0.1.0"
 dependencies = [
  "bcc",
- "bitflags",
+ "bitflags 2.3.1",
  "build-utils",
+ "cc",
  "clap",
  "container-pid",
  "elfloader",
