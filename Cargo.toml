@@ -9,10 +9,6 @@ edition = "2018"
 default-run = "vmsh"
 license = "MIT"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-[dev-dependencies]
-tempfile = "3"
-
 [build-dependencies]
 build-utils = { path = "src/build-utils" }
 
