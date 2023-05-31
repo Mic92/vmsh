@@ -380,6 +380,7 @@ impl Drop for Process {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ioutils::tmp::tempdir;
     use nix::{fcntl::OFlag, unistd::pipe2};
     use std::fs::File;
     use std::io::Write;
@@ -387,7 +388,6 @@ mod tests {
     use std::path::Path;
     use std::process::Command;
     use std::process::Stdio;
-    use tempfile::tempdir;
 
     fn compile_executable(source: &str, target: &Path) {
         let cc = std::env::var("CC").unwrap_or_else(|_| String::from("cc"));
