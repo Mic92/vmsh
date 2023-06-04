@@ -1,12 +1,15 @@
 name: CI
 on:
   push:
-    branches: [ main ]
+    branches: 
+      - main 
+      - staging
+      - trying
   pull_request:
-    branches: [ main ]
     types: [ opened, reopened, synchronize ]
 jobs:
-  test:
+  build:
+    name: Build
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -30,7 +33,7 @@ jobs:
         run: |
           # ubuntu forgot to set a soname symlink somehow
           sudo apt install libbpfcc musl-tools && sudo ln -s /usr/lib/x86_64-linux-gnu/libbcc.so.0 /usr/lib/x86_64-linux-gnu/libbcc.so
-      - name: Test
+      - name: Build
         uses: actions-rs/cargo@v1
         with:
           command: test
