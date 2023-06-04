@@ -1,0 +1,6 @@
+cut_body_after = "" # don't include text from the PR body in the merge commit message
+status = [
+  "Build (x86_64-unknown-linux-gnu, 1.69.0)",
+  "Cargo Deny (crate metadata checks)",
+  "Linting (fmt + clippy) (1.69.0, x86_64-unknown-linux-gnu)"
+]
