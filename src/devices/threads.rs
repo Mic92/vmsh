@@ -10,7 +10,7 @@ use simple_error::{bail, require_with, simple_error, try_with};
 use stage1_interface::DeviceState;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::SyncSender;
+use std::sync::mpsc::Sender;
 use std::sync::Arc;
 use std::sync::{Condvar, Mutex};
 use virtio_device::{VirtioDevice, WithDriverSelect};
@@ -127,7 +127,7 @@ impl Drop for DriverNotifier {
 fn event_thread(
     mut event_mgr: SubscriberEventManager,
     device_space: &DeviceContext,
-    err_sender: SyncSender<()>,
+    err_sender: Sender<()>,
 ) -> Result<InterrutableThread<(), Option<Arc<DeviceContext>>>> {
     let blkdev = device_space.blkdev.clone();
     let ack_handler = {
@@ -167,7 +167,7 @@ fn event_thread(
 /// Periodically print block device state
 fn blkdev_monitor_thread(
     device: &DeviceContext,
-    err_sender: SyncSender<()>,
+    err_sender: Sender<()>,
 ) -> Result<InterrutableThread<(), Option<Arc<DeviceContext>>>> {
     let blkdev = device.blkdev.clone();
     let res = InterrutableThread::spawn(
@@ -268,7 +268,7 @@ fn handle_mmio_exits(
 fn mmio_exit_handler_thread(
     vm: &Arc<Hypervisor>,
     device: Arc<DeviceContext>,
-    err_sender: SyncSender<()>,
+    err_sender: Sender<()>,
     driver_notifier: &Arc<DriverNotifier>,
 ) -> Result<InterrutableThread<(), Option<Arc<DeviceContext>>>> {
     let driver_notifier = Arc::clone(driver_notifier);
@@ -354,7 +354,7 @@ fn ioregion_handler_thread(
     devices: Arc<DeviceContext>,
     device: Arc<Mutex<dyn MaybeIoRegionFd + Send>>,
     mmio_mgr: Arc<Mutex<IoPirate>>,
-    err_sender: SyncSender<()>,
+    err_sender: Sender<()>,
 ) -> Result<InterrutableThread<(), Option<Arc<DeviceContext>>>> {
     let res = InterrutableThread::spawn(
         "ioregion-handler",
@@ -412,7 +412,7 @@ impl DeviceSet {
         vm: &Arc<Hypervisor>,
         device_status: DeviceStatus,
         driver_status: DriverStatus,
-        err_sender: SyncSender<()>,
+        err_sender: Sender<()>,
     ) -> Result<(Threads, Arc<DriverNotifier>)> {
         let driver_notifier = Arc::new(DriverNotifier::new(
             device_status,

@@ -3,7 +3,7 @@ use nix::unistd::Pid;
 use simple_error::{require_with, try_with};
 use std::fs::read_to_string;
 use std::path::PathBuf;
-use std::sync::mpsc::sync_channel;
+use std::sync::mpsc::channel;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -40,9 +40,9 @@ pub fn get_irq_num(pid: Pid) -> Result<usize> {
 pub fn attach(opts: &AttachOptions) -> Result<()> {
     info!("attaching");
 
-    let (sender, receiver) = sync_channel(1);
+    let (sender, receiver) = channel();
 
-    signal_handler::setup(sender.clone())?;
+    signal_handler::setup(sender.clone());
 
     let mut vm = try_with!(
         kvm::hypervisor::get_hypervisor(opts.pid),

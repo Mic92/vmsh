@@ -4,7 +4,7 @@ use std::fmt::Debug;
 use std::io;
 use std::ops::FnOnce;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::SyncSender;
+use std::sync::mpsc::Sender;
 use std::sync::Arc;
 use std::thread::Builder;
 use std::thread::JoinHandle;
@@ -41,7 +41,7 @@ where
     /// Creates and runs a threads with the given name.
     /// The thread function will receive an atomic boolean as its first argument
     /// and should stop it's work once it becomes true.
-    pub fn spawn<F>(name: &str, err_sender: SyncSender<()>, func: F, ctx: C) -> io::Result<Self>
+    pub fn spawn<F>(name: &str, err_sender: Sender<()>, func: F, ctx: C) -> io::Result<Self>
     where
         F: FnOnce(&C, Arc<AtomicBool>) -> Result<T>,
         F: Send + 'static,

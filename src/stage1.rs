@@ -6,7 +6,7 @@ use simple_error::bail;
 use simple_error::try_with;
 use stage1_interface::DeviceState;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::SyncSender;
+use std::sync::mpsc::Sender;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -102,7 +102,7 @@ impl Stage1 {
         &self,
         hv: Arc<Hypervisor>,
         driver_status: DriverStatus,
-        result_sender: SyncSender<()>,
+        result_sender: Sender<()>,
     ) -> Result<InterrutableThread<(), ()>> {
         info!("spawn stage1 in vm at ip {:#x}", self.regs.ip());
         try_with!(
