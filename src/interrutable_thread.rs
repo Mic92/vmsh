@@ -1,5 +1,6 @@
 use log::info;
 use simple_error::bail;
+use std::fmt::Debug;
 use std::io;
 use std::ops::FnOnce;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -22,6 +23,14 @@ where
 {
     handle: JoinHandle<(Result<T>, C)>,
     should_stop: Arc<AtomicBool>,
+}
+
+impl Debug for InterrutableThread<(), ()> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("InterrutableThread")
+            .field("name", &self.name())
+            .finish()
+    }
 }
 
 impl<T, C> InterrutableThread<T, C>
