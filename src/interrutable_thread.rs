@@ -32,7 +32,7 @@ where
     /// Creates and runs a threads with the given name.
     /// The thread function will receive an atomic boolean as its first argument
     /// and should stop it's work once it becomes true.
-    pub fn spawn<F>(name: &str, err_sender: &SyncSender<()>, func: F, ctx: C) -> io::Result<Self>
+    pub fn spawn<F>(name: &str, err_sender: SyncSender<()>, func: F, ctx: C) -> io::Result<Self>
     where
         F: FnOnce(&C, Arc<AtomicBool>) -> Result<T>,
         F: Send + 'static,
@@ -42,7 +42,6 @@ where
             .stack_size(DEFAULT_THREAD_STACKSIZE);
         let should_stop = Arc::new(AtomicBool::new(false));
         let should_stop2 = Arc::clone(&should_stop);
-        let err_sender = err_sender.clone();
 
         let handle = builder.spawn(move || {
             let res = func(&ctx, should_stop2);

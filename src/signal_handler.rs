@@ -37,8 +37,8 @@ extern "C" fn signal_handler(_: ::libc::c_int) {
     _stop_vmsh(true);
 }
 
-pub fn setup(sender: &SyncSender<()>) -> Result<()> {
-    try_with!(SIGNAL_SENDER.lock(), "cannot get lock").replace(sender.clone());
+pub fn setup(sender: SyncSender<()>) -> Result<()> {
+    try_with!(SIGNAL_SENDER.lock(), "cannot get lock").replace(sender);
 
     let sig_action = signal::SigAction::new(
         signal::SigHandler::Handler(signal_handler),

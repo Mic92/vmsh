@@ -42,7 +42,7 @@ pub fn attach(opts: &AttachOptions) -> Result<()> {
 
     let (sender, receiver) = sync_channel(1);
 
-    signal_handler::setup(&sender)?;
+    signal_handler::setup(sender.clone())?;
 
     let mut vm = try_with!(
         kvm::hypervisor::get_hypervisor(opts.pid),
@@ -85,17 +85,16 @@ pub fn attach(opts: &AttachOptions) -> Result<()> {
     );
     let driver_status = require_with!(stage1.driver_status.take(), "no driver status set");
     let stage1_thread = try_with!(
-        stage1.spawn(Arc::clone(&vm), driver_status.clone(), &sender),
+        stage1.spawn(Arc::clone(&vm), driver_status.clone(), sender.clone()),
         "failed to spawn stage1"
     );
     let device_status = require_with!(stage1.device_status.take(), "device status is not set");
     let (threads, driver_notifier) = try_with!(
-        devices.start(&vm, device_status, driver_status, &sender),
+        devices.start(&vm, device_status, driver_status, sender),
         "failed to start devices"
     );
 
     info!("blkdev queue ready.");
-    drop(sender);
 
     // termination wait or vmsh_stop()
     let _ = receiver.recv();
