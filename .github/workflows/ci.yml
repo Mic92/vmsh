@@ -1,9 +1,11 @@
 name: CI
 on:
   push:
-    branches: [ main ]
+    branches: 
+      - main 
+      - staging
+      - trying
   pull_request:
-    branches: [ main ]
     types: [ opened, reopened, synchronize ]
 jobs:
   build:
