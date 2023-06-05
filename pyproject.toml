@@ -20,5 +20,9 @@ module = "pytest.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-module = "invoke.*"
+module = "psutil.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "pandas.*"
 ignore_missing_imports = true
