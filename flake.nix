@@ -25,9 +25,6 @@
   outputs = inputs @ { flake-parts, ... }:
     flake-parts.lib.mkFlake { inherit inputs; } ({ self, lib, ... }: {
       systems = [ "x86_64-linux" ];
-      imports = [
-        inputs.treefmt-nix.flakeModule
-      ];
       perSystem = { config, pkgs, inputs', ... }:
         let
           fenixPkgs = inputs'.fenix.packages;
@@ -59,6 +56,7 @@
               ps.natsort
             ]))
           ];
+
 
           ciDeps = [
             rustToolchain
@@ -103,6 +101,7 @@
             # used in tests/xfstests.py
             xfstests = pkgs.callPackage ./nix/xfstests.nix { };
 
+            not-os-image = not-os-image'.json;
             not-os-image_4_19 = (not-os-image'.override { linuxPackages = pkgs.linuxPackages_4_19; }).json;
             not-os-image_5_10 = (not-os-image'.override { linuxPackages = pkgs.linuxPackages_5_10; }).json;
             not-os-image_5_15 = (not-os-image'.override { linuxPackages = pkgs.linuxPackages_5_15; }).json;
@@ -131,7 +130,7 @@
             alpine-image = pkgs.callPackage ./nix/alpine-image.nix { };
             fat-image = pkgs.callPackage ./nix/fat-image.nix { };
 
-            phoronix-test-suite = pkgs.callPackage ./nix/phoronix.nix { };
+            phoronix-test-suite = pkgs.callPackage ./nix/phoronix.nix {};
           };
           legacyPackages = {
             linuxPackages_ioregionfd = pkgs.recurseIntoAttrs (pkgs.linuxPackagesFor config.packages.linux_ioregionfd);
@@ -176,39 +175,6 @@
             ci-shell = pkgs.mkShell {
               inherit (config.packages.vmsh) buildInputs;
               nativeBuildInputs = ciDeps;
-            };
-          };
-
-          treefmt = {
-            # Used to find the project root
-            projectRootFile = "flake.lock";
-            programs.rustfmt.enable = true;
-            settings.formatter = {
-              just = {
-                command = "sh";
-                options = [
-                  "-eucx"
-                  ''
-                    for f in "$@"; do
-                      cd "$(dirname "$f")"
-                      ${pkgs.lib.getExe pkgs.just} --unstable --fmt
-                    done
-                  ''
-                ];
-                includes = [ "justfile" "Justfile" ];
-              };
-              python = {
-                command = "sh";
-                options = [
-                  "-eucx"
-                  ''
-                    ${pkgs.lib.getExe pkgs.ruff} --fix "$@"
-                    ${pkgs.lib.getExe pkgs.python3.pkgs.black} "$@"
-                  ''
-                  "--" # this argument is ignored by bash
-                ];
-                includes = [ "*.py" ];
-              };
             };
           };
         };
