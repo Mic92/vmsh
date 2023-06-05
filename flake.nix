@@ -96,8 +96,6 @@
             # see justfile/build-linux-shell
             kernel-deps = pkgs.callPackage ./nix/kernel-deps.nix { };
 
-            # for testing
-            kvmtool = pkgs.callPackage ./nix/kvmtool.nix { };
             # used in tests/xfstests.py
             xfstests = pkgs.callPackage ./nix/xfstests.nix { };
 
@@ -154,8 +152,8 @@
                 pkgs.cloud-hypervisor
                 pkgs.crosvm
                 pkgs.firectl
-                config.packages.kvmtool
                 pkgs.firecracker
+                pkgs.kvmtool
 
                 # for xfstests:
                 pkgs.parted
