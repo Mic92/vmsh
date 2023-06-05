@@ -170,8 +170,6 @@
             pkgs.just
             pkgs.cargo-watch
             pkgs.cargo-deny
-            pkgs.pre-commit
-            pkgs.git # needed for pre-commit install
             pkgs.rust-analyzer
             pkgs.gdb
             # pkgs.libguestfs-with-appliance # needed for just attach-qemu-img and thus stress-test
@@ -188,9 +186,6 @@
             xfstests
           ];
 
-          shellHook = ''
-            pre-commit install
-          '';
           # interesting when supporting aarch64
           #CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER =
           #  "${pkgs.pkgsCross.aarch64-multiplatform.stdenv.cc}/bin/aarch64-unknown-linux-gnu-gcc";
