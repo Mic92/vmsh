@@ -104,6 +104,7 @@
             not-os-image_5_10 = (not-os-image'.override { linuxPackages = pkgs.linuxPackages_5_10; }).json;
             not-os-image_5_15 = (not-os-image'.override { linuxPackages = pkgs.linuxPackages_5_15; }).json;
             not-os-image_6_1 = (not-os-image'.override { linuxPackages = pkgs.linuxPackages_6_1; }).json;
+            not-os-image_6_3 = (not-os-image'.override { linuxPackages = pkgs.linuxPackages_6_3; }).json;
 
             measurement-image = (pkgs.callPackage ./nix/not-os-image.nix {
               inherit (inputs) not-os;
