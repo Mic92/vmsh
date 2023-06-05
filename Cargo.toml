@@ -38,7 +38,7 @@ signal-hook = "0.3.15"
 bcc = "0.0.33"
 simple-error = "0.3.0"
 kvm-bindings = "0.6.0"
-env_logger = { version = "0.9.3", default-features = false }
+env_logger = { version = "0.10.0", default-features = false }
 lazy_static = "1.4.0"
 container-pid = ">=0.2"
 num-traits = "0.2"
