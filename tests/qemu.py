@@ -116,10 +116,10 @@ def get_ssh_port(session: QmpSession) -> int:
         "human-monitor-command", args={"command-line": "info usernet"}
     )
     ssh_port = None
-    for l in usernet_info["return"].splitlines():
-        fields = l.split()
+    for line in usernet_info["return"].splitlines():
+        fields = line.split()
         if "TCP[HOST_FORWARD]" in fields and "22" in fields:
-            ssh_port = int(l.split()[3])
+            ssh_port = int(line.split()[3])
     assert ssh_port is not None
     return ssh_port
 

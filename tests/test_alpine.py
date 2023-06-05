@@ -24,7 +24,7 @@ def test_attach(
             try:
                 vmsh.wait_until_line(
                     "no known insecure packages found",
-                    lambda l: "no known insecure packages found" in l,
+                    lambda line: "no known insecure packages found" in line,
                 )
             finally:
                 res = vm.ssh_cmd(["dmesg"], check=False)

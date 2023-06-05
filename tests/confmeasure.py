@@ -9,9 +9,9 @@ from typing import List, Optional, Type
 import pytest
 from qemu import QemuVm, VmImage, spawn_qemu
 from root import TEST_ROOT
+from vmsh import VmshPopen, spawn_vmsh_command
 
 from nix import busybox_image, notos_image
-from vmsh import VmshPopen, spawn_vmsh_command
 
 sys.path.append(str(TEST_ROOT.parent))
 

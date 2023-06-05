@@ -61,7 +61,7 @@ def testbench_console(
             try:
                 vmsh.wait_until_line(
                     "stage1 driver started",
-                    lambda l: "stage1 driver started" in l,
+                    lambda line: "stage1 driver started" in line,
                 )
             finally:
                 yield vm
@@ -150,7 +150,7 @@ def testbench(
                 try:
                     vmsh.wait_until_line(
                         "stage1 driver started",
-                        lambda l: "stage1 driver started" in l,
+                        lambda line: "stage1 driver started" in line,
                     )
                 finally:
                     if mounts:
