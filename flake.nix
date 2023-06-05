@@ -178,7 +178,7 @@
         };
       flake = {
         nixosModules.linux-ioregionfd = { pkgs, lib, ... }: {
-          boot.kernelPackages = lib.mkForce self.packageSets.${pkgs.system}.linuxPackages_ioregionfd;
+          boot.kernelPackages = lib.mkForce self.legacyPackages.${pkgs.system}.linuxPackages_ioregionfd;
         };
         lib.nixpkgsRev = inputs.nixpkgs.shortRev;
       };
