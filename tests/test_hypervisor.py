@@ -139,7 +139,7 @@ def hypervisor_test(helpers: conftest.Helpers, flake_name: str, command: str) ->
             try:
                 vmsh.wait_until_line(
                     "works",
-                    lambda l: "works" in l,
+                    lambda line: "works" in line,
                 )
             except Exception:
                 print(tmux_logs(tmux_session))
@@ -184,7 +184,7 @@ def test_qemu_and_change_password(helpers: conftest.Helpers) -> None:
             try:
                 vmsh.wait_until_line(
                     "process finished with exit status: 0",
-                    lambda l: "process finished with exit status: 0" in l,
+                    lambda line: "process finished with exit status: 0" in line,
                 )
             except Exception:
                 print(tmux_logs(tmux_session))

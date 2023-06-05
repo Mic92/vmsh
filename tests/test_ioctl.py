@@ -79,7 +79,7 @@ def test_wrap_syscall(helpers: conftest.Helpers) -> None:
         # attach vmsh after boot, because it slows the vm down a lot.
         vmsh = spawn_ioctl_test("guest_kvm_exits", vm)
         with vmsh:
-            vmsh.wait_until_line("attached", lambda l: "attached" in l)
+            vmsh.wait_until_line("attached", lambda line: "attached" in line)
             res = vm.ssh_cmd(["devmem2", "0xc0000000", "h"])
             print("read:\n", res.stdout)
             print("stderr:\n", res.stderr)

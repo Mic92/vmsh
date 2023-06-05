@@ -93,12 +93,12 @@ class VmshPopen(subprocess.Popen):
         """
         print(f"wait for '{tag}'...")
         while True:
-            l = self.lines.get()
+            line = self.lines.get()
 
-            if l == EOF:
+            if line == EOF:
                 raise Exception("reach end of stdout output before process finished")
 
-            if condition(str(l)):
+            if condition(str(line)):
                 return
 
 
