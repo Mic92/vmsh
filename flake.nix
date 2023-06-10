@@ -10,6 +10,9 @@
     treefmt-nix.url = "github:numtide/treefmt-nix";
     treefmt-nix.inputs.nixpkgs.follows = "nixpkgs";
 
+    nixng.url = "github:Mic92/nixng/hostname";
+    nixng.inputs.nixpkgs.follows = "nixpkgs";
+
     not-os.url = "github:cleverca22/not-os";
     not-os.flake = false;
     flake-utils.url = "github:numtide/flake-utils";
@@ -117,6 +120,11 @@
 
             inherit (inputs'.microvm.packages)
               firecracker-example crosvm-example kvmtool-example qemu-example;
+
+            nixng = (pkgs.callPackage ./nix/nixng.nix {
+              inherit (inputs) nixpkgs;
+              inherit (inputs.nixng) nglib;
+            }).config.system.build.initrd;
 
             # see justfile/nixos-image
             nixos-image = pkgs.callPackage ./nix/nixos-image.nix { };

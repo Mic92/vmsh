@@ -291,6 +291,28 @@ alpine-sec-scanner-image:
     nix build --out-link {{ nix_results }}/alpine-sec-scanner-image --builders '' .#alpine-sec-scanner-image
     install -m755 -D {{ nix_results }}/alpine-sec-scanner-image {{ linux_dir }}/alpine-sec-scanner-image.ext4
 
+# run nixng in qemu
+qemu-nixng: # build-linux
+    #!/usr/bin/env bash
+    out=$(nix build --print-out-paths ".#nixng" --builders '')
+    qemu-system-x86_64 \
+      -enable-kvm \
+      -name test-os \
+      -m 512 \
+      -kernel {{ linux_dir }}/arch/x86/boot/bzImage \
+      -initrd "$out" \
+      -net nic,netdev=user.0,model=virtio \
+      -netdev user,id=user.0,hostfwd=tcp:127.0.0.1:{{ qemu_ssh_port }}-:22 \
+      -append "console=hvc0" \
+      -no-reboot \
+      -nographic \
+      -device virtio-rng-pci \
+      -serial null \
+      -device virtio-serial \
+      -chardev stdio,mux=on,id=char0,signal=off \
+      -mon chardev=char0,mode=readline \
+      -device virtconsole,chardev=char0,id=vmsh,nr=0
+
 # run alpine linux in qemu
 qemu-alpine:
     nix build --out-link {{ nix_results }}/alpine-image --builders '' .#alpine-image

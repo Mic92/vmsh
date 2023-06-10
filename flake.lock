@@ -82,6 +82,27 @@
         "type": "github"
       }
     },
+    "nixng": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1686240297,
+        "narHash": "sha256-e5pLiPifAcxNOrMZCiffLQdBS+lWpw/slcRvN4KzjKg=",
+        "owner": "Mic92",
+        "repo": "nixng",
+        "rev": "c64d4eb2f08e92e021bd906320e7a27e60823807",
+        "type": "github"
+      },
+      "original": {
+        "owner": "Mic92",
+        "ref": "hostname",
+        "repo": "nixng",
+        "type": "github"
+      }
+    },
     "nixpkgs": {
       "locked": {
         "lastModified": 1684242266,
@@ -120,6 +141,7 @@
         "flake-parts": "flake-parts",
         "flake-utils": "flake-utils",
         "microvm": "microvm",
+        "nixng": "nixng",
         "nixpkgs": "nixpkgs",
         "not-os": "not-os",
         "treefmt-nix": "treefmt-nix"
