@@ -22,19 +22,14 @@ default:
 build:
     cargo build
 
-# Linux python and rust code
-lint:
-    flake8 tests
-    black --check tests
+# Lint code
+lint: fmt
     mypy tests
     cargo clippy
-    cargo fmt -- --check
 
-# Format python and rust code
+# Format code
 fmt:
-    isort tests
-    black tests
-    cargo fmt
+    nix fmt
 
 # Continously run clippy checks whenever the source changes
 watch:

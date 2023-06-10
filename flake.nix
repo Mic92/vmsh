@@ -28,6 +28,7 @@
   outputs = inputs @ { flake-parts, ... }:
     flake-parts.lib.mkFlake { inherit inputs; } ({ self, lib, ... }: {
       systems = [ "x86_64-linux" ];
+      imports = [ ./treefmt.nix ];
       perSystem = { config, pkgs, inputs', ... }:
         let
           fenixPkgs = inputs'.fenix.packages;
@@ -73,9 +74,6 @@
               ps.lxml
 
               # linting
-              ps.black
-              ps.flake8
-              ps.isort
               ps.mypy
             ]))
           ] ++ config.packages.vmsh.nativeBuildInputs ++ measureDeps;
