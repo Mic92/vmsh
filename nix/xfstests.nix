@@ -1,9 +1,44 @@
 # taken and adapted from the nixpkgs repo
-{ stdenv, acl, attr, autoconf, automake, bash, bc, coreutils, e2fsprogs
-, fetchFromGitHub, fio, gawk, keyutils, killall, lib, libaio, libcap, libtool
-, libuuid, libxfs, lvm2, openssl, perl, procps, quota
-, time, util-linux, which, writeScript, xfsprogs, runtimeShell, mktemp
-, hostname, gnused, diffutils, findutils, glibc, callPackage, file }:
+{ stdenv
+, acl
+, attr
+, autoconf
+, automake
+, bash
+, bc
+, coreutils
+, e2fsprogs
+, fetchFromGitHub
+, fio
+, gawk
+, keyutils
+, killall
+, lib
+, libaio
+, libcap
+, libtool
+, libuuid
+, libxfs
+, lvm2
+, openssl
+, perl
+, procps
+, quota
+, time
+, util-linux
+, which
+, writeScript
+, xfsprogs
+, runtimeShell
+, mktemp
+, hostname
+, gnused
+, diffutils
+, findutils
+, glibc
+, callPackage
+, file
+}:
 
 let
   xfsdump = callPackage ./xfsdump.nix { };
@@ -20,10 +55,20 @@ stdenv.mkDerivation rec {
   };
 
   nativeBuildInputs = [
-    autoconf automake libtool
+    autoconf
+    automake
+    libtool
   ];
   buildInputs = [
-    acl attr gawk libaio libuuid libxfs openssl perl bc
+    acl
+    attr
+    gawk
+    libaio
+    libuuid
+    libxfs
+    openssl
+    perl
+    bc
   ];
 
   hardeningDisable = [ "format" ];

@@ -1,6 +1,6 @@
 { pkgs, not-os, notos-config, linuxPackages }:
 let
-  inherit (pkgs) stdenv lib;
+  inherit (pkgs) lib;
   inherit (pkgs.pkgsMusl.hostPlatform) system parsed;
 
   useMusl = false;
@@ -10,7 +10,7 @@ let
     system = if useMusl then null else pkgs.system;
     configuration = { ... }: {
       imports = notos-config ++ [
-        (not-os  + "/qemu.nix")
+        (not-os + "/qemu.nix")
       ];
 
       boot.kernelPackages = linuxPackages;

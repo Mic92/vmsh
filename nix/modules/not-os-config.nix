@@ -1,4 +1,4 @@
-{ lib, pkgs, config, ... }:
+{ lib, pkgs, ... }:
 {
   environment.systemPackages = [
     pkgs.utillinux
@@ -8,12 +8,12 @@
     # for debugging
     pkgs.strace
 
-    (pkgs.callPackage ../alpine-sec-scanner.nix {})
+    (pkgs.callPackage ../alpine-sec-scanner.nix { })
   ];
 
   environment.pathsToLink = [ "/lib/modules" ];
 
-  networking.timeServers = [];
+  networking.timeServers = [ ];
 
   not-os.nix = true;
   not-os.simpleStaticIp = lib.mkDefault true;
@@ -33,13 +33,21 @@
 
     "virtio_mmio"
     # ext4
-    "crc16" "mbcache" "jbd2" "crc32c_generic" "ext4"
+    "crc16"
+    "mbcache"
+    "jbd2"
+    "crc32c_generic"
+    "ext4"
 
     # xfs
-    "xfs" "libcrc32c"
+    "xfs"
+    "libcrc32c"
 
     # 9p over virtio
-    "9pnet" "9p" "9pnet_virtio" "fscache"
+    "9pnet"
+    "9p"
+    "9pnet_virtio"
+    "fscache"
   ];
 
   system.activationScripts.vmsh = ''

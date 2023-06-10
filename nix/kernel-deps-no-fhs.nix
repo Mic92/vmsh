@@ -17,7 +17,7 @@
 }:
 stdenv.mkDerivation {
   name = "env";
-  nativeBuildInputs = [ 
+  nativeBuildInputs = [
     getopt
     flex
     bison

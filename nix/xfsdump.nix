@@ -7,10 +7,12 @@ let
       url = "https://sources.archlinux.org/other/packages/dmapi/dmapi-${version}.tar.gz";
       sha256 = "sha256-sY409HN09q33wWSZPCbfNphqAJuGqgBO+URBAmU66mk=";
     };
-    patches = [(fetchpatch {
-      url = "https://raw.githubusercontent.com/archlinux/svntogit-packages/c18887a3d1fa150de9745b36b32ff699a9b27fa5/trunk/dmapi-headers.patch";
-      sha256 = "sha256-7YFpGOfPdUFdla37ut/B4TauSNFFxHiqz7aEARydRw8=";
-    })];
+    patches = [
+      (fetchpatch {
+        url = "https://raw.githubusercontent.com/archlinux/svntogit-packages/c18887a3d1fa150de9745b36b32ff699a9b27fa5/trunk/dmapi-headers.patch";
+        sha256 = "sha256-7YFpGOfPdUFdla37ut/B4TauSNFFxHiqz7aEARydRw8=";
+      })
+    ];
     nativeBuildInputs = [ autoreconfHook ];
     buildInputs = [ xfsprogs ];
     MAKE = "${gnumake}/bin/make";

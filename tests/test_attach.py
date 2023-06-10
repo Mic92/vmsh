@@ -86,8 +86,10 @@ def test_attach_5_15(helpers: conftest.Helpers) -> None:
 def test_attach_5_16(helpers: conftest.Helpers) -> None:
     test_attach(helpers=helpers, image=".#not-os-image_5_16")
 
+
 def test_attach_6_1(helpers: conftest.Helpers) -> None:
     test_attach(helpers=helpers, image=".#not-os-image_6_1")
+
 
 def test_attach_6_3(helpers: conftest.Helpers) -> None:
     test_attach(helpers=helpers, image=".#not-os-image_6_3")

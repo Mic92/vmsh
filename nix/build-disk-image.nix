@@ -1,9 +1,12 @@
-{ stdenv, closureInfo
-, e2fsprogs, lkl, lib
+{ stdenv
+, closureInfo
+, e2fsprogs
+, lkl
+, lib
 }:
 
-{ packages ? []
-, extraFiles ? {}
+{ packages ? [ ]
+, extraFiles ? { }
 , extraCommands ? ""
 , diskSize ? "1G"
 }:
@@ -23,7 +26,8 @@ let
       ::1 localhost
     '';
   } // extraFiles;
-in stdenv.mkDerivation {
+in
+stdenv.mkDerivation {
   name = "image";
   nativeBuildInputs = [ e2fsprogs lkl ];
   dontUnpack = true;

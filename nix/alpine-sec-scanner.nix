@@ -1,4 +1,4 @@
-{ buildGoModule, fetchFromGitHub, stdenv, lib }:
+{ buildGoModule, fetchFromGitHub, lib }:
 buildGoModule {
   name = "alpine-sec-scanner";
   src = fetchFromGitHub {

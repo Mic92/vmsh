@@ -19,7 +19,7 @@
 }:
 buildFHSUserEnv {
   name = "linux-kernel-build";
-  targetPkgs = pkgs: ([
+  targetPkgs = _pkgs: ([
     getopt
     flex
     bison

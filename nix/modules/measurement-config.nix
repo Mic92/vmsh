@@ -1,8 +1,9 @@
-{ lib, pkgs, ... }:
+{ pkgs, ... }:
 let
-  phoronix = pkgs.callPackage ../phoronix.nix {};
+  phoronix = pkgs.callPackage ../phoronix.nix { };
   myxfstests = pkgs.callPackage ../xfstests.nix { };
-in {
+in
+{
   imports = [
     ./not-os-config.nix
   ];

@@ -1,8 +1,7 @@
 { pkgs }:
 let
-  buildDiskImage = pkgs.callPackage ./build-disk-image.nix {};
-  alpine-sec-scanner = pkgs.callPackage ./alpine-sec-scanner.nix {};
-  inherit (pkgs.pkgsStatic) busybox;
+  buildDiskImage = pkgs.callPackage ./build-disk-image.nix { };
+  alpine-sec-scanner = pkgs.callPackage ./alpine-sec-scanner.nix { };
 in
 buildDiskImage {
   packages = [ alpine-sec-scanner pkgs.cacert ];

@@ -1,7 +1,7 @@
 { pkgs }:
 let
-  buildDiskImage = pkgs.callPackage ./build-disk-image.nix {};
-  phoronix = pkgs.callPackage ./phoronix.nix {};
+  buildDiskImage = pkgs.callPackage ./build-disk-image.nix { };
+  phoronix = pkgs.callPackage ./phoronix.nix { };
 in
 buildDiskImage {
   diskSize = "1024M";

@@ -1,6 +1,6 @@
 { pkgs }:
 let
-  buildDiskImage = pkgs.callPackage ./build-disk-image.nix {};
+  buildDiskImage = pkgs.callPackage ./build-disk-image.nix { };
   inherit (pkgs.pkgsStatic) busybox;
 in
 buildDiskImage {

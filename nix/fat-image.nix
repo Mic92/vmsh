@@ -1,19 +1,19 @@
 { pkgs }:
 let
-  buildDiskImage = pkgs.callPackage ./build-disk-image.nix {};
+  buildDiskImage = pkgs.callPackage ./build-disk-image.nix { };
   inherit (pkgs.pkgsStatic) busybox;
   myvim = pkgs.vim_configurable.customize {
-        name = "vim";
-        vimrcConfig.customRC = builtins.readFile ./modules/vimrc;
-        vimrcConfig.packages.nixbundle.start = with pkgs.vimPlugins; [ 
-          vim-sensible 
-          nerdtree
-        ];
-      };
+    name = "vim";
+    vimrcConfig.customRC = builtins.readFile ./modules/vimrc;
+    vimrcConfig.packages.nixbundle.start = with pkgs.vimPlugins; [
+      vim-sensible
+      nerdtree
+    ];
+  };
 in
 buildDiskImage {
-  packages = with pkgs; [ 
-    busybox 
+  packages = with pkgs; [
+    busybox
     antigen
     fzf
     tree

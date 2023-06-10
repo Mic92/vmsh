@@ -2,7 +2,7 @@
 , pkgs
 , bcc ? pkgs.linuxPackages.bcc
 , pkgSrc ? ./.
-, }:
+}:
 
 rustPlatform.buildRustPackage {
   name = "vmsh";

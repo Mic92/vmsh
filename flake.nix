@@ -135,7 +135,7 @@
             alpine-image = pkgs.callPackage ./nix/alpine-image.nix { };
             fat-image = pkgs.callPackage ./nix/fat-image.nix { };
 
-            phoronix-test-suite = pkgs.callPackage ./nix/phoronix.nix {};
+            phoronix-test-suite = pkgs.callPackage ./nix/phoronix.nix { };
           };
           legacyPackages = {
             linuxPackages_ioregionfd = pkgs.recurseIntoAttrs (pkgs.linuxPackagesFor config.packages.linux_ioregionfd);

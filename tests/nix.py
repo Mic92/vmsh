@@ -20,7 +20,14 @@ def nix_build(what: str) -> Any:
     # gc root to improve caching
     link_name = path.joinpath(what.lstrip(".#"))
     result = subprocess.run(
-        ["nix", "build", "--out-link", str(link_name), "--json", what],
+        [
+            "nix",
+            "build",
+            "--out-link",
+            str(link_name),
+            "--json",
+            what,
+        ],
         text=True,
         stdout=subprocess.PIPE,
         check=True,
