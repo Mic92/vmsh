@@ -29,7 +29,7 @@ clap = { version = "4", default-features = false, features = ["std", "cargo", "h
 ioutils = { path = "src/ioutils" }
 nix = "0.26.2"
 libc = "0.2.146"
-bitflags = "2.3.1"
+bitflags = "2.3.2"
 stage1-interface = { path = "src/stage1-interface" }
 # required by stage1/Cargo.toml
 cc = "1.0.79"
