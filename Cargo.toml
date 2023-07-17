@@ -33,7 +33,7 @@ bitflags = "2.3.1"
 stage1-interface = { path = "src/stage1-interface" }
 # required by stage1/Cargo.toml
 cc = "1.0.79"
-signal-hook = "0.3.15"
+signal-hook = "0.3.16"
 
 bcc = "0.0.33"
 simple-error = "0.3.0"
