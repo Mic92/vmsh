@@ -32,7 +32,7 @@ libc = "0.2.146"
 bitflags = "2.3.3"
 stage1-interface = { path = "src/stage1-interface" }
 # required by stage1/Cargo.toml
-cc = "1.0.79"
+cc = "1.0.82"
 signal-hook = "0.3.17"
 
 bcc = "0.0.33"
