@@ -63,7 +63,7 @@ vm-device = { git = "https://github.com/rust-vmm/vm-device", rev = "d5937f60b0c5
 event-manager = { version = "0.3.0", features = ["remote_endpoint"] }
 vmm-sys-util = "0.11.1" # only for its ::eventfd::EventFd
 vm-memory = { version = "0.11.0", features = ["backend-mmap"] }
-log = "0.4.19"
+log = "0.4.20"
 
 [patch.crates-io]
 # no atomicity support
