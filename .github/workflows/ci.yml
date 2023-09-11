@@ -18,7 +18,7 @@ jobs:
         rust: [ 1.69.0 ]
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: Install rust
         uses: actions-rs/toolchain@v1
         with:
@@ -59,7 +59,7 @@ jobs:
         run:
           rustup target add x86_64-unknown-linux-musl
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: Clippy
         uses: actions-rs/cargo@v1
         with:
@@ -73,5 +73,5 @@ jobs:
     name: Cargo Deny (crate metadata checks)
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - uses: EmbarkStudios/cargo-deny-action@v1
