@@ -39,7 +39,7 @@ Build small vm images with [microvm.nix](https://github.com/astro/microvm.nix)
 VMSH: Hypervisor-agnostic Guest Overlays for VMs  
 _Jörg Thalheim, Peter Okelmann, Harshavardhan Unnibhavi, Redha Gouicem, Pramod Bhatotia_  
 **EUROSYS 2022**  
-[[Paper](https://vmsh.org/pdfs/vmsh_eurosys22.pdf)]
+[[Paper](https://vmsh.thalheim.io/pdfs/vmsh_eurosys22.pdf)]
 
 ```
 @inproceedings{DBLP:conf/eurosys/ThalheimOUGB22,
